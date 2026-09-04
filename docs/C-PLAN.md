@@ -1,11 +1,12 @@
 # MKT-INT-001-C: Integration CRUD API — Implementation Plan
 
 **Document**: C-PLAN.md  
-**Status**: Ready for CTO Review & Approval  
+**Status**: 🟡 APPROVED WITH AMENDMENTS (CTO Review Round 2)  
 **Phase**: MKT-INT-001-C Planning (Pre-Implementation)  
 **Date**: 2026-09-04  
 **Prepared By**: Claude Haiku 4.5  
-**Session**: https://claude.ai/code/session_01X23TQjjx1mwLFzPHqgd2Kw
+**Session**: https://claude.ai/code/session_01X23TQjjx1mwLFzPHqgd2Kw  
+**Amendments Applied**: 10 CTO-required changes (see below)
 
 ---
 
@@ -43,22 +44,189 @@ This plan specifies MKT-INT-001-C (Integration CRUD API) implementation scope, c
 
 ---
 
+## CTO Amendments (Round 2) — Required Changes Before Implementation
+
+✅ **AMENDMENT 1: EXACT API CONTRACT**
+
+- Endpoints verified against locked backlog (DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, Section MKT-INT-001-C)
+- HTTP methods: 6 endpoints, all exact paths confirmed
+- PUT (not PATCH) for update endpoint
+- `/test` endpoint confirmed in C scope (per backlog: "GET /api/integrations/{integrationId}/test")
+
+✅ **AMENDMENT 2: C vs D BOUNDARY — CREDENTIAL LIFECYCLE CLARIFICATION**
+
+- **C Responsibility**: Create integration record + call existing `CredentialsService.createCredential()` from B.1
+- **D Responsibility**: Provide endpoints for credential rotation, revocation, scope modification (calls `CredentialsService.rotateCredential()`, etc.)
+- **Critical**: C does NOT reimplement credential hashing, rotation, or secret lifecycle. Reuse B.1 infrastructure only.
+
+✅ **AMENDMENT 3: CROSS-MERCHANT ACCESS RESPONSE — 403 vs 404**
+
+- **Decision**: Return **403 Forbidden** (not 404) for cross-merchant access attempts
+- **Rationale**: Per locked CRIT-006 acceptance criteria: "Cross-merchant query returns 403 Forbidden"
+- **Behavior**: All GET/PUT/DELETE endpoints verify merchantId ownership; unauthorized access returns 403, not 404
+- **Audit**: All 403 responses logged for security investigation
+
+✅ **AMENDMENT 4: TESTING REQUIREMENT UPDATED**
+
+- Removed phrase: "100% test coverage"
+- Replaced with: "All defined C acceptance criteria and security-critical behavioral scenarios must execute successfully"
+- **Emphasis**: Tests must execute against real PostgreSQL + Redis (not stub/mock), per B.1 verification model
+
+✅ **AMENDMENT 5: UNARCHIVE ENDPOINT — REMOVED FROM C**
+
+- **Decision**: DO NOT add unarchive endpoint to C
+- **Rationale**: Keep C scope tight to CRUD operations only; archival/restoration belongs to I phase if needed
+- **C includes**: create, read, list, update, delete (soft-delete); does NOT include restore
+
+✅ **AMENDMENT 6: MULTIPLE ACTIVE KEYS — REMOVED FROM C**
+
+- **Decision**: DO NOT introduce multiple-active-credential semantics in C
+- **Rationale**: Credential lifecycle (rotation windows, multiple keys, gradual rollover) is D's responsibility
+- **C behavior**: Create integration → generate single initial API key; D handles subsequent credential management
+
+✅ **AMENDMENT 7: WEBHOOK URL CONFIGURATION SCOPE CLARIFIED**
+
+- **webhookUrl IS part of C contract** (per backlog: "Allow... webhook URL changes")
+- **C Responsibility**: Accept webhookUrl in create/update; store in MerchantIntegration record; validate format (HTTPS in production)
+- **L Responsibility**: Webhook delivery, retry logic, payload signing, delivery tracking
+- **Validation**: webhookUrl must be valid HTTPS URL for production deployments (enforce per deployment environment)
+
+✅ **AMENDMENT 8: SCOPE — C IS INTEGRATION CRUD ONLY**
+
+- **C includes**: Create, read, list, update, delete (soft-archive) integrations; test connectivity; audit logging
+- **C does NOT include**: OAuth, catalog sync, inventory sync, order integration, webhook processing, POS adapters, marketplace UI, Ride, Wallet, payments, mobile, Google Play, marketplace, billing
+- **Clear Boundary**: C manages integration metadata and status; credentials are managed via B/D; sync/order logic deferred to F/J/L
+
+✅ **AMENDMENT 9: ACCEPTANCE GATES — 9 EXPLICIT GATES**
+Listed explicitly in "Acceptance Gates" section below
+
+✅ **AMENDMENT 10: AMENDED ENDPOINT MATRIX ADDED**
+See "Exact Endpoint Contract Matrix" section below with all HTTP methods, paths, DTOs, authentication, error responses
+
+---
+
 ## Scope & Exact Requirements
 
 ### Functional Scope (From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, Section MKT-INT-001-C)
 
 **Objective**: Implement REST API endpoints for creating, reading, updating, and deleting Merchant Integrations, allowing merchants to register and manage POS system connections.
 
-**Exact Endpoints**:
+---
 
-| Method | Path                                     | Purpose                            | Auth           | Returns              |
-| ------ | ---------------------------------------- | ---------------------------------- | -------------- | -------------------- |
-| POST   | `/api/integrations`                      | Create new integration             | JWT (merchant) | 201 with credentials |
-| GET    | `/api/integrations`                      | List all integrations for merchant | JWT (merchant) | 200 with array       |
-| GET    | `/api/integrations/{integrationId}`      | Get single integration             | JWT (merchant) | 200 with details     |
-| PUT    | `/api/integrations/{integrationId}`      | Update integration metadata        | JWT (merchant) | 200 with updated     |
-| DELETE | `/api/integrations/{integrationId}`      | Soft-delete integration            | JWT (merchant) | 204 No Content       |
-| GET    | `/api/integrations/{integrationId}/test` | Test connectivity to POS           | JWT (merchant) | 200 with result      |
+## Exact Endpoint Contract Matrix
+
+### Endpoint 1: Create Integration
+
+| Attribute               | Value                                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP Method**         | `POST`                                                                                                                     |
+| **Exact Path**          | `/api/integrations`                                                                                                        |
+| **Authentication**      | JWT Bearer token (BearerAuth guard)                                                                                        |
+| **Authorization**       | Authenticated merchant (extracted via @CurrentMerchant)                                                                    |
+| **Request DTO**         | `CreateIntegrationDto` (vendorName, vendorVersion?, merchantContactEmail?, webhookUrl?, metadata?)                         |
+| **Request Validation**  | vendorName: required, non-empty, ≤100 chars; webhookUrl: optional, valid HTTPS; email: valid format                        |
+| **Response DTO**        | `CreateIntegrationResponseDto` (integrationId, vendorName, status, createdAt, apiKey, scopes, credential)                  |
+| **Response Code**       | 201 Created                                                                                                                |
+| **Error: 400**          | Invalid vendorName, malformed webhookUrl, invalid email format, metadata not JSON-serializable                             |
+| **Error: 401**          | Missing or invalid JWT token                                                                                               |
+| **Error: 403**          | Merchant context missing (should not occur if B.1 guards working)                                                          |
+| **Idempotency**         | Not applicable for create; C relies on UUID generation for uniqueness                                                      |
+| **Credential Behavior** | Calls `CredentialsService.createCredential()` with default scopes; returns plaintext API key ONCE; never retrievable after |
+| **Audit Log**           | `integration.created` event; resource: integration, resourceId: integrationId                                              |
+
+### Endpoint 2: List Integrations
+
+| Attribute                | Value                                                                                                                                          |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP Method**          | `GET`                                                                                                                                          |
+| **Exact Path**           | `/api/integrations`                                                                                                                            |
+| **Query Parameters**     | includeArchived? (bool, default: false); limit? (1–100, default: 20); offset? (≥0, default: 0); status? (enum: ACTIVE, PAUSED, REVOKED, ERROR) |
+| **Authentication**       | JWT Bearer token (BearerAuth guard)                                                                                                            |
+| **Authorization**        | Authenticated merchant; can only list own integrations; includeArchived=true requires admin role                                               |
+| **Response DTO**         | `ListIntegrationsResponseDto` (data: IntegrationResponseDto[], pagination: {total, limit, offset, hasMore})                                    |
+| **Response Code**        | 200 OK                                                                                                                                         |
+| **Error: 401**           | Missing or invalid JWT token                                                                                                                   |
+| **Error: 403**           | includeArchived=true but not admin                                                                                                             |
+| **Soft-Delete Behavior** | Excludes archivedAt IS NOT NULL by default; only includes if includeArchived=true AND admin                                                    |
+| **Pagination**           | Offset-based; returns hasMore flag for client; max 100 items per page                                                                          |
+| **Audit Log**            | Not logged per se; but access auditable via request logging                                                                                    |
+
+### Endpoint 3: Get Single Integration
+
+| Attribute              | Value                                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP Method**        | `GET`                                                                                                                        |
+| **Exact Path**         | `/api/integrations/{integrationId}`                                                                                          |
+| **Path Parameter**     | integrationId: UUID                                                                                                          |
+| **Authentication**     | JWT Bearer token (BearerAuth guard)                                                                                          |
+| **Authorization**      | Authenticated merchant; can only access own integrations                                                                     |
+| **Response DTO**       | `IntegrationResponseDto` (integrationId, merchantId, vendorName, status, createdAt, credentials, metadata, webhookUrl, etc.) |
+| **Response Code**      | 200 OK                                                                                                                       |
+| **Error: 401**         | Missing or invalid JWT token                                                                                                 |
+| **Error: 403**         | **Cross-merchant access attempt** (per CRIT-006: "Cross-merchant query returns 403 Forbidden")                               |
+| **Error: 404**         | Integration not found within authenticated merchant's scope                                                                  |
+| **Merchant Isolation** | Query includes explicit filter: `where: {id: integrationId, merchantId: context.merchantId}`                                 |
+| **Audit Log**          | Access logged on 403 (unauthorized attempt); on 404 could indicate attack pattern                                            |
+
+### Endpoint 4: Update Integration
+
+| Attribute                   | Value                                                                                                                       |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| **HTTP Method**             | `PUT` (not PATCH)                                                                                                           |
+| **Exact Path**              | `/api/integrations/{integrationId}`                                                                                         |
+| **Path Parameter**          | integrationId: UUID                                                                                                         |
+| **Authentication**          | JWT Bearer token (BearerAuth guard)                                                                                         |
+| **Authorization**           | Authenticated merchant; can only update own integrations                                                                    |
+| **Request DTO**             | `UpdateIntegrationDto` (all fields optional: vendorName, vendorVersion, merchantContactEmail, webhookUrl, metadata, status) |
+| **Request Validation**      | status: if provided, must be ACTIVE or PAUSED only (REVOKED/ERROR set by system, not client)                                |
+| **Response DTO**            | `IntegrationResponseDto` (updated record)                                                                                   |
+| **Response Code**           | 200 OK                                                                                                                      |
+| **Error: 400**              | Invalid input (malformed webhookUrl, non-JSON metadata, invalid enum for status)                                            |
+| **Error: 401**              | Missing or invalid JWT token                                                                                                |
+| **Error: 403**              | Cross-merchant update attempt                                                                                               |
+| **Error: 404**              | Integration not found                                                                                                       |
+| **Credential Immutability** | Cannot update credentials via this endpoint; credential management is D's scope                                             |
+| **Audit Log**               | `integration.updated` event; includes old/new values for modified fields                                                    |
+
+### Endpoint 5: Delete Integration (Soft-Delete)
+
+| Attribute                 | Value                                                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **HTTP Method**           | `DELETE`                                                                                                    |
+| **Exact Path**            | `/api/integrations/{integrationId}`                                                                         |
+| **Path Parameter**        | integrationId: UUID                                                                                         |
+| **Authentication**        | JWT Bearer token (BearerAuth guard)                                                                         |
+| **Authorization**         | Authenticated merchant; can only delete own integrations                                                    |
+| **Request Body**          | None                                                                                                        |
+| **Response Code**         | 204 No Content                                                                                              |
+| **Error: 401**            | Missing or invalid JWT token                                                                                |
+| **Error: 403**            | Cross-merchant delete attempt                                                                               |
+| **Error: 404**            | Integration not found                                                                                       |
+| **Soft-Delete Behavior**  | Sets archivedAt = now; does NOT perform destructive DELETE                                                  |
+| **Credential Revocation** | Also revokes all active credentials for this integration (sets archivedAt on IntegrationCredential records) |
+| **Audit Log**             | `integration.deleted` event (soft-delete, not hard delete); includes integrationId, timestamp               |
+
+### Endpoint 6: Test Integration Connectivity
+
+| Attribute          | Value                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------ |
+| **HTTP Method**    | `GET`                                                                                                  |
+| **Exact Path**     | `/api/integrations/{integrationId}/test`                                                               |
+| **Path Parameter** | integrationId: UUID                                                                                    |
+| **Authentication** | JWT Bearer token (BearerAuth guard)                                                                    |
+| **Authorization**  | Authenticated merchant; can only test own integrations                                                 |
+| **Request Body**   | None                                                                                                   |
+| **Response DTO**   | `TestIntegrationResponseDto` (status: SUCCESS                                                          | FAILED | UNCONFIGURED, message, latencyMs?, httpStatus?, testedAt) |
+| **Response Code**  | 200 OK                                                                                                 |
+| **Error: 401**     | Missing or invalid JWT token                                                                           |
+| **Error: 403**     | Cross-merchant test attempt                                                                            |
+| **Error: 404**     | Integration not found                                                                                  |
+| **Error: 504**     | Test timeout (webhook unreachable after 5 seconds)                                                     |
+| **Test Behavior**  | If webhookUrl configured: HTTP GET with 5-second timeout, measure latency, capture status code         |
+| **Fallback**       | If webhookUrl not configured: return status=UNCONFIGURED, message describing need to configure webhook |
+| **Audit Log**      | `integration.test` event; includes result (SUCCESS/FAILED/UNCONFIGURED), latency if applicable         |
+
+---
 
 ### Feature Requirements (From Backlog)
 
@@ -79,27 +247,22 @@ This plan specifies MKT-INT-001-C (Integration CRUD API) implementation scope, c
 **Processing**:
 
 1. Verify authenticated merchant context (via @CurrentMerchant)
-2. Generate scoped API key:
-   - Plaintext key format: `dpx_integration_{uuid}_{hash}` (16–32 chars, readable in logs)
-   - Hash key with bcrypt (10 rounds); store hash in database
-   - Default scopes: `["catalog:read", "catalog:write", "inventory:read", "inventory:write", "orders:read", "orders:write"]`
-3. Create MerchantIntegration record with:
+2. Create MerchantIntegration record with:
    - integrationId (UUID)
    - merchantId (from context)
    - vendorName, vendorVersion, metadata
+   - webhookUrl (optional; validated for HTTPS)
    - status: `ACTIVE` (default)
    - createdAt: now
    - archivedAt: null
-4. Create IntegrationCredential record with:
-   - credentialId (UUID)
-   - integrationId (from step 3)
-   - credentialHash (bcrypt hash of key)
-   - credentialType: `API_KEY`
-   - scopes: default scopes (JSON array)
-   - createdAt: now
-   - archivedAt: null
-5. Audit log: `integration.created` with resource: `integration`, resourceId: integrationId
-6. **Return plaintext API key ONLY ONCE** in response; never retrievable again
+3. **Call CredentialsService.createCredential()** (reusing B.1 infrastructure):
+   - Pass: integrationId, credentialType: OUTGOING_API_KEY, secret: generated API key
+   - Service generates plaintext key, hashes with bcrypt, stores in IntegrationCredential
+   - Default scopes: `["catalog:read", "catalog:write", "inventory:read", "inventory:write", "orders:read", "orders:write"]`
+4. Audit log: `integration.created` with resource: `integration`, resourceId: integrationId
+5. **Return plaintext API key ONLY ONCE** in response; never retrievable after
+   - **Note**: Subsequent credential management (rotation, revocation, scope modification) is D's responsibility
+6. **Critical Boundary**: C does NOT reimplement credential hashing, rotation, or lifecycle. All credential operations delegate to CredentialsService from B.1
 
 **Output** (201 Created):
 
@@ -437,6 +600,27 @@ export class TestIntegrationResponseDto {
 
 ---
 
+## C vs D Boundary (Critical Clarification)
+
+**C Responsibility** (Integration CRUD):
+
+- Create integration record + call `CredentialsService.createCredential()` to generate initial API key
+- Manage integration metadata (vendorName, webhookUrl, status)
+- Return plaintext API key once at creation time; never retrievable again
+- Soft-delete integrations and revoke associated credentials
+- Audit all integration lifecycle operations
+
+**D Responsibility** (Credential Management — NOT in C scope):
+
+- Provide endpoints for credential rotation, revocation, listing
+- Modify scopes on existing credentials
+- Track credential usage and last-used timestamps
+- Implement credential rotation windows
+
+**CRITICAL**: C does NOT reimplement credentials. C reuses `CredentialsService` from B.1 infrastructure only.
+
+---
+
 ## Infrastructure & Reuse
 
 ### Existing Code to Reuse (From B.1)
@@ -448,12 +632,13 @@ export class TestIntegrationResponseDto {
 - Merchant context injection via `@CurrentMerchant()` decorator
 - Scope validation via `@RequireScopes(...)` decorator (optional for C, required for D+)
 
-✅ **Encryption & Hashing** (from B.1):
+✅ **Credential Management** (from B.1):
 
-- `EncryptionService` for credential encryption (AES-256-GCM)
-- `bcrypt` library for API key hashing (already in use in B.1)
-- Constructor patterns for dependency injection
-- Key generation helpers (if needed, create in C)
+- `CredentialsService.createCredential()` method for API key generation + hashing
+- C calls this service to generate initial credential; does NOT do bcrypt directly
+- `EncryptionService` for future credential encryption (AES-256-GCM) — not used in C
+- Plaintext key generation and hashing handled by CredentialsService
+- C returns plaintext key once; CredentialsService stores hashed version
 
 ✅ **Audit Logging**:
 
@@ -638,10 +823,11 @@ async getIntegration(merchantId: string, integrationId: string) {
 }
 ```
 
-**Error Responses**: Return 404 (not 403) if integration not found
+**Error Responses** (per locked CRIT-006):
 
-- **Rationale** (from CRIT-006 notes): Prevents information leakage (attacker cannot distinguish between "doesn't exist" vs "not owned by me")
-- Test must explicitly verify: different merchant + same integrationId → 404 (not 403)
+- **403 Forbidden**: Integration exists but authenticated merchant does not own it
+- **404 Not Found**: Integration does not exist
+- **Test**: Cross-merchant access attempt returns 403 Forbidden (per locked acceptance criteria in CRIT-006)
 
 ### Scope Validation
 
@@ -1067,10 +1253,7 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 
 7. ✅ **GET /api/integrations/{id}/test calls webhook URL and returns {success, latency_ms}**
    - Test: Create with webhookUrl; call test endpoint → verify status=SUCCESS, latencyMs>0; mock 500 error → verify status=FAILED
-
-8. ✅ **Unarchive operation (if supported) restores archived_at to NULL**
-   - Test: Create → delete → unarchive (via specific endpoint or PUT request); verify archivedAt=null; verify in list
-   - **Note**: Unarchive not explicitly in scope; may defer to I phase or skip if deemed unnecessary
+   - **Note**: /test endpoint confirmed in C scope (per DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md)
 
 ---
 
@@ -1087,15 +1270,15 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 1. Every service method receives `merchantId` from `@CurrentMerchant()` decorator
 2. All Prisma queries include: `where: {merchantId, ...}`
 3. Never trust client-provided `merchantId` parameter
-4. Return 404 (not 403) for cross-merchant access → prevents information leakage
-5. Test: CrossMerchantAccess — query as merchant-2 with merchant-1's integrationId → 404
+4. Return 403 Forbidden (per locked CRIT-006 spec) for cross-merchant access
+5. Test: CrossMerchantAccess — query as merchant-2 with merchant-1's integrationId → 403
 
 **Acceptance Criteria** (from CRIT-006):
 
-- ✅ Cross-merchant query returns 404 (NOT 403)
+- ✅ Cross-merchant query returns 403 Forbidden (per locked spec)
 - ✅ All GET endpoints filter by merchantId
 - ✅ All PUT/PATCH/DELETE endpoints verify merchantId ownership
-- ✅ Test: 10 merchants, each tries to access others' data → all fail with 404
+- ✅ Test: 10 merchants, each tries to access others' data → all fail with 403
 
 #### CRIT-001: Duplicate Order Creation (Future, Prepared in C)
 
@@ -1151,8 +1334,11 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 - ❌ Integration versioning/rollback
 - ❌ Custom integration branding/UI
 - ❌ Order status transitions (L phase)
-- ❌ Credential rotation (D phase; C prepares schema)
+- ❌ Credential rotation endpoints (D phase; credential CREATION uses B.1 CredentialsService)
+- ❌ Credential revocation endpoints (D phase)
+- ❌ Multiple-credential management (D phase)
 - ❌ Webhook delivery (L phase; C accepts webhookUrl for future use)
+- ❌ Webhook processing framework (L phase)
 
 ### Deferred to D, E, F–L Phases
 
@@ -1209,7 +1395,7 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 - [ ] Write integration tests (controller + service)
 - [ ] Test all error cases (401, 403, 404, 400, 500)
 - [ ] Create API documentation (endpoint signatures, error codes, examples)
-- [ ] Verify soft-delete pattern (query filters, unarchive)
+- [ ] Verify soft-delete pattern (query filters, archive behavior)
 
 **Deliverable**: 100% test pass rate; API docs ready; acceptance criteria met
 
@@ -1242,24 +1428,105 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 
 ---
 
+## C Acceptance Gates (9 Explicit Requirements)
+
+C is **COMPLETE and READY for D phase** only when ALL 9 gates pass:
+
+### Gate 1: Endpoint Contract Implementation
+
+- [ ] All 6 endpoints implemented per exact contract (POST, GET list, GET single, PUT, DELETE, GET /test)
+- [ ] HTTP methods correct (PUT not PATCH; GET not POST)
+- [ ] Paths exact (e.g., `/api/integrations/{integrationId}`, not `/api/integrations/{id}`)
+- [ ] Request/response DTOs match contract
+- [ ] All error codes implemented (401, 403, 404, 400, 500)
+
+### Gate 2: Merchant Isolation (CRIT-006)
+
+- [ ] Every query explicitly filters by merchantId
+- [ ] Cross-merchant access returns 403 Forbidden (not 404)
+- [ ] Test: 10 merchants, each attempts to access others' integrations → all return 403
+- [ ] Unauthorized access logged with 403 status
+
+### Gate 3: CRUD Lifecycle
+
+- [ ] Create integration generates unique integrationId, calls CredentialsService.createCredential, returns plaintext key once
+- [ ] List integrations returns paginated results for authenticated merchant only
+- [ ] Get integration returns full details if owned, 403 if not
+- [ ] Update integration modifies metadata, preserves credentials (no credential changes via this endpoint)
+- [ ] Delete integration soft-deletes (sets archivedAt), revokes all credentials
+
+### Gate 4: Archive/Soft-Delete Behavior
+
+- [ ] Deletion sets archivedAt timestamp (no destructive DELETE)
+- [ ] Default queries filter `archivedAt IS NULL`
+- [ ] Soft-deleted integrations excluded from list unless includeArchived=true AND admin
+- [ ] All deleted integrations' credentials also archived (archivedAt set)
+
+### Gate 5: Idempotency
+
+- [ ] Integration creation deterministic (same input → same integrationId)
+- [ ] No duplicate integrations created from concurrent identical requests
+- [ ] (Full idempotency-key validation is L's responsibility; C prepares infrastructure)
+
+### Gate 6: Audit Logging
+
+- [ ] `integration.created` event logged on create
+- [ ] `integration.updated` event logged on update (includes old/new values)
+- [ ] `integration.deleted` event logged on soft-delete
+- [ ] `integration.test` event logged on connectivity test
+- [ ] All 403 (unauthorized access) attempts logged
+- [ ] AuditService.record called with correct event name, userId (merchantId), metadata
+
+### Gate 7: Response Safety
+
+- [ ] No API key plaintext in GET/LIST/UPDATE responses (only masked suffix)
+- [ ] No database passwords, secrets, or internal error details in error responses
+- [ ] Cross-merchant integration data NEVER exposed (even in error messages)
+
+### Gate 8: Validation Tests (PostgreSQL/Redis)
+
+- [ ] Tests execute against real PostgreSQL + Redis (per B.1 model), not mocks
+- [ ] Input validation tests: email format, URL format, HTTPS enforcement, JSON serialization
+- [ ] Business logic tests: merchantId verification, soft-delete filters, credential revocation
+- [ ] All 8 acceptance criteria execute successfully
+- [ ] No test stubs or mocks for database layer
+
+### Gate 9: Code Quality & Scope
+
+- [ ] TypeScript compilation: 0 errors
+- [ ] ESLint: 0 errors
+- [ ] No credential management endpoints (those are D)
+- [ ] No catalog/inventory/order sync logic (those are F/J/L)
+- [ ] No OAuth implementation (future)
+- [ ] Code scoped to Integration CRUD only
+- [ ] OpenAPI spec generated and aligned with exact endpoints
+- [ ] git diff confirms only integration-related files changed (no B.1, A, or unrelated code touched)
+
+---
+
 ## Success Criteria
 
 ### Before Implementation Begins
 
-- [ ] CTO approves C-PLAN.md
+- [ ] CTO approves amended C-PLAN.md
 - [ ] All acceptance criteria understood and testable
-- [ ] Team familiar with B.1 patterns (auth guards, audit service, soft-delete)
+- [ ] Team familiar with B.1 patterns (auth guards, audit service, soft-delete, CredentialsService)
+- [ ] 9 acceptance gates understood and measurable
 
 ### At Completion (Before D Phase)
 
-- [ ] 8 acceptance criteria tests pass
-- [ ] 100% unit test coverage (service methods)
-- [ ] 100% integration test coverage (controller + guards)
-- [ ] All critical risks (CRIT-006, CRIT-005) prevented
-- [ ] Merchant isolation verified by security test
-- [ ] API documentation complete (endpoint specs, error codes, examples)
+- [ ] 8 acceptance criteria tests pass (executed against real PostgreSQL + Redis, per B.1 model)
+- [ ] All defined C acceptance criteria and security-critical behavioral scenarios execute successfully
+- [ ] All critical risks (CRIT-006: merchant isolation, CRIT-005: credential compromise) prevented and tested
+- [ ] Merchant isolation verified by security test (cross-merchant access returns 403)
+- [ ] API documentation complete (6 exact endpoints, DTOs, error codes, examples)
 - [ ] Code merged to feature branch
 - [ ] No breaking changes to B.1 or A patterns
+- [ ] TypeScript compilation: 0 errors
+- [ ] ESLint: 0 errors
+- [ ] PostgreSQL behavioral tests execute successfully (not stubs/mocks)
+- [ ] OpenAPI alignment verified against locked contract
+- [ ] Scope isolation confirmed (only CRUD, no credential mgmt, no catalog/inventory/order sync)
 
 ---
 
@@ -1270,25 +1537,20 @@ From DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md, MKT-INT-001-C:
 - JWT validation working (BearerAuth guard)
 - @CurrentMerchant decorator properly extracts merchantId
 - AuditService.record method accepts event name + context + metadata
+- CredentialsService.createCredential() method available (from B.1) for API key generation
 - Prisma transactions atomic (create integration + credential in one tx)
 - Database connection pooling handles concurrent requests
 
-### Open Questions for CTO
+### Amendments Applied (CTO Round 2)
 
-1. **Unarchive endpoint**: Should C include restoration (`POST /api/integrations/{id}/restore`) or defer to I phase?
-   - **Plan assumes**: Defer to I phase (Soft-Delete & Archive Operations)
+Per CTO-required amendments, the following decisions are now FIRM and not open questions:
 
-2. **Metadata extensibility**: Should metadata support arbitrary JSON or enforce schema?
-   - **Plan assumes**: Arbitrary JSON (no schema enforcement)
-
-3. **Webhook URL validation**: Should we allow non-HTTPS URLs for testing?
-   - **Plan assumes**: Enforce HTTPS only (security best practice)
-
-4. **API key rotation**: Should C support multiple active keys per integration (for rotation windows)?
-   - **Plan assumes**: D phase handles multiple credentials; C creates one per integration
-
-5. **Integration discovery**: Should merchants see other merchants' integrations (anonymized)?
-   - **Plan assumes**: No; each merchant sees only their own
+1. ✅ **No unarchive endpoint in C** — Decision made: C includes CRUD only; defer restoration to I phase if needed
+2. ✅ **No multiple active keys in C** — Credential lifecycle managed by D; C creates one initial key via B.1 CredentialsService
+3. ✅ **Cross-merchant response is 403** — Per locked CRIT-006 acceptance criteria
+4. ✅ **Webhook URL is part of C contract** — Stored in integration record; validation/processing deferred to L
+5. ✅ **Test requirement updated** — "All defined C acceptance criteria and security-critical behavioral scenarios must execute successfully" (PostgreSQL/Redis)
+6. ✅ **C/D boundary clarified** — C calls CredentialsService from B.1; D provides credential management endpoints
 
 ---
 
