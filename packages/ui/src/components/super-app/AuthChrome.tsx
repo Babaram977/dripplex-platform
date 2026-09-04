@@ -51,7 +51,6 @@ export function SuperAppAuthStatusBar(): React.JSX.Element {
       className="relative z-10 flex w-full items-center justify-between px-7 pt-[52px]"
       style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}
     >
-      <span>9:41</span>
       <SuperAppStatusBarIcons />
     </div>
   );

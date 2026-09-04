@@ -11,29 +11,56 @@ Prepare the DrippleX customer mobile application for controlled Android and iOS 
 - Android application ID: `com.dripplex.customer`
 - iOS bundle identifier: `com.dripplex.customer`
 - Android channels: `production`, `internal`, `closedBeta`
-- Production customer URL: `https://app.dripplex.com` — the Capacitor default, **not a settled choice**; see _Shell target_ below
+- Production customer URL: `https://app.dripplex.com` — the Capacitor default, and **settled**: it serves the super-app. See _Shell target_ below.
 - Android release artifacts: AAB + APK
 - iOS release validation: unsigned simulator Release build in CI; signed App Store archive requires Apple signing credentials on macOS
 
-## Shell target — open founder decision (2026-08-20)
+## Shell target — RESOLVED (re-verified live 2026-09-02)
 
 `CAPACITOR_SERVER_URL` is the page the WebView **loads**. It is a different thing from
-`VITE_API_BASE`, the API that loaded page **calls**. Verified live on 2026-08-20:
+`VITE_API_BASE`, the API that loaded page **calls**.
 
-| Host                                               | Verified state                                                                                                        |
-| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `https://app.dripplex.com`                         | HTTP 200 — serves **customer-web** (Cloudflare Worker), byte-identical to `www.dripplex.com`, `robots: index, follow` |
-| `https://super-app-production-2345.up.railway.app` | HTTP 200 — serves **super-app**, `robots: noindex, nofollow`; no custom domain attached                               |
-| `https://api.dripplex.com/`                        | HTTP 404 `application/json` — an API root, never a valid `CAPACITOR_SERVER_URL`                                       |
+**The move described in this section has happened.** `app.dripplex.com` now serves the
+super-app, so the shell ships the super-app and the default needs no change. Re-verified
+by fetching each host on 2026-09-02:
+
+| Host                       | Verified state (2026-09-02)                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `https://app.dripplex.com` | HTTP 200 — serves **super-app** from **Railway** (`server: railway-hikari`, Vite bundle `/assets/index-*.js`), `robots: noindex, nofollow` |
+| `https://www.dripplex.com` | HTTP 200 — serves **customer-web** from **Railway** (`server: railway-hikari`, Next.js `/_next/static/...`). Marketing only, per #327      |
+| `https://api.dripplex.com` | An API root. Never a valid `CAPACITOR_SERVER_URL`                                                                                          |
+
+`noindex, nofollow` on `app.dripplex.com` is correct and not a store problem: it is an
+application shell, not a page anyone should reach from search.
+
+> **Superseded — what this table said before, and why it is worth keeping.**
+> As verified on 2026-08-20, `app.dripplex.com` served **customer-web** from a
+> **Cloudflare Worker**, byte-identical to `www.dripplex.com`, with `robots: index, follow`;
+> the super-app was reachable only at `super-app-production-2345.up.railway.app` with no
+> custom domain. Every one of those three facts is now false.
+>
+> The change was in fact recorded on 2026-08-24, in _Shell target — RESOLVED 2026-08-24_
+> further down this document — but **this table was left standing and was never edited**,
+> so the doc carried its own contradiction for nine days, with the stale version first.
+> The two sections are now consistent; this one holds the live-verified hosting facts and
+> that one holds the history of when they changed.
+>
+> A hosting table in a store-readiness doc is what a submission decision gets made from.
+> **Re-verify by fetching the host before trusting it again.**
 
 The super-app already calls the production API (`VITE_API_BASE` / `VITE_SOCKET_URL` default to
 `api.dripplex.com` — `apps/super-app/src/lib/api.ts:9`, `src/lib/ws.ts:10`), and the backend's
 live CORS allowlist already admits both the super-app Railway host and `app.dripplex.com`
 (unknown origins receive no `access-control-allow-origin` header).
 
-So the shell as configured ships **customer-web**, not the super-app. Repointing it is a CI
-input (`server_url` on `mobile-build.yml` and `mobile-store-readiness.yml`), not a code change
-— but it is blocked on the item below, which is not a matter of configuration.
+So the shell as configured ships **the super-app**, and no repointing is required: the default
+`server_url` on both `mobile-build.yml` and `mobile-store-readiness.yml` is already
+`https://app.dripplex.com`, and that host now serves the super-app.
+
+One consequence worth stating plainly, because it changes what a release _is_: the shell loads
+its page at runtime. Web changes deployed to `app.dripplex.com` reach installed apps with **no
+rebuild and no store submission** — a new AAB is needed only for native changes (Capacitor
+config, plugins, permissions, icons, `scripts/mobile/**`) or to occupy a new `versionCode`.
 
 ### Resolved — the super-app now owns both auth landing routes
 
@@ -91,7 +118,10 @@ success and verify rejection all behave; `/` and `/ops` unchanged.
 - DNS for `dripplex.com` is on Cloudflare and is founder-side; no tooling available to the
   agent session can change it.
 
-## Shell target — RESOLVED 2026-08-24
+## Shell target — RESOLVED 2026-08-24 (history of the change)
+
+_Live hosting facts are in the first Shell target section above, re-verified 2026-09-02.
+This section records when and how the move happened._
 
 `app.dripplex.com` now serves the **super-app**, not customer-web — verified the same day by
 fetching the page (`<title>Dripplex — life, Simplified</title>`, `robots: noindex`) and by
@@ -123,12 +153,21 @@ split — was run against production on 2026-08-24.
       (2026-08-22, `4984d3b`), `:app:signProductionReleaseBundle` executed and logged SIGNED.
       **That artifact is stale**: it was built when `app.dripplex.com` still served
       customer-web. Re-run recorded below.
-- [x] **Current signed AAB + APK — run #4, 2026-08-24, `b229331`, against the corrected shell
-      target.** All three jobs green (packaging verify, iOS project preflight, Android build);
-      `CAPACITOR_SERVER_URL=https://app.dripplex.com`, flavor `production`, `REQUIRE_SIGNED=1`.
-      Artifacts `dripplex-customer-production-aab` / `-apk` on
+- [x] Signed AAB + APK — run #4, 2026-08-24, `b229331`, against the corrected shell target.
+      Artifacts on
       [run 32704498517](https://github.com/Babaram977/dripplex-platform/actions/runs/32704498517).
-      **This is the build to upload.** Not yet installed on real hardware — Gate C is unrun.
+      Superseded by run #20 below.
+- [x] **Current signed AAB + APK — run #20, 2026-09-02, `5ce8621`. This is the build to
+      upload.** All three jobs green (packaging verify, iOS project preflight, Android build);
+      `CAPACITOR_SERVER_URL=https://app.dripplex.com`, flavor `production`. - **versionCode `29805597`**, read back out of the built artifact's
+      `output-metadata.json` rather than assumed — the script fails the build if what
+      Gradle produced does not match what was asked for. - `SIGNED: …/bundle/productionRelease/app-production-release.aab` — asserted by
+      inspecting the bundle, not inferred from the task having run. - `FCM: google-services plugin applied`. - Artifacts `dripplex-customer-production-aab` (3,615,702 bytes) and
+      `-apk` (3,580,993 bytes) on
+      [run 33606040775](https://github.com/Babaram977/dripplex-platform/actions/runs/33606040775). - The native shell is byte-for-byte the same source as run #4: nothing under
+      `apps/customer-mobile/**` or `scripts/mobile/**` changed between `b229331` and
+      `5ce8621`. This build exists to carry a fresh `versionCode` and to be built from
+      current `main`, not because the app changed. - **Still not installed on real hardware — Gate C remains unrun.**
 - [ ] Successful iOS Release simulator build recorded
 - [ ] Signed iOS archive/TestFlight build recorded
 

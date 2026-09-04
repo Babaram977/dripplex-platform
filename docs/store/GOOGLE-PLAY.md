@@ -40,6 +40,124 @@ quoted anywhere in this repo.
 The internal-testing track in `docs/mobile/BETA-DISTRIBUTION.md` runs on whatever
 account is already in use and is **not** blocked by any of this.
 
+### Account email — `play@dripplex.com`
+
+The Play developer account is held by **`play@dripplex.com`**, a role address on the
+company's own mail server (`mail.dripplex.com`), **not** a personal Gmail.
+
+A Google account does not have to be a `@gmail.com` address — "use my current email
+address instead" at signup creates one against an address you already own. That mattered
+practically (Gmail signup was failing: SMS verification codes never arrived, the usual
+symptom of a phone number that has hit Google's per-number account cap), but it is the
+right choice regardless of that:
+
+- **It survives people.** A developer account on an individual's Gmail dies with that
+  person's access — and takes the app, the signing key and the ability to ship updates
+  with it. That is not quickly recoverable through Google support.
+- Access can be reset through DrippleX's own mail server rather than depending on someone's
+  personal phone.
+- It matches AFNAN HOMES LTD as the account holder rather than an individual.
+
+Keep the mailbox alive and monitored. Everything Google sends about this account — policy
+warnings, review rejections, suspension notices — goes there and nowhere else.
+
+### Console signup — values entered
+
+| Console field        | Value                                     |
+| -------------------- | ----------------------------------------- |
+| Organization size    | 1–10                                      |
+| Organization website | `https://www.dripplex.com` — **verified** |
+| Organization phone   | `+2347038888300` (app support line)       |
+
+**Organization website is `https://www.dripplex.com`**, not `app.dripplex.com`.
+`www` serves the marketing site (customer-web); `app` serves the application shell and is
+`noindex, nofollow`, which is not an organization's website.
+
+**The two phone numbers are both correct and serve different purposes** (founder,
+2026-09-02): `+2347038888300` is the **app support line** and is what the Play Console
+carries; `+234 803 973 9780` in the identity table above is the **founder's direct
+contact**. They were briefly flagged here as a possible Dun & Bradstreet mismatch — they
+are not one. Do not "reconcile" them to a single value.
+
+### Website ownership verified — 2026-09-02
+
+Verified as a Search Console **Domain property** on `dripplex.com`, using Google's
+Cloudflare DNS integration. A domain property was chosen over URL-prefix because it covers
+the apex and **every** subdomain in one verification, and because the file and meta-tag
+methods would each have required a code change and a Railway deploy to customer-web
+(`apps/customer-web/public/` carries no verification file, and no `google-site-verification`
+meta tag exists anywhere in the app).
+
+The token written to the apex:
+
+```
+google-site-verification=Ngyh9dOP2JKN1zJN6SHCDWDpaP0O45bgCkUg1ILjunk
+```
+
+> ⛔ **Do not delete this TXT record.** Removing it un-verifies the domain in Search
+> Console, and the Play developer account's website verification lapses with it.
+
+**Confirmed by external DNS lookup after the integration ran**, because a tool writing to
+a live zone is exactly when to check rather than assume. The apex went from one TXT record
+to two — Google's token was **added alongside** the SPF, not in place of it — and `_dmarc`,
+`send.dripplex.com`, the MX and `mail.dripplex.com` were all unchanged. Had the integration
+replaced the apex TXT instead, every transactional email would have started failing SPF
+silently, and it would have surfaced days later as bounced verification mail rather than as
+an error anyone could see.
+
+**Follow-up if not already done:** the Search Console property must list
+`play@dripplex.com` as an **Owner** (Settings → Users and permissions). Play sends the
+website-verification request to the property's registered owner, so if the property was
+verified under a personal Google account, the developer account's verification depends on
+that personal account remaining accessible.
+
+### D-U-N-S propagation window has passed
+
+The record resolved 2026-08-28 and D&B quoted 2–3 business days to become visible, so
+**2026-09-02 is the earliest date a Google lookup can succeed**. That date has arrived.
+Starting verification earlier would have stalled the application rather than queuing it.
+
+### ⚠️ `com.dripplex.customer` is already claimed — settle this before creating anything
+
+**A new organization account cannot publish the existing app.** On Play an
+`applicationId` is globally unique and permanently bound to the account that first
+published it, and `com.dripplex.customer` has already been published: `versionCode`
+`1000100` reached internal testing on 2026-08-27 (recorded in
+`scripts/mobile/build-android.sh`). A brand-new account is a different account.
+
+So the signed AAB built for submission — `versionCode 29805597`, run 33606040775 — can
+only be uploaded from **the account that already holds the app**, unless one of the
+routes below is taken first.
+
+**Check this before creating a second account:** whether the existing developer account
+can simply be **converted** to an organization account. If Google allows it, that is
+strictly better than everything below — the package name, the Play App Signing key, the
+internal testing track and the built AAB all survive untouched, with no transfer and no
+rebuild. Look under the account's identity/verification settings in the Console.
+
+> Not verified here. Play's account-identity policy is not quoted anywhere in this repo,
+> it changes, and no agent session can read the Console. Treat this as the first thing to
+> check, not as an assurance that it is available.
+
+**If conversion is not available**, order matters:
+
+1. Create the organization account with the identity values above.
+2. **Complete verification first.** Do not transfer into an unverified account.
+3. Transfer `com.dripplex.customer` to it via Google's app-transfer process.
+4. Only then upload `versionCode 29805597`.
+
+**Do not create a second app under a new `applicationId`** unless transfer is genuinely
+closed off. It costs the internal testing track, the Play App Signing key and any install
+base, it starts a fresh listing with no history, and it invalidates the current AAB —
+`applicationId` is compiled in, so it needs a code change and a rebuild.
+
+### Recorded gap — which account holds the app today
+
+**Nothing in this repository records which Play account currently owns
+`com.dripplex.customer`.** That detail becomes load-bearing during a transfer or a
+conversion, and it currently lives only in the founder's memory. Write it here when
+known.
+
 ## App details
 
 | Field                            | Value                                                                   |

@@ -298,7 +298,7 @@ export function SuperAppAuthRegisterScreen({
                 <input
                   type="tel"
                   inputMode="numeric"
-                  placeholder="801 234 5678"
+                  placeholder=""
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value);
@@ -339,7 +339,7 @@ export function SuperAppAuthRegisterScreen({
               <input
                 type="text"
                 autoComplete="given-name"
-                placeholder="Ada"
+                placeholder=""
                 value={firstName}
                 onChange={(e) => {
                   setFirstName(e.target.value);
@@ -357,7 +357,7 @@ export function SuperAppAuthRegisterScreen({
               <input
                 type="text"
                 autoComplete="family-name"
-                placeholder="Lovelace"
+                placeholder=""
                 value={lastName}
                 onChange={(e) => {
                   setLastName(e.target.value);
