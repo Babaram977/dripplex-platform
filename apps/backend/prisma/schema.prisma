@@ -4636,7 +4636,10 @@ model MerchantIntegration {
 model IntegrationCredential {
   id              String    @id @default(uuid()) @db.Uuid
   integrationId   String    @map("integration_id") @db.Uuid
-  /// API key (hashed), OAuth2 access token (encrypted), or other credential type
+  /// Credential type: INCOMING_API_KEY, INCOMING_SIGNATURE, OUTGOING_API_KEY, OUTGOING_OAUTH_TOKEN, OUTGOING_OAUTH_REFRESH
+  credentialType  String    @map("credential_type") @db.VarChar(50)
+  /// For incoming: BCRYPT hash. For outgoing: AES-256-GCM encrypted secret (base64).
+  /// Pattern: base64(IV || ciphertext || authTag) for encrypted values.
   credentialHash  String    @map("credential_hash") @db.Text
   /// Scopes: integrations:read, integrations:write, catalog:read, catalog:write, inventory:read, inventory:write, orders:read, orders:write
   scopes          String[]  @default([]) @map("scopes")
@@ -4651,7 +4654,9 @@ model IntegrationCredential {
 
   integrations    MerchantIntegration[]
 
+  @@unique([integrationId, credentialType])
   @@index([integrationId])
+  @@index([credentialType])
   @@index([expiresAt])
   @@index([archivedAt])
   @@map("integration_credentials")

@@ -24,6 +24,7 @@ import { EventsModule } from './events/events.module';
 import { FleetsModule } from './fleets/fleets.module';
 import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { KycModule } from './kyc/kyc.module';
 import { AppLoggerModule } from './logger/logger.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
@@ -93,6 +94,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     CmsModule,
     FraudModule,
     HealthModule,
+    IntegrationsModule,
     OperationsModule,
     CustomersModule,
     CommercialModule,
