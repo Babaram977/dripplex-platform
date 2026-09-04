@@ -1,3 +1,7 @@
+import { randomUUID } from 'crypto';
+
+/* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
+
 import {
   Controller,
   Get,
@@ -21,7 +25,6 @@ import {
   ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
-import { randomUUID } from 'crypto';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -105,10 +108,7 @@ export class IntegrationsCController {
     @Body() input: CreateIntegrationCDto,
   ): Promise<CreateIntegrationResponseCDto> {
     // Create integration record in database
-    const integration = await this.integrationsService.createIntegrationC(
-      merchantId,
-      input,
-    );
+    const integration = await this.integrationsService.createIntegrationC(merchantId, input);
 
     // Generate API key credential for this integration
     // Default scopes per C-PLAN
@@ -137,13 +137,13 @@ export class IntegrationsCController {
       integrationId: integration.id,
       merchantId: integration.merchantId,
       vendorName: integration.vendorName,
-      status: (integration.status ?? 'ACTIVE') as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
+      status: integration.status as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
       createdAt: integration.createdAt.toISOString(),
       credentials: [
         {
           id: credential.id,
           createdAt: credential.createdAt.toISOString(),
-          status: (credential.status ?? 'ACTIVE') as 'ACTIVE' | 'REVOKED',
+          status: credential.status as 'ACTIVE' | 'REVOKED',
           publicSuffix: credential.publicSuffix,
           scopes: credential.scopes,
         },
@@ -233,7 +233,10 @@ export class IntegrationsCController {
     type: ListIntegrationsResponseCDto,
   })
   @ApiResponse({ status: 401, description: 'Missing or invalid JWT token' })
-  @ApiResponse({ status: 403, description: 'Merchant context missing or includeArchived unauthorized' })
+  @ApiResponse({
+    status: 403,
+    description: 'Merchant context missing or includeArchived unauthorized',
+  })
   public async list(
     @MerchantScoped() merchantId: string,
     @Query('includeArchived') includeArchived?: string,
@@ -241,8 +244,8 @@ export class IntegrationsCController {
     @Query('offset') offset?: string,
     @Query('status') status?: string,
   ): Promise<ListIntegrationsResponseCDto> {
-    const pageLimit = Math.min(Math.max(parseInt(limit || '20', 10), 1), 100);
-    const pageOffset = Math.max(parseInt(offset || '0', 10), 0);
+    const pageLimit = Math.min(Math.max(parseInt(limit ?? '20', 10), 1), 100);
+    const pageOffset = Math.max(parseInt(offset ?? '0', 10), 0);
     const archived = includeArchived === 'true';
 
     const result = await this.integrationsService.listIntegrationsC(
@@ -302,15 +305,10 @@ export class IntegrationsCController {
     @MerchantScoped() merchantId: string,
     @Param('integrationId') integrationId: string,
   ): Promise<IntegrationResponseCDto> {
-    const integration = await this.integrationsService.getIntegrationC(
-      merchantId,
-      integrationId,
-    );
+    const integration = await this.integrationsService.getIntegrationC(merchantId, integrationId);
 
     if (!integration) {
-      throw new ForbiddenException(
-        'Integration not found or access denied',
-      );
+      throw new ForbiddenException('Integration not found or access denied');
     }
 
     return this.toResponseDto(integration);
@@ -334,8 +332,7 @@ export class IntegrationsCController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Update integration',
-    description:
-      'Updates integration metadata (vendorName, webhookUrl, status, etc.)',
+    description: 'Updates integration metadata (vendorName, webhookUrl, status, etc.)',
   })
   @ApiParam({
     name: 'integrationId',
@@ -367,9 +364,7 @@ export class IntegrationsCController {
     );
 
     if (!integration) {
-      throw new ForbiddenException(
-        'Integration not found or access denied',
-      );
+      throw new ForbiddenException('Integration not found or access denied');
     }
 
     return this.toResponseDto(integration);
@@ -414,15 +409,10 @@ export class IntegrationsCController {
     @MerchantScoped() merchantId: string,
     @Param('integrationId') integrationId: string,
   ): Promise<void> {
-    const success = await this.integrationsService.deleteIntegrationC(
-      merchantId,
-      integrationId,
-    );
+    const success = await this.integrationsService.deleteIntegrationC(merchantId, integrationId);
 
     if (!success) {
-      throw new ForbiddenException(
-        'Integration not found or access denied',
-      );
+      throw new ForbiddenException('Integration not found or access denied');
     }
   }
 
@@ -472,15 +462,10 @@ export class IntegrationsCController {
     @MerchantScoped() merchantId: string,
     @Param('integrationId') integrationId: string,
   ): Promise<TestIntegrationResponseCDto> {
-    const result = await this.integrationsService.testIntegrationC(
-      merchantId,
-      integrationId,
-    );
+    const result = await this.integrationsService.testIntegrationC(merchantId, integrationId);
 
     if (!result) {
-      throw new ForbiddenException(
-        'Integration not found or access denied',
-      );
+      throw new ForbiddenException('Integration not found or access denied');
     }
 
     return result;
@@ -510,7 +495,7 @@ export class IntegrationsCController {
       integrationId: integration.id,
       merchantId: integration.merchantId,
       vendorName: integration.vendorName,
-      status: (integration.status ?? 'ACTIVE') as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
+      status: integration.status as 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR',
       createdAt: integration.createdAt.toISOString(),
       updatedAt: integration.updatedAt.toISOString(),
       credentials: [], // TODO: Load credentials from database

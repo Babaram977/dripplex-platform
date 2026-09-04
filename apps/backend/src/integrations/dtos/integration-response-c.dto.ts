@@ -56,14 +56,14 @@ export class IntegrationResponseCDto {
    * - scopes: array of permission scopes
    * - lastUsedAt: ISO8601 timestamp of last usage (optional)
    */
-  public credentials!: Array<{
+  public credentials!: {
     id: string;
     createdAt: string;
     status: 'ACTIVE' | 'REVOKED';
     publicSuffix: string;
     scopes: string[];
     lastUsedAt?: string;
-  }>;
+  }[];
 
   // ─────────────────────────────────────────────────────────────────
   // Last Sync Information (optional)

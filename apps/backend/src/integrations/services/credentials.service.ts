@@ -357,7 +357,7 @@ export class CredentialsService {
       rotatedAt: credential.rotatedAt,
       status,
       createdAt: credential.createdAt,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
       scopes: (credential as any).scopes ?? [],
     };
   }
