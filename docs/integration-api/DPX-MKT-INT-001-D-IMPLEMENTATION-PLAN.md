@@ -494,9 +494,15 @@ async validateWebhookSignature(integrationId: string, signature: string, payload
   // Inbound-valid credentials: ACTIVE, ROTATED (not CREATED, EXPIRED, or REVOKED)
 
   for (const cred of credentials) {
+    // Use HMAC-SHA256 for cryptographically sound keyed MAC
+    const expectedSignature = crypto
+      .createHmac('sha256', cred.plaintextHash)
+      .update(payload)
+      .digest('hex');
+
     const isValid = crypto.timingSafeEqual(
-      crypto.createHash('sha256').update(payload + cred.plaintextHash).digest(),
-      Buffer.from(signature, 'hex')
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
     );
     if (isValid) return true;
   }
@@ -709,6 +715,18 @@ async rotateCredential(integrationId: string, credentialId: string, expectedVers
       timestamp: now()
     }).into('credential_audit_events');
 
+    // 6. Store idempotency record INSIDE transaction to prevent retry-induced duplicates
+    if (idempotencyKey) {
+      await trx.insert({
+        idempotency_key: idempotencyKey,
+        operation_type: 'credential_rotation',
+        resource_id: credentialId,
+        response_status: 201,
+        response_body: JSON.stringify({ old: credentialId, new: newCred.id }),
+        expires_at: now().add(24, 'hours')
+      }).into('request_idempotency_records');
+    }
+
     // If any step fails, entire transaction rolls back automatically
     return { old: credentialId, new: newCred.id };
   });
@@ -723,7 +741,7 @@ async rotateCredential(integrationId: string, credentialId: string, expectedVers
 
 ### 8.2 Idempotency Keys
 
-**Accept Idempotency-Key header (RFC 7231):**
+**Accept Idempotency-Key request header — application/API idempotency mechanism:**
 
 ```typescript
 POST /integrations/{integrationId}/credentials/{credentialId}/rotate
@@ -764,18 +782,9 @@ async rotateCredential(idempotencyKey: string, integrationId: string, credential
     return JSON.parse(existingRecord.response_body);
   }
 
-  // 2. Perform rotation (with optimistic locking above)
-  const result = await this.rotation.rotate(integrationId, credentialId);
-
-  // 3. Store the idempotency record for future replays
-  await this.db.insert({
-    idempotency_key: idempotencyKey,
-    operation_type: 'credential_rotation',
-    resource_id: credentialId,
-    response_status: 201,
-    response_body: JSON.stringify(result),
-    expires_at: now().add(24, 'hours')
-  }).into('request_idempotency_records');
+  // 2. Perform rotation with idempotency key passed to transaction
+  // (idempotency record is written INSIDE the transaction, see § 8.1)
+  const result = await this.rotation.rotate(integrationId, credentialId, idempotencyKey);
 
   return result;
 }
@@ -783,9 +792,12 @@ async rotateCredential(idempotencyKey: string, integrationId: string, credential
 
 **Behavior:**
 
-- Same idempotency key + same resource = same response (idempotent)
-- Different idempotency key on same resource = different operation (concurrency check applies)
-- Idempotency records expire after 24 hours (prevent unbounded storage)
+- Idempotency record written **inside the same transaction** as the rotation
+- If transaction fails/retries, idempotency record is not written until rotation succeeds
+- Prevents retry from producing multiple credentials if first transaction partially fails
+- Same idempotency key + same resource = same cached response (idempotent)
+- Different idempotency key on same resource = new operation (concurrency check applies)
+- Idempotency records expire after 24 hours (automatic cleanup prevents unbounded storage)
 
 ### 8.3 Database Uniqueness Constraints
 
@@ -807,7 +819,9 @@ ALTER TABLE merchant_integration_credentials
 
 - Database constraint prevents application-layer races from creating invalid state
 - Unique index on (integration_id, status='ACTIVE') ensures only one active credential
-- Unique constraint on plaintext_hash prevents same secret being reused
+- Unique constraint on plaintext_hash prevents same secret being reused **permanently** (intentionally prevents ever rotating back to a previously-used secret)
+
+**Intent clarification:** The UNIQUE(integration_id, plaintext_hash) constraint is intentionally permanent; it prevents credential cycling (e.g., rotating A → B → C → A). This is a security best practice: old secrets should never be reused, even if rotated away long ago. If a secret is ever compromised, it remains invalid forever.
 
 ### 8.4 State-Transition Enforcement
 
@@ -880,6 +894,61 @@ await auditLog.insert({
 - Audit trail shows both intended actions and actual outcomes
 - Security investigation can identify concurrent attempts or unusual patterns
 - Rejected attempts are logged for compliance and debugging
+
+### 8.6 ROTATED → EXPIRED Enforcement Mechanism
+
+**Explicit execution to prevent accidental validity if expiry worker fails:**
+
+Store explicit timestamps on MerchantIntegrationCredential:
+
+```prisma
+model MerchantIntegrationCredential {
+  // ...
+  rotatedAt             DateTime?  @map("rotated_at")  // When status changed to ROTATED
+  expiresAt             DateTime?  @map("expires_at")  // When credential should become EXPIRED
+  // ...
+}
+```
+
+**Webhook signature validation enforces expiry at query time:**
+
+```typescript
+async validateWebhookSignature(integrationId: string, signature: string, payload: string): Promise<boolean> {
+  const credentials = await this.credentialsService.getInboundValidCredentials(integrationId);
+
+  // Query ensures ROTATED credentials are not valid past expiresAt
+  // SELECT * FROM credentials
+  // WHERE integration_id = ?
+  // AND status IN ('ACTIVE', 'ROTATED')
+  // AND (status != 'ROTATED' OR expires_at > NOW())
+
+  for (const cred of credentials) {
+    // Cryptographically sound keyed MAC
+    const expectedSignature = crypto
+      .createHmac('sha256', cred.plaintextHash)
+      .update(payload)
+      .digest('hex');
+
+    if (crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature))) {
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+**Async cleanup job (optional optimization):**
+
+- Scheduled worker runs every 1 hour
+- Updates status = 'EXPIRED' WHERE status = 'ROTATED' AND expires_at < NOW()
+- Prevents query-time evaluation on credentials already past deadline
+- But if worker fails, query-time check still enforces correctness
+
+**Rationale:**
+
+- Query-time enforcement prevents accidental validity if worker fails
+- Explicit `rotatedAt` + `expiresAt` timestamps enable audit trail clarity
+- Database constraint prevents invalid state (no lingering ROTATED credentials)
 
 ---
 
