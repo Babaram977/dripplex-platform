@@ -1594,3 +1594,82 @@ Once approved, this creates a durable record:
 **Status:** 🟡 **CTO REVIEW READY — IMPLEMENTATION BLOCKED PENDING GATE 1 VERIFICATION AND GATE 2 POLICY APPROVAL**
 
 **Engineering Instruction:** Prepare, review code sections (§ 4.3, § 8.2, § 8.6), design acceptance test harness with concurrent idempotency tests. **DO NOT BEGIN IMPLEMENTATION** until CTO formally approves both gates.
+
+---
+
+## Approval Chain (to be recorded when CTO approves)
+
+This section documents the formal approval when it occurs. **DO NOT EDIT UNTIL CTO APPROVAL.**
+
+### Gate 1 — Technical Requirements
+
+**Status:** ⏳ Awaiting CTO review
+
+```
+Gate 1 — Technical: [PENDING]
+Commit reviewed: 97e1d30
+Approver: [CTO name]
+Date: [YYYY-MM-DD HH:MM UTC]
+Conditions: [if any]
+Verification status:
+  - HMAC-SHA256 transient plaintext handling: [VERIFIED | CONDITION]
+  - Idempotency UNIQUE constraint: [VERIFIED | CONDITION]
+  - Concurrent scenario 1 (same key): [TESTED | CONDITION]
+  - Concurrent scenario 2 (rollback safety): [TESTED | CONDITION]
+  - Concurrent scenario 3 (409 conflict): [TESTED | CONDITION]
+```
+
+### Gate 2 — Policy Decisions
+
+**Status:** ⏳ Awaiting CTO decisions
+
+```
+Gate 2 — Policy: [PENDING]
+Decisions 1–11 recorded in: §15 (Addendum A)
+Approver: [CTO name]
+Date: [YYYY-MM-DD HH:MM UTC]
+Decision summary:
+  1. Deadline policy: [LENIENT | STRICT]
+  2. Revocation recovery: [GRACE | BACKUP | ROTATION]
+  3. Retention window: [30 DAYS | ____ DAYS]
+  4. Rate limits: [1/24h, 10/min | CUSTOM]
+  5. Overlap period: [7 DAYS | ____ DAYS]
+  6. Merchant notification: [EMAIL | IN-APP | BOTH]
+  7. Encryption: [AES-256-GCM | HSM-BACKED]
+  8. Audit retention: [____ MONTHS/YEARS]
+  9. Backward compatibility: [YES | NO]
+  10. Rollout timeline: [1% → 25% → 50% → 100%]
+  11. Secret reuse prevention: [YES | NO]
+```
+
+### Implementation Authorization
+
+**Status:** 🔴 BLOCKED until both gates approved
+
+```
+When BOTH Gate 1 AND Gate 2 are approved:
+
+🟢 Implementation Authorization: GO
+
+Approved baseline: 97e1d30
+Gate 1 approved by: [CTO name], [date]
+Gate 2 approved by: [CTO name], [date]
+Estimated effort: 36-50 hours
+Start authorization: [CTO date/time]
+Target completion: [date based on start + 50h]
+
+Chain of custody:
+Design → Verification → Decision → Authorization → Implementation → Testing → Rollout
+```
+
+---
+
+## Plan Freeze Status
+
+**🔴 D-PHASE PLAN IS FROZEN FOR CTO REVIEW**
+
+No further architectural changes will be made unless CTO testing or review discovers a real defect.
+
+Current baseline: Commit `97e1d30`
+
+Any changes after this point require explicit CTO approval and will be tracked separately from the frozen review baseline.
