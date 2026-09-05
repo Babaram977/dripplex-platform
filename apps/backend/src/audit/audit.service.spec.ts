@@ -326,4 +326,74 @@ describe('AuditService', () => {
       );
     });
   });
+
+  // ─────────────────────────────────────────────────────────────────
+  // P1-B2 Extension: Class-A Transaction Integration
+  // ─────────────────────────────────────────────────────────────────
+
+  describe('P1-B2: Class-A Transaction Integration', () => {
+    it('B2.1: append() delegates to repository.append() with segment authority', async () => {
+      const mockTx = {} as Prisma.TransactionClient;
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await service.append(mockTx, event);
+
+      expect(mockRepository.append).toHaveBeenCalledWith(mockTx, event);
+    });
+
+    it('B2.2: append() returns Promise<void> (unchanged interface)', async () => {
+      const mockTx = {} as Prisma.TransactionClient;
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      const result = service.append(mockTx, event);
+
+      expect(result instanceof Promise).toBe(true);
+      await expect(result).resolves.toBeUndefined();
+    });
+
+    it('B2.3: append() and record() maintain backward compatibility', async () => {
+      const mockTx = {} as Prisma.TransactionClient;
+
+      // Use append (new path)
+      await service.append(mockTx, {
+        action: 'ACTION_1',
+        context: { userId: 'user-id' },
+      });
+
+      // Then use record (legacy path)
+      await service.record('ACTION_2', { userId: 'user-id' });
+
+      expect(mockRepository.append).toHaveBeenCalledTimes(1);
+      expect(mockRepository.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('B2.4: append() signature and behavior remain stable', async () => {
+      const mockTx = {} as Prisma.TransactionClient;
+      const event: AuditEventForAppend = {
+        action: 'WALLET_CREDITED',
+        context: {
+          userId: 'user-123',
+          ipAddress: '192.168.1.1',
+          userAgent: 'chrome',
+        },
+        details: {
+          resource: 'wallet',
+          resourceId: 'wallet-456',
+          metadata: { amount: 1000 },
+        },
+      };
+
+      // Verify append accepts both parameters and returns void promise
+      const result = service.append(mockTx, event);
+      await expect(result).resolves.toBeUndefined();
+
+      expect(mockRepository.append).toHaveBeenCalledWith(mockTx, event);
+    });
+  });
 });

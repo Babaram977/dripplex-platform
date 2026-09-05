@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-deprecated */
+/* eslint-disable @typescript-eslint/no-deprecated, @typescript-eslint/no-explicit-any */
 import { type Prisma } from '@prisma/client';
 
 import { PrismaAuditLogRepository } from './prisma-audit-log.repository';
@@ -30,7 +30,7 @@ describe('PrismaAuditLogRepository', () => {
     jest.clearAllMocks();
     (mockPrismaService.auditLog.create).mockResolvedValue(mockAuditRecord);
     // Type assertion needed for mock: PrismaService interface mocking
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     repository = new PrismaAuditLogRepository(mockPrismaService as any);
   });
 
@@ -274,6 +274,358 @@ describe('PrismaAuditLogRepository', () => {
       // Verify tx was used both times, never root prisma
       expect(mockTx.auditLog.create).toHaveBeenCalledTimes(2);
       expect(mockPrismaService.auditLog.create).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // P1-B2 Extension: Segment Authority and Chain Integration
+  // ─────────────────────────────────────────────────────────────────
+
+  describe('P1-B2: Segment Authority & Chain Integration', () => {
+    it('B2.1: append() inserts with non-NULL segment_id, sequence, hash, predecessor_hash', async () => {
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue({
+            ...mockAuditRecord,
+            segmentId: 'seg-123',
+            sequence: 1n,
+            hash: 'abc123',
+            predecessorHash: 'def456',
+          }),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await repository.append(mockTx, event);
+
+      const callData = (mockTx.auditLog.create as jest.Mock).mock.calls[0][0]
+        .data;
+      expect(callData.segmentId).toBeDefined();
+      expect(callData.sequence).toBeDefined();
+      expect(callData.hash).toBeDefined();
+      expect(callData.predecessorHash).toBeDefined();
+    });
+
+    it('B2.2: append() calls segmentAuthorityService.allocateSequenceAndObtainTail()', async () => {
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue(mockAuditRecord),
+        },
+        auditSegment: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditStreamState: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await repository2.append(mockTx, event);
+
+      expect(
+        mockSegmentAuthorityService.allocateSequenceAndObtainTail,
+      ).toHaveBeenCalledWith(mockTx);
+    });
+
+    it('B2.3: append() calls auditChainService.calculateEventHash()', async () => {
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue(mockAuditRecord),
+        },
+        auditSegment: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditStreamState: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await repository2.append(mockTx, event);
+
+      expect(mockAuditChainService.calculateEventHash).toHaveBeenCalledWith(
+        event,
+        1n,
+        'seg-123',
+        'pred-hash',
+      );
+    });
+
+    it('B2.4: append() updates segment tail (lastSequence, lastHash, eventCount)', async () => {
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue(mockAuditRecord),
+        },
+        auditSegment: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditStreamState: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await repository2.append(mockTx, event);
+
+      expect(mockTx.auditSegment.update).toHaveBeenCalledWith({
+        where: { id: 'seg-123' },
+        data: {
+          lastSequence: 1n,
+          lastHash: 'calculated-hash',
+          eventCount: { increment: 1 },
+        },
+      });
+    });
+
+    it('B2.5: append() updates stream state (nextSequence, tailHash)', async () => {
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue(mockAuditRecord),
+        },
+        auditSegment: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditStreamState: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await repository2.append(mockTx, event);
+
+      expect(mockTx.auditStreamState.update).toHaveBeenCalledWith({
+        where: { id: 'main' },
+        data: {
+          nextSequence: 2n,
+          tailHash: 'calculated-hash',
+        },
+      });
+    });
+
+    it('B2.6: append() returns AuditLogRecord with all fields populated', async () => {
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const expectedRecord = {
+        ...mockAuditRecord,
+        segmentId: 'seg-123',
+        sequence: 1n,
+        hash: 'calculated-hash',
+        predecessorHash: 'pred-hash',
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockResolvedValue(expectedRecord),
+        },
+        auditSegment: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+        auditStreamState: {
+          update: jest.fn().mockResolvedValue({}),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      const result = await repository2.append(mockTx, event);
+
+      expect(result.segmentId).toBe('seg-123');
+      expect(result.sequence).toBe(1n);
+      expect(result.hash).toBe('calculated-hash');
+      expect(result.predecessorHash).toBe('pred-hash');
+    });
+
+    it('B2.7: append() transaction atomicity (all steps or none)', async () => {
+      // This test verifies that if any step fails, the entire transaction rolls back
+      const mockSegmentAuthorityService = {
+        allocateSequenceAndObtainTail: jest
+          .fn()
+          .mockResolvedValue({
+            segmentId: 'seg-123',
+            sequence: 1n,
+            predecessorHash: 'pred-hash',
+          }),
+      };
+
+      const mockAuditChainService = {
+        calculateEventHash: jest
+          .fn()
+          .mockResolvedValue('calculated-hash'),
+      };
+
+      const mockTx = {
+        auditLog: {
+          create: jest.fn().mockRejectedValue(new Error('Insert failed')),
+        },
+        auditSegment: {
+          update: jest.fn(),
+        },
+        auditStreamState: {
+          update: jest.fn(),
+        },
+      } as unknown as Prisma.TransactionClient;
+
+
+       
+      const repository2 = new PrismaAuditLogRepository(
+        mockPrismaService as any,  
+        mockSegmentAuthorityService,
+        mockAuditChainService as any,  
+      );
+
+      const event: AuditEventForAppend = {
+        action: 'TEST_ACTION',
+        context: { userId: 'user-id' },
+      };
+
+      await expect(repository2.append(mockTx, event)).rejects.toThrow(
+        'Insert failed',
+      );
+
+      // Update methods should not be called since insert failed
+      expect(mockTx.auditSegment.update).not.toHaveBeenCalled();
+      expect(mockTx.auditStreamState.update).not.toHaveBeenCalled();
     });
   });
 });

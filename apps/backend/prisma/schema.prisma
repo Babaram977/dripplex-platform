@@ -486,6 +486,15 @@ enum ProductStatus {
   ARCHIVED
 }
 
+enum AuditSegmentLifecycle {
+  ACTIVE
+  CLOSED
+  ARCHIVE_PENDING
+  ARCHIVED_VERIFIED
+  PURGE_AUTHORIZED
+  PURGED
+}
+
 model User {
   id                          String                       @id @default(uuid()) @db.Uuid
   email                       String                       @unique @db.Citext
@@ -1070,20 +1079,76 @@ model DriverVerifiedDevice {
 }
 
 model AuditLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String?  @map("user_id") @db.Uuid
-  action     String   @db.VarChar(150)
-  resource   String?  @db.VarChar(100)
-  resourceId String?  @map("resource_id") @db.Uuid
-  ipAddress  String?  @map("ip_address") @db.VarChar(45)
-  userAgent  String?  @map("user_agent") @db.VarChar(512)
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now()) @map("created_at")
-  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String?   @map("user_id") @db.Uuid
+  action           String    @db.VarChar(150)
+  resource         String?   @db.VarChar(100)
+  resourceId       String?   @map("resource_id") @db.Uuid
+  ipAddress        String?   @map("ip_address") @db.VarChar(45)
+  userAgent        String?   @map("user_agent") @db.VarChar(512)
+  metadata         Json      @default("{}")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  // P1-B2 fields (Class-A authoritative audit)
+  segmentId        String?   @map("segment_id") @db.Uuid
+  sequence         BigInt?   @map("sequence")
+  hash             String?   @map("hash") @db.Char(64)
+  predecessorHash  String?   @map("predecessor_hash") @db.Char(64)
+
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  segment          AuditSegment? @relation(fields: [segmentId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([action, createdAt(sort: Desc)])
+  @@unique([segmentId, sequence])
+  @@index([segmentId, sequence])
   @@map("audit_logs")
+}
+
+model AuditStreamState {
+  id                   String    @id @default("main") @db.VarChar(50)
+  nextSequence         BigInt    @default(0) @map("next_sequence")
+  tailHash             String    @map("tail_hash") @db.Char(64)
+  activeSegmentId      String    @unique @map("active_segment_id") @db.Uuid
+  lastSegmentClosedAt  DateTime? @map("last_segment_closed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  activeSegment        AuditSegment @relation(fields: [activeSegmentId], references: [id], onDelete: Restrict)
+
+  @@unique([id])
+  @@map("audit_stream_state")
+}
+
+model AuditSegment {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  lifecycle            AuditSegmentLifecycle     @default(ACTIVE)
+  firstSequence        BigInt                    @map("first_sequence")
+  lastSequence         BigInt?                   @map("last_sequence")
+  firstHash            String                    @map("first_hash") @db.Char(64)
+  lastHash             String                    @map("last_hash") @db.Char(64)
+  eventCount           Int                       @default(0) @map("event_count")
+  predecessorSegmentId String?                   @map("predecessor_segment_id") @db.Uuid
+  predecessorTailHash  String?                   @map("predecessor_tail_hash") @db.Char(64)
+  closedAt             DateTime?                 @map("closed_at")
+  closureReason        String?                   @map("closure_reason") @db.VarChar(500)
+  archivedAt           DateTime?                 @map("archived_at")
+  archiveVerifiedAt    DateTime?                 @map("archive_verified_at")
+  archiveChecksum      String?                   @map("archive_checksum") @db.Char(64)
+  purgeAuthorizedAt    DateTime?                 @map("purge_authorized_at")
+  purgeAuthorizedBy    String?                   @map("purge_authorized_by") @db.Uuid
+  purgedAt             DateTime?                 @map("purged_at")
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
+
+  auditLogs            AuditLog[]
+  streamState          AuditStreamState?         // Inverse of AuditStreamState.activeSegment
+  predecessorSegment   AuditSegment?             @relation("SegmentPredecessor", fields: [predecessorSegmentId], references: [id], onDelete: Restrict)
+  successorSegments    AuditSegment[]            @relation("SegmentPredecessor")
+
+  @@index([lifecycle, createdAt(sort: Desc)])
+  @@index([predecessorSegmentId])
+  @@map("audit_segments")
 }
 
 model MerchantOnboarding {
