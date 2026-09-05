@@ -473,17 +473,25 @@ All C-phase endpoints (`POST`, `GET`, `PUT`, `DELETE /integrations/{id}`) contin
 
 ---
 
-### 4.3 Webhook Signature Validation (Updated for D)
+### 4.3 Webhook Signature Validation (Inbound Authentication)
+
+**Inbound-Valid Credential States:**
+
+- ✅ ACTIVE (current credential, fully deployed by merchant)
+- ✅ ROTATED (previous credential during 7-day overlap)
+- ❌ CREATED (not yet authenticated; security boundary)
+- ❌ EXPIRED (past overlap deadline; no longer trusted)
+- ❌ REVOKED (explicitly invalidated; immediate effect)
 
 **Change to existing C functionality:**
 
-When validating incoming webhook signature, check all non-REVOKED credentials:
+When validating incoming webhook signature, check only ACTIVE and ROTATED credentials:
 
 ```typescript
 async validateWebhookSignature(integrationId: string, signature: string, payload: string): Promise<boolean> {
-  // Get all non-revoked credentials for this integration
-  const credentials = await this.credentialsService.getValidCredentials(integrationId);
-  // Valid credentials: ACTIVE, ROTATED, CREATED (but not REVOKED or EXPIRED)
+  // Get only inbound-valid credentials for this integration
+  const credentials = await this.credentialsService.getInboundValidCredentials(integrationId);
+  // Inbound-valid credentials: ACTIVE, ROTATED (not CREATED, EXPIRED, or REVOKED)
 
   for (const cred of credentials) {
     const isValid = crypto.timingSafeEqual(
@@ -496,7 +504,24 @@ async validateWebhookSignature(integrationId: string, signature: string, payload
 }
 ```
 
-**Rationale:** During rotation overlap, both old (ROTATED) and new (ACTIVE) credentials must validate incoming webhooks.
+**Rationale:**
+
+- During rotation overlap (7 days), both old (ROTATED) and new (ACTIVE) credentials validate incoming webhooks (zero-downtime rotation).
+- After overlap expires, old credential becomes EXPIRED → no longer inbound-valid.
+- CREATED credentials are excluded to prevent security window; new credentials must be explicitly deployed before authentication.
+- REVOKED credentials immediately reject all inbound requests (401 Unauthorized).
+
+**Database Query:**
+
+```sql
+-- Inbound-valid credentials for an integration
+SELECT id, plaintextHash FROM merchant_integration_credentials
+WHERE integration_id = $1
+  AND status IN ('ACTIVE', 'ROTATED')
+  AND revoked_at IS NULL
+  AND deleted_at IS NULL
+ORDER BY created_at DESC;
+```
 
 ---
 
@@ -619,7 +644,246 @@ async rotateCredential(integrationId: string, credentialId: string) {
 
 ---
 
-## 8. Rotation Without Downtime
+## 8. Concurrency Control & Idempotency
+
+**Critical Design:** Prevent race conditions when multiple admins rotate simultaneously or when requests are retried.
+
+### 8.1 Optimistic Locking
+
+**Add version field to MerchantIntegrationCredential:**
+
+```prisma
+model MerchantIntegrationCredential {
+  // ... existing fields
+  version              Int                       @default(1)  // optimistic lock
+  // ... rest of fields
+}
+```
+
+**Rotation transaction checks version:**
+
+```typescript
+async rotateCredential(integrationId: string, credentialId: string, expectedVersion: Int) {
+  return this.db.transaction(async (trx) => {
+    // 1. Lock and read current credential
+    const currentCred = await trx
+      .select('*')
+      .from('merchant_integration_credentials')
+      .where({ id: credentialId, integration_id: integrationId })
+      .forUpdate();  // Database row-level lock
+
+    if (!currentCred) throw new NotFoundException('Credential not found');
+    if (currentCred.version !== expectedVersion) {
+      throw new ConflictException('Credential was modified by another request. Retry to get latest version.');
+    }
+
+    // 2. Verify state is ACTIVE (only ACTIVE credentials can rotate)
+    if (currentCred.status !== 'ACTIVE') {
+      throw new BadRequestException(`Cannot rotate credential in ${currentCred.status} state`);
+    }
+
+    // 3. Create new credential
+    const newCred = await trx.insert({
+      integration_id: integrationId,
+      status: 'ACTIVE',
+      plaintext_hash: hash(plaintext),
+      public_suffix: plaintext.slice(-12),
+      // ... other fields
+    }).into('merchant_integration_credentials');
+
+    // 4. Mark old credential as ROTATED
+    await trx.update('merchant_integration_credentials')
+      .set({
+        status: 'ROTATED',
+        version: currentCred.version + 1,
+        expires_at: now().add(7, 'days'),
+        updated_at: now()
+      })
+      .where({ id: credentialId });
+
+    // 5. Log audit event
+    await trx.insert({
+      credential_id: credentialId,
+      action: 'rotated',
+      actor: userId,
+      timestamp: now()
+    }).into('credential_audit_events');
+
+    // If any step fails, entire transaction rolls back automatically
+    return { old: credentialId, new: newCred.id };
+  });
+}
+```
+
+**Behavior:**
+
+- If another admin rotates simultaneously, the second request gets a 409 Conflict
+- Client retries and gets the latest version
+- No duplicate credentials are created
+
+### 8.2 Idempotency Keys
+
+**Accept Idempotency-Key header (RFC 7231):**
+
+```typescript
+POST /integrations/{integrationId}/credentials/{credentialId}/rotate
+Idempotency-Key: "550e8400-e29b-41d4-a716-446655440099"
+```
+
+**Store idempotency mapping:**
+
+```prisma
+model RequestIdempotencyRecord {
+  id                    String    @id @default(uuid()) @db.Uuid
+  idempotencyKey        String    @unique @map("idempotency_key") @db.VarChar(255)
+  operationType         String    @map("operation_type") // "credential_rotation"
+  resourceId            String    @map("resource_id") @db.Uuid  // credentialId
+  responseStatus        Int       @map("response_status")
+  responseBody          String    @map("response_body")  // JSON
+  createdAt             DateTime  @default(now()) @map("created_at")
+  expiresAt             DateTime  @map("expires_at")  // 24-hour retention
+
+  @@unique([idempotencyKey, operationType])
+  @@index([createdAt])
+  @@map("request_idempotency_records")
+}
+```
+
+**Implementation:**
+
+```typescript
+async rotateCredential(idempotencyKey: string, integrationId: string, credentialId: string) {
+  // 1. Check if this idempotency key was already processed
+  const existingRecord = await this.db
+    .select('*')
+    .from('request_idempotency_records')
+    .where({ idempotency_key: idempotencyKey, operation_type: 'credential_rotation' });
+
+  if (existingRecord) {
+    // Return cached response for idempotent replay
+    return JSON.parse(existingRecord.response_body);
+  }
+
+  // 2. Perform rotation (with optimistic locking above)
+  const result = await this.rotation.rotate(integrationId, credentialId);
+
+  // 3. Store the idempotency record for future replays
+  await this.db.insert({
+    idempotency_key: idempotencyKey,
+    operation_type: 'credential_rotation',
+    resource_id: credentialId,
+    response_status: 201,
+    response_body: JSON.stringify(result),
+    expires_at: now().add(24, 'hours')
+  }).into('request_idempotency_records');
+
+  return result;
+}
+```
+
+**Behavior:**
+
+- Same idempotency key + same resource = same response (idempotent)
+- Different idempotency key on same resource = different operation (concurrency check applies)
+- Idempotency records expire after 24 hours (prevent unbounded storage)
+
+### 8.3 Database Uniqueness Constraints
+
+**Enforce invariants at database level:**
+
+```sql
+-- Only one ACTIVE credential per integration at a time
+CREATE UNIQUE INDEX unique_active_credential_per_integration
+  ON merchant_integration_credentials(integration_id, status)
+  WHERE status = 'ACTIVE' AND deleted_at IS NULL;
+
+-- Prevent duplicate plaintextHash across integration (no secret reuse)
+ALTER TABLE merchant_integration_credentials
+  ADD CONSTRAINT unique_plaintext_hash_per_integration
+  UNIQUE (integration_id, plaintext_hash);
+```
+
+**Rationale:**
+
+- Database constraint prevents application-layer races from creating invalid state
+- Unique index on (integration_id, status='ACTIVE') ensures only one active credential
+- Unique constraint on plaintext_hash prevents same secret being reused
+
+### 8.4 State-Transition Enforcement
+
+**Legal transitions enforced at service boundary:**
+
+```typescript
+// Only these transitions are allowed
+const LEGAL_TRANSITIONS = {
+  'CREATED': ['ACTIVE', 'REVOKED'],
+  'ACTIVE': ['ROTATED', 'REVOKED'],
+  'ROTATED': ['EXPIRED', 'REVOKED'],
+  'REVOKED': [],  // Terminal state
+  'EXPIRED': []   // Terminal state
+};
+
+async transitionCredentialStatus(credentialId: string, fromStatus: string, toStatus: string) {
+  const legal = LEGAL_TRANSITIONS[fromStatus];
+  if (!legal.includes(toStatus)) {
+    throw new BadRequestException(
+      `Cannot transition from ${fromStatus} to ${toStatus}. Legal transitions: ${legal.join(', ')}`
+    );
+  }
+  // Proceed with transition
+}
+```
+
+**Concurrency protection:**
+
+- Stored procedure or transaction verifies current status before transition
+- If status has changed since request started, transaction aborts with conflict
+
+### 8.5 Audit Both Success and Conflict
+
+**Log all rotation attempts (success and failure):**
+
+```typescript
+// Success case
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_rotated',
+  actor: userId,
+  status: 'success',
+  timestamp: now(),
+  reason: 'routine maintenance',
+});
+
+// Conflict case
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_rotation_attempted',
+  actor: userId,
+  status: 'conflict',
+  error: 'Version mismatch; concurrent rotation detected',
+  timestamp: now(),
+});
+
+// Revocation attempted on non-existent credential
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_revocation_attempted',
+  actor: userId,
+  status: 'rejected',
+  error: 'Credential not found or already revoked',
+  timestamp: now(),
+});
+```
+
+**Rationale:**
+
+- Audit trail shows both intended actions and actual outcomes
+- Security investigation can identify concurrent attempts or unusual patterns
+- Rejected attempts are logged for compliance and debugging
+
+---
+
+## 9. Rotation Without Downtime
 
 ### 8.1 Zero-Downtime Rotation Flow
 
@@ -683,7 +947,7 @@ Option B (Strict):
 
 ---
 
-## 9. Failure & Rollback Behavior
+## 10. Failure & Rollback Behavior
 
 ### 9.1 Failed Rotation
 
@@ -761,7 +1025,7 @@ Cascade ensures no orphaned credentials when integration deleted.
 
 ---
 
-## 10. Test Strategy
+## 11. Test Strategy
 
 ### 10.1 Credential Rotation Tests
 
@@ -916,7 +1180,7 @@ D9: Secret Exposure Prevention
 
 ---
 
-## 11. Migration Impact
+## 12. Migration Impact
 
 ### 11.1 Data Migration
 
@@ -957,7 +1221,7 @@ D9: Secret Exposure Prevention
 
 ---
 
-## 12. Interaction with C-Phase
+## 13. Interaction with C-Phase
 
 ### 12.1 No Breaking Changes to C
 
@@ -999,7 +1263,7 @@ C-phase credentials are immediately compatible with D:
 
 ---
 
-## 13. Configuration & Deployment Parameters
+## 14. Configuration & Deployment Parameters
 
 ### 13.1 Environment Variables (New for D)
 
@@ -1036,7 +1300,7 @@ if (featureFlags.isEnabled('credential_rotation_beta', merchantId)) {
 
 ---
 
-## 14. Open Questions for CTO Review
+## 15. Open Questions for CTO Review
 
 1. **Deadlines:** Lenient (old credential stays valid) or Strict (hard cutoff after 7 days)?
 2. **Revocation Recovery:** Grace period, backup restore, or fast rotation only?
@@ -1051,7 +1315,7 @@ if (featureFlags.isEnabled('credential_rotation_beta', merchantId)) {
 
 ---
 
-## 15. Success Criteria (for CTO Approval)
+## 16. Success Criteria (for CTO Approval)
 
 Before D implementation begins, this plan must address:
 
@@ -1072,7 +1336,7 @@ Before D implementation begins, this plan must address:
 
 ---
 
-## 16. Estimated Effort
+## 17. Estimated Effort
 
 **Implementation (after CTO approval):**
 
@@ -1097,7 +1361,7 @@ Before D implementation begins, this plan must address:
 ## Next Steps
 
 1. **CTO Review:** Submit this plan for review and approval
-2. **Open Questions:** Resolve the 10 open questions (§ 14)
+2. **Open Questions:** Resolve the 10 open questions (§ 15)
 3. **Design Approval:** CTO signs off on architecture before implementation
 4. **Implementation:** Begin D-phase coding once approval received
 5. **Testing:** Full acceptance test harness (like C-phase)
