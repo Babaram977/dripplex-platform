@@ -178,31 +178,26 @@ describe('Audit Segments Schema Constraints — PostgreSQL Integration Tests', (
       }
     });
 
-    it('should accept audit log with all four authoritative fields NULL', async () => {
+    it('should reject audit log with all four authoritative fields NULL (legacy path blocked)', async () => {
       const logId = randomUUID();
 
       try {
-        // This should succeed (all four fields NULL — legacy row)
+        // This should FAIL (all four fields NULL rejected by authoritative-write boundary trigger)
+        // The deprecated create() path is blocked after P1-B2 to prevent unauthorized writes
+        // masquerading as legacy data.
         await prisma.auditLog.create({
           data: {
             id: logId,
-            action: 'LEGACY_ACTION',
+            action: 'LEGACY_ACTION_BLOCKED',
             // All authoritative fields are NULL (or omitted)
+            // This triggers the boundary check: RAISE EXCEPTION
           },
         });
-
-        const created = await prisma.auditLog.findUnique({
-          where: { id: logId },
-        });
-
-        expect(created?.segmentId).toBeNull();
-        expect(created?.sequence).toBeNull();
-        expect(created?.hash).toBeNull();
-        expect(created?.predecessorHash).toBeNull();
-      } finally {
-        await prisma.auditLog.deleteMany({
-          where: { id: logId },
-        });
+        fail('Should have thrown authoritative-write boundary violation');
+      } catch (error) {
+        // Trigger should raise exception for all-NULL rows
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((error as any).message).toContain('Legacy write boundary violated');
       }
     });
   });
@@ -283,6 +278,85 @@ describe('Audit Segments Schema Constraints — PostgreSQL Integration Tests', (
       } finally {
         await prisma.auditLog.deleteMany({
           where: { id: { in: [log1Id, log2Id] } },
+        });
+      }
+    });
+  });
+
+  describe('CS.8: Global Sequence Uniqueness (Regression Test for New Index)', () => {
+    it('should prevent same sequence across different segments (global uniqueness)', async () => {
+      // Create two distinct CLOSED segments for this test
+      const segment1Id = randomUUID();
+      const segment2Id = randomUUID();
+      const globalSequence = BigInt(40000); // Same sequence used in both segments
+      const hash = '7777777777777777777777777777777777777777777777777777777777777777';
+      const predHash = '6666666666666666666666666666666666666666666666666666666666666666';
+      const log1Id = randomUUID();
+      const log2Id = randomUUID();
+
+      try {
+        // Create two segments
+        await prisma.auditSegment.create({
+          data: {
+            id: segment1Id,
+            lifecycle: 'CLOSED',
+            firstSequence: 35000n,
+            firstHash: hash,
+            lastHash: hash,
+            lastSequence: 35999n,
+          },
+        });
+
+        await prisma.auditSegment.create({
+          data: {
+            id: segment2Id,
+            lifecycle: 'CLOSED',
+            firstSequence: 36000n,
+            firstHash: hash,
+            lastHash: hash,
+            lastSequence: 36999n,
+          },
+        });
+
+        // Create first audit log with global sequence in segment 1
+        await prisma.auditLog.create({
+          data: {
+            id: log1Id,
+            action: 'TEST_GLOBAL_SEQ_1',
+            segmentId: segment1Id,
+            sequence: globalSequence,
+            hash,
+            predecessorHash: predHash,
+          },
+        });
+
+        // Attempt to create second audit log with SAME global sequence in segment 2 — must fail
+        try {
+          await prisma.auditLog.create({
+            data: {
+              id: log2Id,
+              action: 'TEST_GLOBAL_SEQ_2',
+              segmentId: segment2Id,
+              sequence: globalSequence, // Same global sequence
+              hash: '8888888888888888888888888888888888888888888888888888888888888888',
+              predecessorHash: hash,
+            },
+          });
+          fail('Should have thrown global sequence UNIQUE constraint violation');
+        } catch (error) {
+          // Should violate audit_logs_sequence_global_key index
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          expect((error as any).code).toBe('P2002');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          expect((error as any).meta?.target).toContain('sequence');
+        }
+      } finally {
+        // Cleanup
+        await prisma.auditLog.deleteMany({
+          where: { id: { in: [log1Id, log2Id] } },
+        });
+        await prisma.auditSegment.deleteMany({
+          where: { id: { in: [segment1Id, segment2Id] } },
         });
       }
     });

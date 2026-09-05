@@ -11,36 +11,27 @@ CREATE UNIQUE INDEX "audit_logs_sequence_global_key"
   WHERE "sequence" IS NOT NULL;
 
 -- Step 2: Add authoritative-write boundary trigger.
--- Prevents legacy create() method from being used for new writes after P1-B2 launch.
--- Legacy rows (segment_id=NULL) are allowed only if created before P1-B2 cutoff.
--- New writes after cutoff MUST have all four authoritative fields (enforced by CHECK).
--- Trigger ensures no new NULL rows are created post-launch.
+-- CRITICAL: Enforces that ALL new writes after P1-B2 are authoritative.
+-- Rejects any attempt to insert with segment_id=NULL (legacy create() blocked).
+-- This boundary prevents unauthorized writes from masquerading as legacy data.
+-- The frozen contract: ALL new writes MUST use append(tx, event) with all four
+-- authoritative fields NOT NULL. The deprecated create() path is disabled.
 CREATE OR REPLACE FUNCTION audit_logs_authoritative_boundary_check()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- If attempting to insert a new authoritative row (segment_id NOT NULL),
-  -- all four fields must be NOT NULL (already verified by CHECK constraint).
+  -- P1-B2 enforcement: ALL new writes are authoritative.
+  -- No NULL-field rows are permitted after P1-B2 migration.
+  -- Legacy rows (if any) must exist in database BEFORE this migration runs.
 
-  -- If attempting to insert a legacy row (segment_id IS NULL),
-  -- only allow if being explicitly backfilled (e.g., during migration).
-  -- After P1-B2 launch, reject any new NULL rows to prevent
-  -- unauthorized writes masquerading as legacy data.
-
-  -- For now, we permit legacy writes only if the row is being created
-  -- as part of an explicit backfill transaction. This is enforced by
-  -- requiring the legacy write path to include a special marker.
-  -- In practice, the deprecated create() method should not be used
-  -- for new operational writes after P1-B2 launch.
-
-  -- Validate: authoritative rows must have all four fields OR all NULL
-  -- (This CHECK constraint is already in the base migration)
-  IF (NEW."segment_id" IS NOT NULL OR NEW."sequence" IS NOT NULL OR NEW."hash" IS NOT NULL OR NEW."predecessor_hash" IS NOT NULL) THEN
-    -- At least one authoritative field is NOT NULL
-    -- All four must be NOT NULL (enforced by CHECK constraint)
-    IF (NEW."segment_id" IS NULL OR NEW."sequence" IS NULL OR NEW."hash" IS NULL OR NEW."predecessor_hash" IS NULL) THEN
-      RAISE EXCEPTION 'Authoritative field atomicity violation: all four fields must be NOT NULL or all NULL';
-    END IF;
+  IF (NEW."segment_id" IS NULL AND NEW."sequence" IS NULL AND NEW."hash" IS NULL AND NEW."predecessor_hash" IS NULL) THEN
+    -- Attempting to create a legacy NULL row (deprecated create() path)
+    -- This is blocked post-P1-B2. All new writes must use append(tx, event).
+    RAISE EXCEPTION 'Legacy write boundary violated: all NULL authoritative fields rejected after P1-B2. Use append(tx, event) within Class-A transaction.';
   END IF;
+
+  -- All other cases: authoritative fields must satisfy atomicity (all NOT NULL or all NULL enforced by CHECK)
+  -- At this point, at least one field is NOT NULL, so all four must be NOT NULL (CHECK constraint).
+  -- The trigger has already rejected the all-NULL case above, so we trust CHECK for the rest.
 
   RETURN NEW;
 END;
@@ -56,14 +47,22 @@ FOR EACH ROW
 EXECUTE FUNCTION audit_logs_authoritative_boundary_check();
 
 -- Step 3: Document the authoritative-write boundary in a comment.
--- The deprecated create() method is for historical backfill only.
+-- P1-B2 ENFORCEMENT: All new writes after migration are authoritative.
+-- The deprecated create() method is BLOCKED by the trigger above.
 -- All operational writes MUST use append(tx, event) within a Class-A transaction.
--- The trigger above validates that new writes follow this boundary.
+-- The trigger rejects any attempt to insert with all four authoritative fields NULL.
 COMMENT ON TABLE "audit_logs" IS
-  'Audit log with dual write paths:
-   - Legacy path: create(input) for historical data backfill ONLY
-   - Authoritative path: append(tx, event) for operational writes within Class-A transaction
+  'Audit log with P1-B2 authoritative-write boundary enforcement:
 
-   Schema enforces: All operational rows have segment_id, sequence, hash, predecessor_hash NOT NULL.
-   Legacy rows have all four fields NULL.
-   Global sequence uniqueness enforced via unique index (sequence) WHERE sequence IS NOT NULL.';
+   Write paths:
+   - BLOCKED: create(input) - deprecated legacy path now rejected by trigger
+   - REQUIRED: append(tx, event) - must be used within Class-A Serializable transaction
+
+   Enforcement:
+   - Trigger audit_logs_authoritative_boundary_check rejects all-NULL authoritative fields
+   - All new rows have segment_id, sequence, hash, predecessor_hash NOT NULL
+   - Global sequence uniqueness enforced via unique index (sequence) WHERE sequence IS NOT NULL
+   - CHECK constraint ensures atomicity: all four NOT NULL or all four NULL (legacy only, if pre-migrated)
+
+   Boundary: No new NULL rows can be created after P1-B2 migration.
+   All writes must be authoritative with cryptographic chain verification.';
