@@ -35,8 +35,8 @@ export class AuditService {
    *   }); // single COMMIT
    *
    * @param tx - Caller-owned transaction client. append() MUST NOT open $transaction().
+   *   Delegates to repository without validation; Prisma will reject invalid clients.
    * @param event - Audit event with action, context, and optional details.
-   * @throws If tx is not a valid TransactionClient.
    */
   public async append(tx: Prisma.TransactionClient, event: AuditEventForAppend): Promise<void> {
     await this.auditLogRepository.append(tx, event).then(() => undefined);
@@ -45,8 +45,12 @@ export class AuditService {
   /**
    * Record an infrastructure-failure audit event outside any transaction.
    *
-   * Used for failures that occur outside the business transaction boundary.
-   * Caller is responsible for durability/retry semantics.
+   * INTERFACE BOUNDARY (P1-B1): Establishes the signature for recording audit events
+   * that occur outside the business transaction boundary. The current implementation
+   * is a temporary path through the existing audit_logs table.
+   *
+   * The actual durable infrastructure-failure model with retry logic and recovery
+   * guarantees is owned by P1-B6 (Failure Recovery Subsystem).
    *
    * @param action - Failure action identifier.
    * @param context - Request context (userId, ipAddress, userAgent).
