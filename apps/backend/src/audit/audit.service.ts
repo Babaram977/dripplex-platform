@@ -1,10 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
 import {
   AUDIT_LOG_REPOSITORY,
   type AuditLogRepository,
   type AuditRecordDetails,
   type CreateAuditLogInput,
+  type AuditEventForAppend,
 } from './repositories/audit-log.repository';
 
 export interface AuditContext {
@@ -20,7 +22,37 @@ export class AuditService {
     private readonly auditLogRepository: AuditLogRepository,
   ) {}
 
-  public record(
+  /**
+   * Append an authoritative audit event within a Class-A transaction boundary.
+   *
+   * CRITICAL: append() accepts a Prisma.TransactionClient and MUST participate
+   * in the caller's transaction. Business mutation and audit append commit together.
+   *
+   * Usage:
+   *   await prisma.$transaction(async (tx) => {
+   *     // business mutations...
+   *     await auditService.append(tx, { action, context, details });
+   *   }); // single COMMIT
+   *
+   * @param tx - Caller-owned transaction client. append() MUST NOT open $transaction().
+   * @param event - Audit event with action, context, and optional details.
+   * @throws If tx is not a valid TransactionClient.
+   */
+  public async append(tx: Prisma.TransactionClient, event: AuditEventForAppend): Promise<void> {
+    await this.auditLogRepository.append(tx, event).then(() => undefined);
+  }
+
+  /**
+   * Record an infrastructure-failure audit event outside any transaction.
+   *
+   * Used for failures that occur outside the business transaction boundary.
+   * Caller is responsible for durability/retry semantics.
+   *
+   * @param action - Failure action identifier.
+   * @param context - Request context (userId, ipAddress, userAgent).
+   * @param details - Failure details (resource, metadata, etc.).
+   */
+  public async recordFailure(
     action: string,
     context: AuditContext,
     details?: AuditRecordDetails,
@@ -50,6 +82,28 @@ export class AuditService {
       input.userAgent = userAgent;
     }
 
-    return this.auditLogRepository.create(input).then(() => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
+    await this.auditLogRepository.create(input);
+  }
+
+  /**
+   * Record a non-authoritative audit event outside any transaction.
+   *
+   * DEPRECATED: For backward compatibility only. Existing post-transaction audit calls
+   * use record(). During P1-B7, wallet mutations will migrate to append(tx, event).
+   *
+   * @deprecated Use append(tx, event) for Class-A mutations instead.
+   * @param action - Audit action.
+   * @param context - Request context.
+   * @param details - Audit details.
+   */
+  public async record(
+    action: string,
+    context: AuditContext,
+    details?: AuditRecordDetails,
+  ): Promise<void> {
+    // Delegate to recordFailure for now (same implementation)
+    // This preserves compatibility with all existing call sites
+    await this.recordFailure(action, context, details);
   }
 }
