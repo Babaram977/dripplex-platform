@@ -1089,7 +1089,13 @@ model AuditLog {
   metadata         Json      @default("{}")
   createdAt        DateTime  @default(now()) @map("created_at")
 
-  // P1-B2 fields (Class-A authoritative audit)
+  // P1-B2 fields (Class-A authoritative audit) — optional for schema compatibility
+  // with legacy historical rows, but NOT NULL in practice for new appends.
+  // CRITICAL: Database CHECK constraint enforces atomicity:
+  //   - New rows via append(): ALL FOUR must be NOT NULL
+  //   - Legacy rows: all four must be NULL
+  // Prisma schema allows ? (optional) to reflect this duality; see AuditLog.ts
+  // for @validation that new records must have all four.
   segmentId        String?   @map("segment_id") @db.Uuid
   sequence         BigInt?   @map("sequence")
   hash             String?   @map("hash") @db.Char(64)

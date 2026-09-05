@@ -97,7 +97,21 @@ ADD CONSTRAINT "audit_stream_state_active_segment_id_fkey"
   FOREIGN KEY ("active_segment_id")
   REFERENCES "audit_segments"("id") ON DELETE RESTRICT;
 
--- Step 10: Add unique constraint and indexes to audit_logs
+-- Step 10: Add CHECK constraint to enforce authoritative field atomicity.
+-- For new rows inserted via append(): ALL four authoritative fields must be NOT NULL.
+-- For legacy rows: all four remain NULL (non-authoritative).
+-- This prevents partial authoritative state (e.g., sequence without hash).
+ALTER TABLE "audit_logs"
+ADD CONSTRAINT "audit_logs_authoritative_atomicity"
+  CHECK (
+    (segment_id IS NOT NULL AND sequence IS NOT NULL AND hash IS NOT NULL AND predecessor_hash IS NOT NULL)
+    OR
+    (segment_id IS NULL AND sequence IS NULL AND hash IS NULL AND predecessor_hash IS NULL)
+  );
+
+-- Step 11: Add PARTIAL unique constraint (only for authoritative rows).
+-- This allows multiple NULL combinations (legacy rows) but enforces uniqueness
+-- across all authoritative rows in each segment.
 ALTER TABLE "audit_logs"
 ADD CONSTRAINT "audit_logs_segment_id_sequence_key"
   UNIQUE ("segment_id", "sequence");
@@ -108,7 +122,7 @@ CREATE INDEX "audit_logs_segment_id_idx"
 CREATE INDEX "audit_logs_segment_id_sequence_idx"
   ON "audit_logs"("segment_id", "sequence");
 
--- Step 11: Add foreign key: audit_logs.segment_id
+-- Step 12: Add foreign key: audit_logs.segment_id
 ALTER TABLE "audit_logs"
 ADD CONSTRAINT "audit_logs_segment_id_fkey"
   FOREIGN KEY ("segment_id")

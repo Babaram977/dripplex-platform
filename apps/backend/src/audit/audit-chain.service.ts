@@ -34,7 +34,7 @@ export class AuditChainService {
    *
    * Rules:
    * - Null values are included (not omitted)
-   * - BigInt → number for JSON serialization
+   * - BigInt → exact decimal string (no precision loss for values > 2^53-1)
    * - No whitespace
    * - Sorted keys
    *
@@ -54,7 +54,9 @@ export class AuditChainService {
     timestamp: Date;
     predecessorHash: string;
   }): string {
-    // Create canonical object with alphabetical field ordering and null for missing fields
+    // Create canonical object with alphabetical field ordering and null for missing fields.
+    // CRITICAL: sequence must be preserved as exact decimal string, not converted to Number,
+    // to avoid precision loss for values > 2^53-1 (JavaScript number limit).
     const canonical = {
       action: event.action,
       ipAddress: event.ipAddress ?? null,
@@ -63,7 +65,7 @@ export class AuditChainService {
       resource: event.resource ?? null,
       resourceId: event.resourceId ?? null,
       segmentId: event.segmentId,
-      sequence: Number(event.sequence), // BigInt → number for JSON
+      sequence: event.sequence.toString(), // BigInt → exact decimal string (no precision loss)
       timestamp: event.timestamp.toISOString(),
       userAgent: event.userAgent ?? null,
       userId: event.userId ?? null,
