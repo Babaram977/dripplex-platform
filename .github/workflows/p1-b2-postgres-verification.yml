@@ -1,0 +1,70 @@
+name: P1-B2 PostgreSQL Verification
+
+on:
+  push:
+    branches:
+      - 'claude/dripplex-healthcheck-failure-6o3vb8'
+  workflow_dispatch:
+
+concurrency:
+  group: p1-b2-postgres-verification
+  cancel-in-progress: false
+
+jobs:
+  p1-b2-postgres:
+    name: P1-B2 PostgreSQL integration evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://postgres:testpassword@localhost:5432/dripplex_test?schema=public
+      PGPASSWORD: testpassword
+      DATABASE_REQUIRED: 'true'
+
+    steps:
+      - name: Checkout exact P1-B2 revision
+        uses: actions/checkout@v4
+
+      - name: Setup Node + pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Verify PostgreSQL
+        run: |
+          psql -h localhost -p 5432 -U postgres -d postgres -c 'SELECT version();'
+
+      - name: Run P1-B2 PostgreSQL verification script
+        run: |
+          chmod +x scripts/run-p1-b2-tests.sh
+          ./scripts/run-p1-b2-tests.sh --verbose --output p1-b2-actual-results.log
+
+      - name: Verify test command exit code
+        if: success()
+        run: |
+          test -s p1-b2-actual-results.log
+          grep -q 'ALL TESTS PASSED' p1-b2-actual-results.log
+          grep -q 'P1-B2 PostgreSQL Integration Tests: PASS' p1-b2-actual-results.log
+          echo 'P1-B2 verification command completed successfully.'
+
+      - name: Upload authoritative PostgreSQL evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-b2-postgresql-evidence
+          path: p1-b2-actual-results.log
+          if-no-files-found: error
+          retention-days: 30
