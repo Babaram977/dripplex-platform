@@ -1,173 +1,290 @@
 /**
- * Audit Segments Schema Constraint Tests
+ * Audit Segments Schema Constraint Tests — PostgreSQL Integration
  *
- * Verify PostgreSQL constraints and invariants enforced at the database level
- * for the audit_segments, audit_stream_state, and audit_logs tables.
+ * Real tests that verify PostgreSQL constraints and invariants are properly
+ * enforced at the database level for audit_segments, audit_stream_state, and audit_logs tables.
  *
- * CRITICAL: These tests require a real PostgreSQL instance with the P1-B2 schema.
- * They verify:
- * - Partial unique index (exactly one ACTIVE segment)
- * - Foreign key constraints and cascade rules
- * - Uniqueness on (segment_id, sequence)
- * - Referential integrity
- * - Authoritative field atomicity CHECK constraint
- *
- * Run with: npm test -- audit-segments.constraint.spec.ts
+ * Requirements:
+ * - PostgreSQL test database with P1-B2 migration applied
+ * - Prisma Client connection to test database
+ * - Test environment with DATABASE_URL pointing to test instance
  */
 
-describe('Audit Segments Schema Constraints — PostgreSQL Specification', () => {
-  describe('Exactly-One-ACTIVE Partial Unique Index', () => {
-    it('CS.1: should enforce unique lifecycle=ACTIVE via partial index', () => {
-      // Constraint: CREATE UNIQUE INDEX audit_segments_active_idx
-      //   ON audit_segments(lifecycle) WHERE lifecycle='ACTIVE'
-      //
-      // Specification: The index enforces exactly one ACTIVE segment
-      // - INSERT (lifecycle='ACTIVE') succeeds when no ACTIVE exists
-      // - INSERT (lifecycle='ACTIVE') fails with UNIQUE violation when ACTIVE exists
-      // - UPDATE to lifecycle='ACTIVE' fails if ACTIVE already exists
-      // - Other lifecycle values (CLOSED, ARCHIVED_VERIFIED, PURGED) not subject to uniqueness
-      //
-      // Verification: Run against real PostgreSQL with Serializable transaction
-      expect(true).toBe(true); // Specification (verify with real DB)
-    });
+import { randomUUID } from 'crypto';
 
-    it('CS.2: should allow multiple segments with non-ACTIVE lifecycle', () => {
-      // Constraint: Partial index only covers lifecycle='ACTIVE'
-      //
-      // Specification: Multiple segments can have non-ACTIVE lifecycle simultaneously
-      // Example:
-      //   INSERT segment_1 (lifecycle='CLOSED') ✓
-      //   INSERT segment_2 (lifecycle='CLOSED') ✓
-      //   INSERT segment_3 (lifecycle='ACTIVE') ✓
-      //   INSERT segment_4 (lifecycle='ACTIVE') ✗ UNIQUE violation
-      //
-      // Verification: Run against real PostgreSQL
-      expect(true).toBe(true); // Specification (verify with real DB)
-    });
+import { PrismaClient, Prisma } from '@prisma/client';
 
-    it('CS.3: should transition from ACTIVE to CLOSED atomically', () => {
-      // Scenario: Rotating segments within Serializable transaction
-      // 1. UPDATE segment_1 SET lifecycle='CLOSED'
-      // 2. INSERT segment_2 SET lifecycle='ACTIVE'
-      //
-      // Specification: Both succeed atomically; no two ACTIVE segments exist simultaneously
-      // - Step 1 removes segment_1 from unique index (WHERE lifecycle='ACTIVE')
-      // - Step 2 inserts segment_2 into unique index
-      // - Serializable isolation guarantees consistency
-      //
-      // Verification: Run against real PostgreSQL with concurrent transactions
-      expect(true).toBe(true); // Specification (verify with real DB)
+describe('Audit Segments Schema Constraints — PostgreSQL Integration Tests', () => {
+  let prisma: PrismaClient;
+
+  beforeAll(() => {
+    prisma = new PrismaClient();
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // CS.1-CS.3: Exactly-One-ACTIVE Partial Unique Index Tests
+  // ─────────────────────────────────────────────────────────────────
+
+  describe('CS.1: Exactly-One-ACTIVE Partial Unique Index Enforcement', () => {
+    it('should prevent inserting a second ACTIVE segment', async () => {
+      // Find existing ACTIVE segment
+      const activeSegments = await prisma.auditSegment.findMany({
+        where: { lifecycle: 'ACTIVE' },
+      });
+
+      expect(activeSegments.length).toBe(1);
+
+      // Attempt to insert another ACTIVE segment — must fail with unique violation
+      const newSegmentId = randomUUID();
+      try {
+        await prisma.auditSegment.create({
+          data: {
+            id: newSegmentId,
+            lifecycle: 'ACTIVE',
+            firstSequence: 10000n,
+            firstHash: '1111111111111111111111111111111111111111111111111111111111111111',
+            lastHash: '1111111111111111111111111111111111111111111111111111111111111111',
+          },
+        });
+        fail('Should have thrown UNIQUE constraint violation');
+      } catch (error) {
+        // Prisma throws P2002 for unique constraint violations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((error as any).code).toBe('P2002');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((error as any).meta?.target).toContain('audit_segments_active_idx');
+      }
     });
   });
 
-  describe('Foreign Key Integrity', () => {
-    it('CS.4: should prevent deletion of segment with successor references', () => {
-      // Constraint: FK audit_segments.predecessor_segment_id
-      //   REFERENCES audit_segments.id ON DELETE RESTRICT
-      //
-      // Scenario: Attempt to DELETE segment_1 while segment_2 references it as predecessor
-      // Expected: DELETE fails with FK violation
+  describe('CS.2: Non-ACTIVE Segments Can Coexist', () => {
+    it('should allow multiple CLOSED segments to exist simultaneously', async () => {
+      const segment1Id = randomUUID();
+      const segment2Id = randomUUID();
 
-      // DELETE FROM audit_segments WHERE id='segment_1'
-      //   and segment_2.predecessor_segment_id='segment_1'
-      // → RESTRICT prevents deletion
-      // → Must clear predecessor reference first, or set to NULL
+      try {
+        // Create first CLOSED segment
+        await prisma.auditSegment.create({
+          data: {
+            id: segment1Id,
+            lifecycle: 'CLOSED',
+            firstSequence: 5000n,
+            firstHash: '2222222222222222222222222222222222222222222222222222222222222222',
+            lastHash: '2222222222222222222222222222222222222222222222222222222222222222',
+            lastSequence: 5999n,
+          },
+        });
 
-      expect(true).toBe(true); // Behavioral spec
-    });
+        // Create second CLOSED segment
+        await prisma.auditSegment.create({
+          data: {
+            id: segment2Id,
+            lifecycle: 'CLOSED',
+            firstSequence: 6000n,
+            firstHash: '3333333333333333333333333333333333333333333333333333333333333333',
+            lastHash: '3333333333333333333333333333333333333333333333333333333333333333',
+            lastSequence: 6999n,
+          },
+        });
 
-    it('CS.5: should prevent deletion of active_segment_id from stream_state', () => {
-      // Constraint: FK audit_stream_state.active_segment_id
-      //   REFERENCES audit_segments.id ON DELETE RESTRICT
-      //
-      // Scenario: Attempt to DELETE the ACTIVE segment while stream_state points to it
-      // Expected: DELETE fails with FK violation
+        // Both should exist
+        const segments = await prisma.auditSegment.findMany({
+          where: { id: { in: [segment1Id, segment2Id] } },
+        });
 
-      // DELETE FROM audit_segments WHERE id='active_segment'
-      //   and audit_stream_state.active_segment_id='active_segment'
-      // → RESTRICT prevents deletion
-      // → Must update stream_state to new active segment first
-
-      expect(true).toBe(true); // Behavioral spec
-    });
-
-    it('CS.6: should prevent orphaned audit_logs (segment_id FK)', () => {
-      // Constraint: FK audit_logs.segment_id
-      //   REFERENCES audit_segments.id ON DELETE RESTRICT
-      //
-      // Scenario: Attempt to DELETE a segment that has audit_logs referencing it
-      // Expected: DELETE fails with FK violation
-
-      // DELETE FROM audit_segments WHERE id='segment_with_logs'
-      //   and audit_logs.segment_id='segment_with_logs'
-      // → RESTRICT prevents deletion, orphaning prevented
-      // → Must delete audit_logs first, or use cascade (not recommended for audit)
-
-      expect(true).toBe(true); // Behavioral spec
-    });
-  });
-
-  describe('Unique Constraints', () => {
-    it('CS.7: should enforce uniqueness on (segment_id, sequence)', () => {
-      // Constraint: UNIQUE audit_logs(segment_id, sequence)
-      //
-      // Expected: Cannot insert two audit_logs with same segment_id and sequence
-      // Allowed: Same segment can have multiple sequences (1, 2, 3, ...)
-      //          Different segments can have same sequence (each has its own 1, 2, 3...)
-
-      // Correct:
-      //   INSERT (segment_id='seg1', sequence=1) ✓
-      //   INSERT (segment_id='seg1', sequence=2) ✓
-      //   INSERT (segment_id='seg2', sequence=1) ✓
-      //
-      // Incorrect:
-      //   INSERT (segment_id='seg1', sequence=1) ✗ UNIQUE violation
-
-      expect(true).toBe(true); // Behavioral spec
-    });
-
-    it('CS.8: should allow NULL segment_id during transition period', () => {
-      // Schema: segment_id nullable during P1-B2 migration
-      //
-      // Pre-P1-B7 historical data has NULL segment_id
-      // Post-P1-B7 all new events have non-NULL segment_id
-      //
-      // Expected: Multiple rows with NULL segment_id are allowed
-      // (NULL is not compared in UNIQUE constraint)
-
-      // Allowed:
-      //   INSERT (segment_id=NULL, sequence=NULL)
-      //   INSERT (segment_id=NULL, sequence=NULL)
-      //
-      // This is per SQL NULL semantics (NULL != NULL in UNIQUE)
-
-      expect(true).toBe(true); // Behavioral spec
+        expect(segments).toHaveLength(2);
+        expect(segments.every((s) => s.lifecycle === 'CLOSED')).toBe(true);
+      } finally {
+        // Cleanup
+        await prisma.auditSegment.deleteMany({
+          where: { id: { in: [segment1Id, segment2Id] } },
+        });
+      }
     });
   });
 
-  describe('Cascade and Restrict Rules', () => {
-    it('CS.9: should restrict cascade deletion (audit integrity)', () => {
-      // Cascade rules chosen for P1-B2:
-      //
-      // audit_segments → user (RESTRICT) — cannot delete user if segment references them
-      // user → audit_logs (RESTRICT, via FK) — cannot delete user with audit events
-      // audit_logs → audit_segments (RESTRICT) — cannot delete segment with logs
-      //
-      // Rationale: Audit logs are immutable; reference integrity is non-negotiable
+  describe('CS.3: Authoritative Field Atomicity (CHECK Constraint)', () => {
+    it('should reject audit log with partial authoritative fields', async () => {
+      // Get the ACTIVE segment
+      const segment = await prisma.auditSegment.findFirst({
+        where: { lifecycle: 'ACTIVE' },
+      });
 
-      expect(true).toBe(true); // Behavioral spec
+      if (!segment) {
+        fail('No ACTIVE segment found');
+      }
+
+      // Attempt to insert audit log with segment_id but no sequence (violates CHECK constraint)
+      try {
+        // Use raw query to bypass Prisma's type checking
+        await prisma.$executeRaw(Prisma.sql`
+          INSERT INTO audit_logs (
+            id, action, "segmentId", sequence, hash, "predecessorHash", "createdAt"
+          ) VALUES (
+            ${randomUUID()}::UUID, 'TEST_ACTION', ${segment.id}::UUID, NULL, NULL, NULL, NOW()
+          )
+        `);
+        fail('Should have thrown CHECK constraint violation');
+      } catch (error) {
+        // PostgreSQL CHECK constraint violation
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((error as any).code).toBe('P2010'); // Raw query error (CHECK violation)
+      }
     });
 
-    it('CS.10: should maintain referential integrity through Serializable transactions', () => {
-      // Serializable isolation ensures:
-      // 1. When audit_log.insert references segment_id, that segment exists
-      // 2. When segment.update changes lifecycle, all audit_logs in segment are visible
-      // 3. No concurrent insert can violate constraints mid-transaction
+    it('should accept audit log with all four authoritative fields NOT NULL', async () => {
+      const segment = await prisma.auditSegment.findFirst({
+        where: { lifecycle: 'ACTIVE' },
+      });
 
-      // ForeignKeyViolation errors propagate to application
-      // Application retries on serialization conflicts, never ignores FK errors
+      if (!segment) {
+        fail('No ACTIVE segment found');
+      }
 
-      expect(true).toBe(true); // Behavioral spec
+      const logId = randomUUID();
+      const sequence = BigInt(20000);
+      const hash = '4444444444444444444444444444444444444444444444444444444444444444';
+      const predHash = '3333333333333333333333333333333333333333333333333333333333333333';
+
+      try {
+        // This should succeed (all four fields NOT NULL)
+        await prisma.auditLog.create({
+          data: {
+            id: logId,
+            action: 'TEST_CHECK_CONSTRAINT',
+            segmentId: segment.id,
+            sequence,
+            hash,
+            predecessorHash: predHash,
+          },
+        });
+
+        const created = await prisma.auditLog.findUnique({
+          where: { id: logId },
+        });
+
+        expect(created?.segmentId).toBe(segment.id);
+        expect(created?.sequence).toBe(sequence);
+        expect(created?.hash).toBe(hash);
+        expect(created?.predecessorHash).toBe(predHash);
+      } finally {
+        await prisma.auditLog.deleteMany({
+          where: { id: logId },
+        });
+      }
+    });
+
+    it('should accept audit log with all four authoritative fields NULL', async () => {
+      const logId = randomUUID();
+
+      try {
+        // This should succeed (all four fields NULL — legacy row)
+        await prisma.auditLog.create({
+          data: {
+            id: logId,
+            action: 'LEGACY_ACTION',
+            // All authoritative fields are NULL (or omitted)
+          },
+        });
+
+        const created = await prisma.auditLog.findUnique({
+          where: { id: logId },
+        });
+
+        expect(created?.segmentId).toBeNull();
+        expect(created?.sequence).toBeNull();
+        expect(created?.hash).toBeNull();
+        expect(created?.predecessorHash).toBeNull();
+      } finally {
+        await prisma.auditLog.deleteMany({
+          where: { id: logId },
+        });
+      }
+    });
+  });
+
+  describe('CS.4-CS.6: Foreign Key Integrity', () => {
+    it('should prevent deletion of segment referenced by audit_logs', async () => {
+      const segment = await prisma.auditSegment.findFirst({
+        where: { lifecycle: 'ACTIVE' },
+      });
+
+      if (!segment) {
+        fail('No ACTIVE segment found');
+      }
+
+      // The ACTIVE segment has the stream_state referencing it
+      // Attempting to delete it should fail with FK constraint
+      try {
+        await prisma.auditSegment.delete({
+          where: { id: segment.id },
+        });
+        fail('Should have thrown FK constraint violation');
+      } catch (error) {
+        // Prisma throws P2014 for FK violations
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        expect((error as any).code).toBe('P2014');
+      }
+    });
+  });
+
+  describe('CS.7: Unique Constraint on (segment_id, sequence)', () => {
+    it('should enforce unique (segment_id, sequence) combination', async () => {
+      const segment = await prisma.auditSegment.findFirst({
+        where: { lifecycle: 'ACTIVE' },
+      });
+
+      if (!segment) {
+        fail('No ACTIVE segment found');
+      }
+
+      const sequence = BigInt(30000);
+      const hash = '5555555555555555555555555555555555555555555555555555555555555555';
+      const predHash = '4444444444444444444444444444444444444444444444444444444444444444';
+      const log1Id = randomUUID();
+      const log2Id = randomUUID();
+
+      try {
+        // Create first audit log
+        await prisma.auditLog.create({
+          data: {
+            id: log1Id,
+            action: 'TEST_UNIQUE_1',
+            segmentId: segment.id,
+            sequence,
+            hash,
+            predecessorHash: predHash,
+          },
+        });
+
+        // Attempt to create second with same (segmentId, sequence) — must fail
+        try {
+          await prisma.auditLog.create({
+            data: {
+              id: log2Id,
+              action: 'TEST_UNIQUE_2',
+              segmentId: segment.id,
+              sequence, // Same sequence
+              hash: '6666666666666666666666666666666666666666666666666666666666666666',
+              predecessorHash: hash,
+            },
+          });
+          fail('Should have thrown UNIQUE constraint violation');
+        } catch (error) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          expect((error as any).code).toBe('P2002');
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          expect((error as any).meta?.target).toContain('segment_id');
+        }
+      } finally {
+        await prisma.auditLog.deleteMany({
+          where: { id: { in: [log1Id, log2Id] } },
+        });
+      }
     });
   });
 });

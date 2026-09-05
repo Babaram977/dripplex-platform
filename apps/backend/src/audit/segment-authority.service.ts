@@ -39,30 +39,29 @@ export class SegmentAuthorityService {
   }> {
     // Step 1: Acquire explicit row lock via SELECT...FOR UPDATE
     // This serializes all sequence allocations to the single row.
-    // Raw query within transaction client.
+    // Raw query within transaction client using snake_case PostgreSQL column names.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call
     const streamStateResult = (await (tx.$queryRaw as any)`
-      SELECT id, "nextSequence", "tailHash", "activeSegmentId"
+      SELECT id, next_sequence, tail_hash, active_segment_id
       FROM audit_stream_state
       WHERE id = 'main'
       FOR UPDATE
     `) as {
       id: string;
-      nextSequence: bigint;
-      tailHash: string;
-      activeSegmentId: string;
+      next_sequence: bigint;
+      tail_hash: string;
+      active_segment_id: string;
     }[];
 
     if (streamStateResult.length === 0) {
       throw new Error('audit_stream_state row (id="main") not found; cannot allocate sequence');
     }
 
-     
-    const streamState = streamStateResult[0];
-     
-    const nextSequence = BigInt(streamState.nextSequence.toString());
-    const predecessorHash = streamState.tailHash;
-    const activeSegmentId = streamState.activeSegmentId;
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+    const streamState = streamStateResult[0]!;
+    const nextSequence = BigInt(streamState.next_sequence.toString());
+    const predecessorHash = streamState.tail_hash;
+    const activeSegmentId = streamState.active_segment_id;
 
     // Step 2: Validate ACTIVE segment exists and is still ACTIVE
     // This double-check ensures the segment we're about to write to hasn't been closed

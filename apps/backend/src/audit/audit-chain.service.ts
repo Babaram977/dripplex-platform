@@ -28,9 +28,12 @@ export class AuditChainService {
    * 6. resourceId
    * 7. segmentId
    * 8. sequence
-   * 9. timestamp
-   * 10. userAgent
-   * 11. userId
+   * 9. userAgent
+   * 10. userId
+   *
+   * CRITICAL: Timestamp is NOT included in the canonical form.
+   * The hash must be deterministic based on the event boundary only (P1-B1).
+   * Timestamp is stored separately in AuditLog.createdAt via PostgreSQL CURRENT_TIMESTAMP.
    *
    * Rules:
    * - Null values are included (not omitted)
@@ -51,12 +54,12 @@ export class AuditChainService {
     metadata?: Prisma.InputJsonValue | null | undefined;
     sequence: bigint;
     segmentId: string;
-    timestamp: Date;
     predecessorHash: string;
   }): string {
     // Create canonical object with alphabetical field ordering and null for missing fields.
     // CRITICAL: sequence must be preserved as exact decimal string, not converted to Number,
     // to avoid precision loss for values > 2^53-1 (JavaScript number limit).
+    // NOTE: timestamp is NOT included (see field order comment above)
     const canonical = {
       action: event.action,
       ipAddress: event.ipAddress ?? null,
@@ -66,7 +69,6 @@ export class AuditChainService {
       resourceId: event.resourceId ?? null,
       segmentId: event.segmentId,
       sequence: event.sequence.toString(), // BigInt → exact decimal string (no precision loss)
-      timestamp: event.timestamp.toISOString(),
       userAgent: event.userAgent ?? null,
       userId: event.userId ?? null,
     };
@@ -87,6 +89,10 @@ export class AuditChainService {
    * - Its segment (segmentId)
    * - The previous event's hash (predecessorHash)
    * - All event content (action, context, details)
+   *
+   * CRITICAL: Timestamp is NOT included in the hash.
+   * Hash must be deterministic based on P1-B1 event boundary only.
+   * Timestamp is stored separately via PostgreSQL CURRENT_TIMESTAMP.
    *
    * @param event - Audit event from repository
    * @param sequence - Allocated sequence number (from SegmentAuthorityService)
@@ -111,7 +117,6 @@ export class AuditChainService {
       metadata: event.details?.metadata,
       sequence,
       segmentId,
-      timestamp: new Date(), // Database NOW() at insert time
       predecessorHash,
     });
 

@@ -100,9 +100,17 @@ export class PrismaAuditLogRepository implements AuditLogRepository {
     });
 
     // Step 4: Update segment tail (next event will use this as predecessor)
+    // CRITICAL: On first event, set firstHash (immutable anchor). On subsequent events, update lastHash only.
+    const segment = await tx.auditSegment.findUniqueOrThrow({
+      where: { id: segmentId },
+    });
+
+    const isFirstEvent = segment.lastSequence === null;
+
     await tx.auditSegment.update({
       where: { id: segmentId },
       data: {
+        ...(isFirstEvent ? { firstHash: hash } : {}), // Set firstHash only on first event (immutable)
         lastSequence: sequence,
         lastHash: hash,
         eventCount: { increment: 1 },
