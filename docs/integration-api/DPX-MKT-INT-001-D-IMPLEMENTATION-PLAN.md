@@ -494,9 +494,16 @@ async validateWebhookSignature(integrationId: string, signature: string, payload
   // Inbound-valid credentials: ACTIVE, ROTATED (not CREATED, EXPIRED, or REVOKED)
 
   for (const cred of credentials) {
-    // Use HMAC-SHA256 for cryptographically sound keyed MAC
+    // Decrypt the actual credential secret (plaintextHash is for reuse detection, not signing)
+    const plaintextSecret = this.decrypt(
+      cred.encryptedValue,
+      cred.encryptionIv,
+      cred.encryptionAuthTag
+    );
+
+    // Use HMAC-SHA256 with actual secret (cryptographically sound keyed MAC)
     const expectedSignature = crypto
-      .createHmac('sha256', cred.plaintextHash)
+      .createHmac('sha256', plaintextSecret)
       .update(payload)
       .digest('hex');
 
@@ -790,13 +797,60 @@ async rotateCredential(idempotencyKey: string, integrationId: string, credential
 }
 ```
 
+**Database Constraint (CRITICAL):**
+
+The idempotency key must have a UNIQUE constraint in the database:
+
+```sql
+CREATE UNIQUE INDEX unique_idempotency_key
+  ON request_idempotency_records(idempotency_key, operation_type);
+```
+
+This prevents a race condition where two simultaneous requests both observe "no idempotency record exists" and both proceed to create credentials.
+
+**Transactional Atomicity (CRITICAL):**
+
+The correct sequence is:
+
+```
+receive Idempotency-Key header
+        ↓
+check for existing record (outside transaction)
+        ↓
+if exists: return cached result (early exit)
+        ↓
+else: BEGIN TRANSACTION
+        ↓
+lock integration/current credential (forUpdate)
+        ↓
+verify version/state
+        ↓
+create new credential
+        ↓
+mark old credential ROTATED
+        ↓
+create idempotency record (INSIDE transaction)
+        ↓
+create audit event
+        ↓
+COMMIT (or ROLLBACK if any step fails)
+```
+
+**If first transaction fails/rolls back:**
+
+- Idempotency record rolls back with it
+- Client can safely retry with same key
+- Second request observes no idempotency record and proceeds
+- Both rows (idempotency + credentials) are atomic: succeed together or fail together
+
 **Behavior:**
 
 - Idempotency record written **inside the same transaction** as the rotation
-- If transaction fails/retries, idempotency record is not written until rotation succeeds
-- Prevents retry from producing multiple credentials if first transaction partially fails
-- Same idempotency key + same resource = same cached response (idempotent)
-- Different idempotency key on same resource = new operation (concurrency check applies)
+- Idempotency key has UNIQUE constraint → prevents both simultaneous requests from proceeding
+- If transaction fails, idempotency record is rolled back (safe retry)
+- If transaction succeeds, idempotency record is committed
+- Same idempotency key = cached response (idempotent)
+- Different idempotency key = new operation (concurrency check applies)
 - Idempotency records expire after 24 hours (automatic cleanup prevents unbounded storage)
 
 ### 8.3 Database Uniqueness Constraints
@@ -819,9 +873,25 @@ ALTER TABLE merchant_integration_credentials
 
 - Database constraint prevents application-layer races from creating invalid state
 - Unique index on (integration_id, status='ACTIVE') ensures only one active credential
-- Unique constraint on plaintext_hash prevents same secret being reused **permanently** (intentionally prevents ever rotating back to a previously-used secret)
+- Unique constraint on plaintext_hash prevents same secret being reused
 
-**Intent clarification:** The UNIQUE(integration_id, plaintext_hash) constraint is intentionally permanent; it prevents credential cycling (e.g., rotating A → B → C → A). This is a security best practice: old secrets should never be reused, even if rotated away long ago. If a secret is ever compromised, it remains invalid forever.
+**IMPORTANT — Permanent Secret Reuse Prevention (POLICY DECISION):**
+
+The UNIQUE(integration_id, plaintext_hash) constraint enforces a **permanent** prohibition on credential cycling (e.g., rotating A → B → C → A).
+
+This is a **security policy choice**, not an inherent technical requirement. It may be desirable, but requires explicit CTO approval because:
+
+- Permanent retention of credential hashes has operational/security implications
+- The policy states: "No integration may ever reuse a previous credential secret"
+- Compromised credentials remain permanently invalid, even if rotated away years ago
+- This prevents merchants from accidentally reverting to an old (potentially compromised) credential
+
+**CTO Decision Required:** Does DrippleX want to enforce permanent secret reuse prevention?
+
+If YES → UNIQUE(integration_id, plaintextHash) constraint is correct.  
+If NO → Remove constraint; credentials can be rotated in a cycle (A → B → C → A).
+
+This decision should be explicitly documented in the implementation plan before coding begins.
 
 ### 8.4 State-Transition Enforcement
 
@@ -1405,6 +1475,37 @@ Before D implementation begins, this plan must address:
 
 ---
 
+## 16.1 Explicit Implementation Gate (Governance)
+
+**NO D-PHASE IMPLEMENTATION MAY BEGIN UNTIL:**
+
+1. **All Gate 1 Technical Requirements pass automated tests:**
+   - HMAC-SHA256 validation uses actual plaintext secret (not hash)
+   - ROTATED → EXPIRED query-time enforcement + async cleanup job
+   - Idempotency key UNIQUE constraint prevents duplicate simultaneous requests
+   - Idempotency record transactional atomicity (rolls back if transaction fails)
+
+2. **All Gate 2 Policy Decisions are resolved and recorded:**
+   - Decision 1: Deadline policy (lenient vs. strict)
+   - Decision 2: Revocation recovery mechanism
+   - Decision 3: Retention window for hard-delete
+   - Decision 4: Rate limits (1/24h, 10/min or different)
+   - Decision 5: Overlap period (7 days or different)
+   - Decision 6: Merchant notification method (email/in-app/both)
+   - Decision 7: Encryption standard (AES-256-GCM or HSM)
+   - Decision 8: Audit retention duration and compliance
+   - Decision 9: Backward compatibility (C credentials in D list?)
+   - Decision 10: Rollout timeline (canary percentages)
+   - **Decision 11 (NEW):** Permanent secret reuse prevention (YES or NO)
+
+**Audit Trail:**
+
+Once approved, this creates a durable record:
+
+- Plan → CTO technical approval → policy decisions → implementation → tests → rollout
+
+---
+
 ## 17. Estimated Effort
 
 **Implementation (after CTO approval):**
@@ -1429,14 +1530,30 @@ Before D implementation begins, this plan must address:
 
 ## Next Steps
 
-1. **CTO Review:** Submit this plan for review and approval
-2. **Open Questions:** Resolve the 10 open questions (§ 15)
-3. **Design Approval:** CTO signs off on architecture before implementation
-4. **Implementation:** Begin D-phase coding once approval received
-5. **Testing:** Full acceptance test harness (like C-phase)
-6. **Rollout:** Staged canary deployment with monitoring
+**Phase 1: CTO Technical Review (immediate)**
+
+1. Verify HMAC-SHA256 uses actual plaintext secret ✓ (amended)
+2. Verify idempotency UNIQUE constraint + transactional atomicity ✓ (amended)
+3. Verify ROTATED → EXPIRED mechanism ✓ (already in place)
+4. Approve that all Gate 1 technical requirements are satisfied
+
+**Phase 2: CTO Policy Decisions (pending)** 5. Resolve all 10 business questions (§ 15) 6. Decide: permanent secret reuse prevention YES or NO (new decision) 7. Record all decisions in implementation plan addendum
+
+**Phase 3: Implementation Gate (only after Phase 1 + 2 complete)** 8. CTO signs: "D-Phase plan APPROVED FOR IMPLEMENTATION" 9. Begin coding (36-50 hours) 10. Full acceptance test harness (like C-phase) 11. Staged canary deployment with monitoring
 
 ---
 
-**Status:** 🟡 **AWAITING CTO REVIEW AND APPROVAL**  
-**Do NOT implement D until CTO approves this plan.**
+## CTO Approval Status
+
+| Component            | Status                   | Notes                                                             |
+| -------------------- | ------------------------ | ----------------------------------------------------------------- |
+| **Architecture**     | 🟢 APPROVED              | Concurrency, state machine, audit all addressed                   |
+| **Security Design**  | 🟢 APPROVED WITH TESTING | HMAC, idempotency, encryption require implementation verification |
+| **Technical Gate 1** | 🟢 READY                 | 4 clarifications added; awaiting CTO verification                 |
+| **Policy Gate 2**    | 🟡 PENDING               | 11 decisions required (10 existing + 1 new)                       |
+| **Implementation**   | 🔴 BLOCKED               | Hold until both gates pass                                        |
+
+---
+
+**Status:** 🟡 **ARCHITECTURE APPROVED; AWAITING TECHNICAL VERIFICATION & POLICY DECISIONS**  
+**Do NOT implement D until Gate 1 technical review and Gate 2 policy decisions are complete and recorded.**
