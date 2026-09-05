@@ -1,6 +1,6 @@
 # DPX-MKT-INT-001-D — Credential Rotation & Lifecycle Management
 
-**Status:** 🟡 **PLAN ONLY — AWAITING CTO REVIEW & APPROVAL**
+**Status:** 🟡 **CTO REVIEW READY — IMPLEMENTATION BLOCKED PENDING GATE 1 VERIFICATION AND GATE 2 POLICY APPROVAL**
 
 **Document Purpose:** Detailed implementation plan for D-phase credential rotation and lifecycle management, identifying all architectural decisions, API contracts, database changes, test strategy, and interactions with C-phase functionality.
 
@@ -502,9 +502,10 @@ async validateWebhookSignature(integrationId: string, signature: string, payload
     );
 
     // Use HMAC-SHA256 with actual secret (cryptographically sound keyed MAC)
+    // CRITICAL: plaintextSecret must be transient-only (not logged, persisted, or returned)
     const expectedSignature = crypto
       .createHmac('sha256', plaintextSecret)
-      .update(payload)
+      .update(payload)  // CRITICAL: payload must be canonical/byte-identical for verification
       .digest('hex');
 
     const isValid = crypto.timingSafeEqual(
@@ -516,6 +517,20 @@ async validateWebhookSignature(integrationId: string, signature: string, payload
   return false;
 }
 ```
+
+**CRITICAL Verification Requirements (Gate 1):**
+
+1. **Plaintext Secret Transience:** The decrypted `plaintextSecret` must exist only transiently in application memory during HMAC computation. It must **never**:
+   - Be logged (info, debug, error logs)
+   - Be persisted to database
+   - Be returned through API responses
+   - Be included in telemetry or monitoring
+   - Be included in exception/error messages
+
+2. **Canonical Payload:** The webhook payload used for signing and verification must be byte-identical. This requires:
+   - Deterministic JSON serialization (consistent key order, no extra whitespace)
+   - Handle merchant-side payload modifications carefully (signing raw bytes, not deserialized/reserialized JSON)
+   - Test coverage: verify legitimate signatures don't fail due to JSON serialization differences
 
 **Rationale:**
 
@@ -852,6 +867,27 @@ COMMIT (or ROLLBACK if any step fails)
 - Same idempotency key = cached response (idempotent)
 - Different idempotency key = new operation (concurrency check applies)
 - Idempotency records expire after 24 hours (automatic cleanup prevents unbounded storage)
+
+**CRITICAL Verification Requirement (Gate 1):**
+
+True concurrent idempotency must be demonstrated with executed tests, not merely documented. Test scenarios:
+
+1. **Concurrent identical requests (same key):**
+   - Two simultaneous requests with Idempotency-Key="X"
+   - First acquires database UNIQUE constraint
+   - Second observes constraint violation and returns cached result
+   - Result: Only one credential created, both clients receive same response
+
+2. **Concurrent transaction failure (rollback releases lock):**
+   - Request 1: Acquire key, start rotation, simulate error mid-transaction
+   - Transaction rolls back; idempotency record is deleted
+   - Request 2 (retry): Same key; observes no record; proceeds with new rotation
+   - Result: Safe retry allowed after transient failure
+
+3. **Concurrent different requests (different keys):**
+   - Request A: Idempotency-Key="A"; acquires version lock
+   - Request B: Idempotency-Key="B"; encounters version conflict (concurrency check)
+   - Result: Proper 409 Conflict response; client retries with latest version
 
 ### 8.3 Database Uniqueness Constraints
 
@@ -1545,15 +1581,16 @@ Once approved, this creates a durable record:
 
 ## CTO Approval Status
 
-| Component            | Status                   | Notes                                                             |
-| -------------------- | ------------------------ | ----------------------------------------------------------------- |
-| **Architecture**     | 🟢 APPROVED              | Concurrency, state machine, audit all addressed                   |
-| **Security Design**  | 🟢 APPROVED WITH TESTING | HMAC, idempotency, encryption require implementation verification |
-| **Technical Gate 1** | 🟢 READY                 | 4 clarifications added; awaiting CTO verification                 |
-| **Policy Gate 2**    | 🟡 PENDING               | 11 decisions required (10 existing + 1 new)                       |
-| **Implementation**   | 🔴 BLOCKED               | Hold until both gates pass                                        |
+| Component            | Status                    | Notes                                                                         |
+| -------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| **Architecture**     | 🟡 READY FOR APPROVAL     | Concurrency, state machine, audit all addressed; awaiting formal CTO sign-off |
+| **Security Design**  | 🟡 READY FOR VERIFICATION | HMAC, idempotency, encryption require code review + execution testing         |
+| **Technical Gate 1** | ✅ READY                  | 5 clarifications complete; verification checklist documented                  |
+| **Policy Gate 2**    | 🟡 PENDING                | 11 decisions required (10 existing + 1 new)                                   |
+| **Implementation**   | 🔴 BLOCKED                | Frozen until both gates pass                                                  |
 
 ---
 
-**Status:** 🟡 **ARCHITECTURE APPROVED; AWAITING TECHNICAL VERIFICATION & POLICY DECISIONS**  
-**Do NOT implement D until Gate 1 technical review and Gate 2 policy decisions are complete and recorded.**
+**Status:** 🟡 **CTO REVIEW READY — IMPLEMENTATION BLOCKED PENDING GATE 1 VERIFICATION AND GATE 2 POLICY APPROVAL**
+
+**Engineering Instruction:** Prepare, review code sections (§ 4.3, § 8.2, § 8.6), design acceptance test harness with concurrent idempotency tests. **DO NOT BEGIN IMPLEMENTATION** until CTO formally approves both gates.
