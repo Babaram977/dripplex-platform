@@ -95,10 +95,10 @@ echo "Test Execution: $(date)" >> "$OUTPUT_FILE"
 echo "---" >> "$OUTPUT_FILE"
 
 if [ "$VERBOSE" = true ]; then
-  pnpm --filter @dripplex/backend test -- --testPathPattern='prisma/migrations/__tests__/audit-segments.constraint.spec.ts' --verbose 2>&1 | tee -a "$OUTPUT_FILE"
+  pnpm --filter @dripplex/backend test -- --testPathPattern='prisma/audit-segments.constraint.spec.ts' --verbose 2>&1 | tee -a "$OUTPUT_FILE"
   TEST_RESULT=${PIPESTATUS[0]}
 else
-  pnpm --filter @dripplex/backend test -- --testPathPattern='prisma/migrations/__tests__/audit-segments.constraint.spec.ts' 2>&1 | tee -a "$OUTPUT_FILE"
+  pnpm --filter @dripplex/backend test -- --testPathPattern='prisma/audit-segments.constraint.spec.ts' 2>&1 | tee -a "$OUTPUT_FILE"
   TEST_RESULT=${PIPESTATUS[0]}
 fi
 
