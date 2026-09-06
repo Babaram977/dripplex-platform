@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import { PrismaAuditSegmentRepository } from './repositories/prisma-audit-segment.repository';
+
+import type { ClosureResult } from './repositories/audit-segment.repository';
+
 /**
  * Segment Authority Service — Class-A Transaction Sequencing
  *
@@ -12,9 +16,13 @@ import { Prisma } from '@prisma/client';
  * Critical: This service is always called FIRST in an append() operation,
  * acquiring the lock that serializes access. All subsequent operations in
  * the transaction run under this lock.
+ *
+ * Also manages segment closure: coordinating the transition from ACTIVE
+ * to CLOSED and atomic creation of successor segments.
  */
 @Injectable()
 export class SegmentAuthorityService {
+  constructor(private readonly auditSegmentRepository: PrismaAuditSegmentRepository) {}
   /**
    * Allocate the next sequence number and obtain current tail hash.
    *
@@ -83,5 +91,35 @@ export class SegmentAuthorityService {
       sequence: nextSequence,
       predecessorHash: predecessorHash,
     };
+  }
+
+  /**
+   * Close the ACTIVE segment and atomically create its successor.
+   *
+   * Delegates to PrismaAuditSegmentRepository to execute the closure atomically
+   * within a Serializable transaction.
+   *
+   * CRITICAL CONTRACT:
+   * - Must be called within a Serializable transaction
+   * - Must use supplied tx parameter
+   * - Must NOT open nested $transaction()
+   * - Closure and successor creation are atomic (all-or-nothing)
+   *
+   * Authorization: The caller (typically AuditService via AuditController) is responsible
+   * for ensuring the user has audit_segment:close permission. This service is the final
+   * authority and re-validates the operation's validity (segment ACTIVE, closure reason, etc.).
+   *
+   * @param tx - Caller-owned Prisma.TransactionClient (must be Serializable)
+   * @param segmentId - The ACTIVE segment to close
+   * @param closureReason - Governance reason for closure
+   * @returns ClosureResult with segmentId, closedAt, and successorSegmentId
+   * @throws If segment not ACTIVE, closure fails, or transaction boundaries violated
+   */
+  public async closeSegment(
+    tx: Prisma.TransactionClient,
+    segmentId: string,
+    closureReason: string,
+  ): Promise<ClosureResult> {
+    return await this.auditSegmentRepository.closeSegment(tx, segmentId, closureReason);
   }
 }

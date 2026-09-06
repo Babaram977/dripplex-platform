@@ -1,16 +1,29 @@
 /* eslint-disable @typescript-eslint/no-deprecated */
-import { type Prisma } from '@prisma/client';
+import { Prisma, type Prisma as PrismaType } from '@prisma/client';
+
+import { type PrismaService } from '../prisma/prisma.service';
 
 import { AUTH_AUDIT_ACTIONS } from './audit.constants';
 import { AuditService } from './audit.service';
+import { type SegmentAuthorityService } from './segment-authority.service';
 
 import type { AuditLogRepository, AuditEventForAppend } from './repositories/audit-log.repository';
+import type { ClosureResult } from './repositories/audit-segment.repository';
 
 describe('AuditService', () => {
   const mockRepository = {
     create: jest.fn(),
     append: jest.fn(),
   } as unknown as jest.Mocked<AuditLogRepository>;
+
+  const mockPrisma = {
+    $transaction: jest.fn(),
+  } as unknown as jest.Mocked<PrismaService>;
+
+  const mockSegmentAuthority = {
+    allocateSequenceAndObtainTail: jest.fn(),
+    closeSegment: jest.fn(),
+  } as unknown as jest.Mocked<SegmentAuthorityService>;
 
   const mockAuditRecord = {
     id: 'audit-id',
@@ -30,7 +43,7 @@ describe('AuditService', () => {
     jest.clearAllMocks();
     mockRepository.create.mockResolvedValue(mockAuditRecord);
     mockRepository.append.mockResolvedValue(mockAuditRecord);
-    service = new AuditService(mockRepository);
+    service = new AuditService(mockRepository, mockPrisma, mockSegmentAuthority);
   });
 
   // ─────────────────────────────────────────────────────────────────
@@ -45,7 +58,7 @@ describe('AuditService', () => {
 
   describe('T1.2: append() accepts Prisma.TransactionClient parameter', () => {
     it('should accept tx as first parameter', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: AUTH_AUDIT_ACTIONS.REGISTRATION_COMPLETED,
         context: { userId: 'user-id' },
@@ -59,7 +72,7 @@ describe('AuditService', () => {
 
   describe('T1.3: append() accepts AuditEventForAppend parameter', () => {
     it('should accept event with action, context, and details', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id', ipAddress: '127.0.0.1' },
@@ -74,7 +87,7 @@ describe('AuditService', () => {
 
   describe('T1.4: append() returns Promise<void>', () => {
     it('should return a promise that resolves to void', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -94,7 +107,7 @@ describe('AuditService', () => {
 
   describe('T2.1: append() calls repository.append() (not create())', () => {
     it('should delegate to repository.append(), not repository.create()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -109,7 +122,7 @@ describe('AuditService', () => {
 
   describe('T2.2: append() does not open nested $transaction()', () => {
     it('should pass tx to repository without wrapping in $transaction()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -139,7 +152,7 @@ describe('AuditService', () => {
 
   describe('T2.4: append() and record() use different paths', () => {
     it('should use append() for transaction-aware path', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -157,7 +170,7 @@ describe('AuditService', () => {
 
   describe('T2.5: append() does not fall back to root Prisma', () => {
     it('should only call repository.append(), never repository.create()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -177,7 +190,7 @@ describe('AuditService', () => {
 
   describe('T3.1: action field propagates to repository', () => {
     it('should pass action from event to repository.append()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'CUSTOM_ACTION',
         context: { userId: 'user-id' },
@@ -194,7 +207,7 @@ describe('AuditService', () => {
 
   describe('T3.2: context fields propagate to repository', () => {
     it('should pass userId, ipAddress, userAgent to repository.append()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: {
@@ -221,7 +234,7 @@ describe('AuditService', () => {
 
   describe('T3.3: details metadata propagates to repository', () => {
     it('should pass details.metadata to repository.append()', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const metadata = { amount: 100, currency: 'NGN' };
       const event: AuditEventForAppend = {
         action: 'WALLET_CREDITED',
@@ -286,7 +299,7 @@ describe('AuditService', () => {
 
   describe('T4.3: record() and append() do not interfere', () => {
     it('should allow both paths to be used in sequence', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
 
       // Use append first
       await service.append(mockTx, {
@@ -333,7 +346,7 @@ describe('AuditService', () => {
 
   describe('P1-B2: Class-A Transaction Integration', () => {
     it('B2.1: append() delegates to repository.append() with segment authority', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -345,7 +358,7 @@ describe('AuditService', () => {
     });
 
     it('B2.2: append() returns Promise<void> (unchanged interface)', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'TEST_ACTION',
         context: { userId: 'user-id' },
@@ -358,7 +371,7 @@ describe('AuditService', () => {
     });
 
     it('B2.3: append() and record() maintain backward compatibility', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
 
       // Use append (new path)
       await service.append(mockTx, {
@@ -374,7 +387,7 @@ describe('AuditService', () => {
     });
 
     it('B2.4: append() signature and behavior remain stable', async () => {
-      const mockTx = {} as Prisma.TransactionClient;
+      const mockTx = {} as PrismaType.TransactionClient;
       const event: AuditEventForAppend = {
         action: 'WALLET_CREDITED',
         context: {
@@ -394,6 +407,72 @@ describe('AuditService', () => {
       await expect(result).resolves.toBeUndefined();
 
       expect(mockRepository.append).toHaveBeenCalledWith(mockTx, event);
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────
+  // P1-B4 SEGMENT CLOSURE TESTS
+  // ─────────────────────────────────────────────────────────────────
+
+  describe('closeActiveSegment()', () => {
+    const segmentId = '550e8400-e29b-41d4-a716-446655440000';
+    const closureReason = 'test-closure';
+    const successorId = '660e8400-e29b-41d4-a716-446655440001';
+    const now = new Date();
+
+    const mockClosureResult: ClosureResult = {
+      segmentId,
+      closedAt: now,
+      successorSegmentId: successorId,
+    };
+
+    it('should establish Serializable transaction and delegate to SegmentAuthorityService', async () => {
+      const mockTx = {} as PrismaType.TransactionClient;
+
+      mockSegmentAuthority.closeSegment.mockResolvedValue(mockClosureResult);
+      (mockPrisma.$transaction as jest.Mock).mockImplementation((fn, _options) => {
+        // Execute the transaction function immediately in test
+        return fn(mockTx);
+      });
+
+      const result = await service.closeActiveSegment(segmentId, closureReason);
+
+      expect(result).toEqual(mockClosureResult);
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
+      expect(mockSegmentAuthority.closeSegment).toHaveBeenCalledWith(
+        mockTx,
+        segmentId,
+        closureReason,
+      );
+    });
+
+    it('should use Serializable isolation level', async () => {
+      const mockTx = {} as PrismaType.TransactionClient;
+
+      mockSegmentAuthority.closeSegment.mockResolvedValue(mockClosureResult);
+      (mockPrisma.$transaction as jest.Mock).mockImplementation((fn, _options) => {
+        // Verify isolation level is Serializable
+        expect(_options?.isolationLevel).toBe(Prisma.TransactionIsolationLevel.Serializable);
+        return fn(mockTx);
+      });
+
+      await service.closeActiveSegment(segmentId, closureReason);
+
+      expect(mockPrisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should propagate errors from SegmentAuthorityService', async () => {
+      const mockTx = {} as PrismaType.TransactionClient;
+
+      const error = new Error('Segment not ACTIVE');
+      mockSegmentAuthority.closeSegment.mockRejectedValue(error);
+      (mockPrisma.$transaction as jest.Mock).mockImplementation((fn) => {
+        return fn(mockTx);
+      });
+
+      await expect(service.closeActiveSegment(segmentId, closureReason)).rejects.toThrow(
+        'Segment not ACTIVE',
+      );
     });
   });
 });

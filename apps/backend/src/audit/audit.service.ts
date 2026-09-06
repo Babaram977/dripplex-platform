@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import { PrismaService } from '../prisma/prisma.service';
+
 import {
   AUDIT_LOG_REPOSITORY,
   type AuditLogRepository,
@@ -8,6 +10,9 @@ import {
   type CreateAuditLogInput,
   type AuditEventForAppend,
 } from './repositories/audit-log.repository';
+import { SegmentAuthorityService } from './segment-authority.service';
+
+import type { ClosureResult } from './repositories/audit-segment.repository';
 
 export interface AuditContext {
   userId?: string;
@@ -20,6 +25,8 @@ export class AuditService {
   constructor(
     @Inject(AUDIT_LOG_REPOSITORY)
     private readonly auditLogRepository: AuditLogRepository,
+    private readonly prisma: PrismaService,
+    private readonly segmentAuthorityService: SegmentAuthorityService,
   ) {}
 
   /**
@@ -109,5 +116,34 @@ export class AuditService {
     // Delegate to recordFailure for now (same implementation)
     // This preserves compatibility with all existing call sites
     await this.recordFailure(action, context, details);
+  }
+
+  /**
+   * Close the ACTIVE audit segment and atomically create its successor.
+   *
+   * Establishes a Serializable transaction boundary and delegates to
+   * SegmentAuthorityService.closeSegment. The transaction ensures
+   * closure and successor creation are atomic.
+   *
+   * CRITICAL: The caller (AuditController) is responsible for authorization checks
+   * (audit_segment:close permission). This service re-validates the operation's
+   * validity (segment ACTIVE, closure reason) as the final authority.
+   *
+   * @param segmentId - The ACTIVE segment to close
+   * @param closureReason - Governance reason for closure
+   * @returns ClosureResult with segmentId, closedAt, and successorSegmentId
+   * @throws If segment not ACTIVE, closure fails, or transaction isolation violated
+   */
+  public async closeActiveSegment(
+    segmentId: string,
+    closureReason: string,
+  ): Promise<ClosureResult> {
+    // Establish Serializable transaction boundary for atomic closure + successor creation
+    return await this.prisma.$transaction(
+      async (tx) => {
+        return await this.segmentAuthorityService.closeSegment(tx, segmentId, closureReason);
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 }

@@ -313,5 +313,6 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'roles:write', description: 'Create and update roles' },
   { code: 'permissions:read', description: 'Read permissions catalog' },
   { code: 'audit:read', description: 'Read audit logs' },
+  { code: 'audit_segment:close', description: 'Close an active audit segment' },
   { code: 'platform:settings:write', description: 'Update platform settings' },
 ];
