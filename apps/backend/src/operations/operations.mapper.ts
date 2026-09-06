@@ -123,7 +123,7 @@ export function toOperationsCaseBaseDto(
 }
 
 export function toSosQueueItemDto(
-  alert: SosAlert & { driver: User },
+  alert: SosAlert & { driver: User; customer: User | null },
   kase: OperationsCase,
   userMap: Map<string, User>,
 ): SosQueueItemDto {
@@ -131,9 +131,13 @@ export function toSosQueueItemDto(
     ...toOperationsCaseBaseDto(kase, userMap),
     caseType: 'SOS',
     sourceStatus: alert.status,
+    origin: alert.origin,
     driverId: alert.driverId,
     driverName: `${alert.driver.firstName} ${alert.driver.lastName}`,
     driverPhone: alert.driver.phone,
+    customerId: alert.customerId,
+    customerName: alert.customer ? `${alert.customer.firstName} ${alert.customer.lastName}` : null,
+    customerPhone: alert.customer ? alert.customer.phone : null,
     rideId: alert.rideId,
     vehicleId: alert.vehicleId,
     latitude: alert.latitude ? Number(alert.latitude) : null,

@@ -4,7 +4,9 @@ import type { SosAlert } from '@prisma/client';
 export function toSosAlertDto(alert: SosAlert): SosAlertDto {
   return {
     id: alert.id,
+    origin: alert.origin,
     driverId: alert.driverId,
+    customerId: alert.customerId,
     rideId: alert.rideId,
     vehicleId: alert.vehicleId,
     latitude: alert.latitude ? Number(alert.latitude) : null,

@@ -125,6 +125,16 @@ Evidence gathered via a full read-through of `apps/backend/src/rides/`,
    SOS flow. No change this slice — still not built as functional, per the
    same rule restated by the founder for this slice.
 
+   **Superseded 2026-09-06.** The founder asked for it, and it is built:
+   `POST /customer/sos-alerts` files a real alert into the same Operations
+   queue as the driver's. The paragraph above stands as the record of why
+   it was correctly absent until then. See
+   `docs/DPX-SAFETY-001-CUSTOMER-SOS.md`. Note also that the
+   `EmergencySOSScreen` itself was NOT as honest as this entry assumed —
+   the screen reached from the ride flow rendered live-looking cards and a
+   hold-to-send button that did nothing, which is the bug DPX-SAFETY-001
+   fixes.
+
 None of the above are silently dropped — they're logged here as backend
 feature requests. If any becomes a real priority, the correct next step is
 a backend design pass (schema + endpoint), not a frontend screen built

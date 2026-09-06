@@ -1,12 +1,31 @@
 // The one description of every native brand asset. Both the generator and the
 // verifier read this, so "what we produce" and "what we check" cannot drift.
 
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const sharp = require('sharp');
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const MASTER = resolve(ROOT, 'resources/dripplex-mark.svg');
+
+/**
+ * The approved dX mark (founder-supplied 2026-09-06), replacing the earlier
+ * `dripplex-mark.svg` — a D with speed lines and no X.
+ *
+ * It is a raster, not a vector, because that is the form the artwork was
+ * approved in. Nothing here traces or redraws it: the committed PNG is the
+ * founder's file byte for byte, and every generated asset is a resampling of
+ * it. Re-deriving a vector would be inventing artwork nobody signed off.
+ *
+ * The practical cost is a ceiling on upscaling. The painted mark is 939px
+ * wide; the largest place it lands is the 2732px splash at SPLASH_COVER,
+ * which asks for ~1147px — a 1.22x enlargement, soft enough to be invisible
+ * behind a splash but real. Everything else downsamples. If a vector ever
+ * arrives, only `loadMaster()` needs to change.
+ */
+export const MASTER = resolve(ROOT, 'resources/dripplex-dx-mark.png');
 
 /**
  * Brand faces, vendored so a render does not depend on what the machine has
@@ -17,56 +36,104 @@ export const FONT_DIR = resolve(ROOT, 'resources/fonts');
 export const BLACK = '#000000';
 
 /**
- * Bounds of the painted artwork inside the master's 1254 canvas, read from the
- * path data itself rather than hardcoded — the paths are absolute M/L/Z only,
- * so every coordinate pair in them is a real point on the outline.
+ * The proportion the mark spans of its own canvas, as approved. The verifier
+ * compares the master against this and fails if it drifts, so swapping in new
+ * artwork is a deliberate act with a human in the loop rather than something
+ * that silently reflows every icon on the platform.
  */
-export function markGeometry() {
-  const svg = readFileSync(MASTER, 'utf8');
-  const viewBox = svg
-    .match(/viewBox="([\d.\s-]+)"/)?.[1]
-    .trim()
-    .split(/\s+/)
-    .map(Number);
-  if (!viewBox || viewBox.length !== 4) throw new Error('master SVG has no usable viewBox');
+export const APPROVED_PROPORTION = 0.7488;
 
-  const pts = [...svg.matchAll(/<path\b[^>]*\bd="([^"]+)"/g)]
-    .flatMap(([, d]) => [...d.matchAll(/(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/g)])
-    .map(([, x, y]) => [Number(x), Number(y)]);
-  if (pts.length === 0) throw new Error('master SVG has no path coordinates');
+/**
+ * Anything darker than this on all three channels is the master's black
+ * ground rather than painted artwork. Measured, not guessed: 60.1% of the
+ * master is exactly #000000 and 78.6% is within this threshold, and the gap
+ * between the two is the mark's own glow.
+ */
+const INK_THRESHOLD = 6;
 
-  const xs = pts.map((p) => p[0]),
-    ys = pts.map((p) => p[1]);
-  const x = Math.min(...xs),
-    y = Math.min(...ys);
-  const w = Math.max(...xs) - x,
-    h = Math.max(...ys) - y;
-  return { svg, viewBox, x, y, w, h, canvas: viewBox[2] };
+/**
+ * Decode the master once: where the artwork sits inside its canvas, and the
+ * artwork itself on a transparent ground.
+ *
+ * The supplied PNG has black baked in. Every canvas the mark lands on is also
+ * black, so compositing it directly would be pixel-faithful there — but
+ * adaptive-icon foregrounds must be transparent, and a baked black square
+ * would defeat the launcher's own background layer. So the ground is undone
+ * here instead: for artwork composited over black, `alpha = max(r,g,b)` with
+ * the colour unmultiplied by it reproduces the original exactly when it is
+ * composited back over black, and degrades gracefully anywhere else.
+ */
+export async function loadMaster() {
+  const { data, info } = await sharp(MASTER)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  if (width !== height) throw new Error(`master must be square, found ${width}x${height}`);
+
+  const out = Buffer.alloc(width * height * 4);
+  let minX = width,
+    minY = height,
+    maxX = -1,
+    maxY = -1;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * channels;
+      const r = data[i],
+        g = data[i + 1],
+        b = data[i + 2];
+      const a = Math.max(r, g, b);
+      const o = (y * width + x) * 4;
+      if (a === 0) {
+        out[o] = out[o + 1] = out[o + 2] = out[o + 3] = 0;
+      } else {
+        out[o] = Math.min(255, Math.round((r * 255) / a));
+        out[o + 1] = Math.min(255, Math.round((g * 255) / a));
+        out[o + 2] = Math.min(255, Math.round((b * 255) / a));
+        out[o + 3] = a;
+      }
+      if (a > INK_THRESHOLD) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) throw new Error('master has no painted pixels');
+
+  const artwork = await sharp(out, { raw: { width, height, channels: 4 } })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+
+  return {
+    canvas: width,
+    x: minX,
+    y: minY,
+    w: maxX - minX + 1,
+    h: maxY - minY + 1,
+    artwork,
+  };
 }
 
 /**
- * The approved proportion: the mark spans 75.4% of the master canvas. Legacy
- * launcher icons, the App Store icon and the Play listing icon all reproduce it
- * exactly. Adaptive icons cannot — see ADAPTIVE_COVER.
+ * The approved proportion, read off the master rather than hardcoded — the
+ * legacy launcher icons, the App Store icon and the Play listing icon all
+ * reproduce it exactly. Adaptive icons cannot; see adaptiveCover.
  */
-export const APPROVED_COVER = (() => {
-  const g = markGeometry();
-  return g.w / g.canvas;
-})();
+export const approvedCover = (g) => g.w / g.canvas;
 
 /**
  * Android adaptive icons are 108dp with only the central 72dp guaranteed to
  * survive the launcher mask, and a circular mask keeps only the inscribed
  * circle — 66.67% of the canvas across. A bounding box fits inside that circle
  * when its DIAGONAL is within it, so the width available is
- * 0.6667 / sqrt(1 + (h/w)^2), not 0.6667. For this mark's 1.168 aspect that is
- * ~0.507. Using the approved 0.754 here would let every round launcher clip the
- * bowl and the left-hand speed bars.
+ * 0.6667 / sqrt(1 + (h/w)^2), not 0.6667. For this mark's 0.812 aspect that is
+ * ~0.518. Using the approved 0.749 here would let every round launcher clip
+ * the X and the left-hand speed bars.
  */
-export const ADAPTIVE_COVER = (() => {
-  const g = markGeometry();
-  return 0.6667 / Math.hypot(1, g.h / g.w);
-})();
+export const adaptiveCover = (g) => 0.6667 / Math.hypot(1, g.h / g.w);
 
 /** Mark size on splash screens, as a fraction of the SHORTER canvas edge. */
 export const SPLASH_COVER = 0.42;
@@ -74,34 +141,19 @@ export const SPLASH_COVER = 0.42;
 const ANDROID = 'android/app/src/main/res';
 
 /** Square icons: black ground, mark centred, `cover` of the canvas wide. */
-export const ICONS = [
+export const icons = (cover) => [
   {
     file: 'ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png',
     size: 1024,
-    cover: APPROVED_COVER,
+    cover,
     alpha: false,
     note: 'App Store / iOS app icon',
   },
-  { file: `${ANDROID}/mipmap-mdpi/ic_launcher.png`, size: 48, cover: APPROVED_COVER, alpha: false },
-  { file: `${ANDROID}/mipmap-hdpi/ic_launcher.png`, size: 72, cover: APPROVED_COVER, alpha: false },
-  {
-    file: `${ANDROID}/mipmap-xhdpi/ic_launcher.png`,
-    size: 96,
-    cover: APPROVED_COVER,
-    alpha: false,
-  },
-  {
-    file: `${ANDROID}/mipmap-xxhdpi/ic_launcher.png`,
-    size: 144,
-    cover: APPROVED_COVER,
-    alpha: false,
-  },
-  {
-    file: `${ANDROID}/mipmap-xxxhdpi/ic_launcher.png`,
-    size: 192,
-    cover: APPROVED_COVER,
-    alpha: false,
-  },
+  { file: `${ANDROID}/mipmap-mdpi/ic_launcher.png`, size: 48, cover, alpha: false },
+  { file: `${ANDROID}/mipmap-hdpi/ic_launcher.png`, size: 72, cover, alpha: false },
+  { file: `${ANDROID}/mipmap-xhdpi/ic_launcher.png`, size: 96, cover, alpha: false },
+  { file: `${ANDROID}/mipmap-xxhdpi/ic_launcher.png`, size: 144, cover, alpha: false },
+  { file: `${ANDROID}/mipmap-xxxhdpi/ic_launcher.png`, size: 192, cover, alpha: false },
 ];
 
 /** Legacy round icons: the black ground is a circle, so the mark keeps room. */
@@ -124,11 +176,11 @@ export const ADAPTIVE_FOREGROUNDS = [
 ];
 
 /** Play Console listing icon. Not consumed by the build; produced for upload. */
-export const STORE_ICONS = [
+export const storeIcons = (cover) => [
   {
     file: 'resources/play-store-icon-512.png',
     size: 512,
-    cover: APPROVED_COVER,
+    cover,
     alpha: false,
     note: 'Google Play 512x512 listing icon',
   },

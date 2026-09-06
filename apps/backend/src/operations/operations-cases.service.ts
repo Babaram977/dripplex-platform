@@ -152,7 +152,9 @@ export class OperationsCasesService {
         ...(filter.vehicleId ? { vehicleId: filter.vehicleId } : {}),
         ...this.dateRangeWhere(filter),
       },
-      include: { driver: true },
+      // DPX-SAFETY-001 — `customer` is only set on a passenger-raised
+      // alert, so the queue can name whoever is actually in trouble.
+      include: { driver: true, customer: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -252,7 +254,9 @@ export class OperationsCasesService {
       case OperationsCaseType.SOS: {
         const alert = await this.prisma.sosAlert.findUnique({
           where: { id: kase.sourceId },
-          include: { driver: true },
+          // DPX-SAFETY-001 — same include as the queue, so a case opened
+          // from the SOS list names the same person the list named.
+          include: { driver: true, customer: true },
         });
         if (!alert) throw new NotFoundDomainException('SOS alert not found for this case');
         return { ...toSosQueueItemDto(alert, kase, userMap), events: eventDtos };

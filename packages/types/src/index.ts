@@ -194,6 +194,7 @@ export type {
   SetDriverPlannedAvailabilityRequest,
   SosAlertDto,
   SosAlertListDto,
+  SosAlertOrigin,
   SosAlertStatus,
   SubmitDriverKycRequest,
   SubmitEmergencyContactRequest,

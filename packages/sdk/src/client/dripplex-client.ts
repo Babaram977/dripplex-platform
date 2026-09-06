@@ -75,6 +75,7 @@ import { AdminRidersClient } from '../riders/admin-riders-client.js';
 import { AdminRidePricingClient } from '../rides/admin-ride-pricing-client.js';
 import { AdminRideReportsClient } from '../rides/admin-ride-reports-client.js';
 import { CustomerRideClient } from '../rides/customer-ride-client.js';
+import { CustomerSosAlertClient } from '../rides/customer-sos-alert-client.js';
 import { DriverRideClient } from '../rides/driver-ride-client.js';
 import { UploadsClient } from '../uploads/uploads-client.js';
 import { AdminUtilitiesClient } from '../utilities/admin-utilities-client.js';
@@ -96,6 +97,8 @@ export class DripplexClient {
   public readonly riderDelivery: RiderDeliveryClient;
   public readonly adminDelivery: AdminDeliveryClient;
   public readonly rides: CustomerRideClient;
+  /** DPX-SAFETY-001 — passenger Emergency SOS. */
+  public readonly sosAlerts: CustomerSosAlertClient;
   /** DPX-MOBILE-002 — voice calls between the two parties of a live job.
    * Not role-scoped: a customer, a driver and a rider all call through the
    * same routes, and who they may reach is decided by the job, not the SDK. */
@@ -181,6 +184,7 @@ export class DripplexClient {
     this.riderDelivery = new RiderDeliveryClient(this.http);
     this.adminDelivery = new AdminDeliveryClient(this.http);
     this.rides = new CustomerRideClient(this.http);
+    this.sosAlerts = new CustomerSosAlertClient(this.http);
     this.calls = new CallsClient(this.http);
     this.driverRides = new DriverRideClient(this.http);
     this.driverProfile = new DriverProfileClient(this.http);
@@ -267,6 +271,7 @@ export { OrderClient } from '../order/order-client.js';
 export { PaymentClient } from '../payment/payment-client.js';
 export { AdminRidePricingClient } from '../rides/admin-ride-pricing-client.js';
 export { CustomerRideClient } from '../rides/customer-ride-client.js';
+export { CustomerSosAlertClient } from '../rides/customer-sos-alert-client.js';
 export { UploadsClient } from '../uploads/uploads-client.js';
 export {
   AdminDriverCampaignClient,

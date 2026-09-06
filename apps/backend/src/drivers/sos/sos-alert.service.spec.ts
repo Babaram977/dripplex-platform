@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient, RideStatus, RideType, VehicleApprovalStatus } from '@prisma/client';
 
 import { AuditService } from '../../audit/audit.service';
+import { ValidationDomainException } from '../../common/exceptions/domain.exception';
 
 import { SosAlertService } from './sos-alert.service';
 
@@ -263,5 +264,120 @@ describe('SosAlertService', () => {
 
     const result = await service.listAlerts({ page: 1, limit: 20, status: 'OPEN' });
     expect(result.items.every((a) => a.status === 'OPEN')).toBe(true);
+  });
+
+  // ── DPX-SAFETY-001: the passenger side ────────────────────────────────────
+
+  async function startActiveRide(): Promise<{ rideId: string; vehicleId: string }> {
+    const vehicle = await prisma.vehicle.create({
+      data: {
+        driverId,
+        plateNumber: `SOS-${randomUUID().slice(0, 6).toUpperCase()}`,
+        make: 'Toyota',
+        model: 'Corolla',
+        color: 'Silver',
+        year: 2021,
+        rideCategory: RideType.ECONOMY,
+        isActive: true,
+        approvalStatus: VehicleApprovalStatus.APPROVED,
+      },
+    });
+    vehicleIds.push(vehicle.id);
+
+    const ride = await prisma.ride.create({
+      data: {
+        customerId,
+        driverId,
+        rideType: RideType.ECONOMY,
+        status: RideStatus.IN_PROGRESS,
+        pickupLatitude: 6.5244,
+        pickupLongitude: 3.3792,
+        dropoffLatitude: 6.601,
+        dropoffLongitude: 3.3489,
+      },
+    });
+    rideIds.push(ride.id);
+
+    return { rideId: ride.id, vehicleId: vehicle.id };
+  }
+
+  it('refuses a customer SOS when no trip is in progress', async () => {
+    if (!databaseAvailable) return;
+
+    await expect(service.triggerForCustomer(customerId, {}, {})).rejects.toBeInstanceOf(
+      ValidationDomainException,
+    );
+    expect(notificationCenter.broadcast).not.toHaveBeenCalled();
+  });
+
+  it('files a CUSTOMER-origin alert on the active trip and alerts ops, not the driver', async () => {
+    if (!databaseAvailable) return;
+
+    const { rideId, vehicleId } = await startActiveRide();
+
+    const alert = await service.triggerForCustomer(
+      customerId,
+      { latitude: 6.4551, longitude: 3.3841 },
+      {},
+    );
+
+    expect(alert.origin).toBe('CUSTOMER');
+    expect(alert.customerId).toBe(customerId);
+    // The driver is recorded for context — Operations needs to know who the
+    // passenger is in a car with — but is NOT the raiser.
+    expect(alert.driverId).toBe(driverId);
+    expect(alert.rideId).toBe(rideId);
+    expect(alert.vehicleId).toBe(vehicleId);
+    expect(alert.status).toBe('OPEN');
+
+    expect(notificationCenter.broadcast).toHaveBeenCalledTimes(1);
+    expect(notificationCenter.broadcast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userIds: [opsUserId],
+        type: 'SOS_ALERT_TRIGGERED',
+        priority: 'CRITICAL',
+        title: 'SOS: passenger needs assistance',
+      }),
+    );
+    // Decision 2 (see SosAlertService): the passenger's emergency may be the
+    // driver, so the driver is never told.
+    expect(notificationCenter.send).not.toHaveBeenCalled();
+  });
+
+  it("keeps customer-raised alerts out of the driver's own list", async () => {
+    if (!databaseAvailable) return;
+
+    await startActiveRide();
+    const raised = await service.triggerForCustomer(customerId, {}, {});
+
+    const driverAlerts = await service.listOwnAlerts(driverId);
+    expect(driverAlerts.some((a) => a.id === raised.id)).toBe(false);
+    expect(driverAlerts.every((a) => a.origin === 'DRIVER')).toBe(true);
+
+    const customerAlerts = await service.listOwnCustomerAlerts(customerId);
+    expect(customerAlerts.some((a) => a.id === raised.id)).toBe(true);
+
+    await expect(service.getOwnAlert(driverId, raised.id)).rejects.toThrow();
+  });
+
+  it('notifies the passenger, not the driver, when ops updates their alert', async () => {
+    if (!databaseAvailable) return;
+
+    await startActiveRide();
+    const raised = await service.triggerForCustomer(customerId, {}, {});
+    notificationCenter.send.mockClear();
+
+    const acknowledged = await service.updateAlert(
+      raised.id,
+      adminId,
+      { status: 'ACKNOWLEDGED' },
+      {},
+    );
+
+    expect(acknowledged.status).toBe('ACKNOWLEDGED');
+    expect(notificationCenter.send).toHaveBeenCalledTimes(1);
+    expect(notificationCenter.send).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: customerId, type: 'SOS_ALERT_UPDATED' }),
+    );
   });
 });

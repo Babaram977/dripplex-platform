@@ -29,13 +29,21 @@ that last gap.
 ### Native app icons are done; a true Bézier master is still open
 
 `apps/customer-mobile` no longer ships the stock Capacitor logo — every launcher icon,
-adaptive foreground, Play 512 and splash is generated from the founder's master vector
-(`apps/customer-mobile/resources/dripplex-mark.svg`, supplied 2026-08-21).
+adaptive foreground, Play 512 and splash is generated from the founder's approved dX
+master (`apps/customer-mobile/resources/dripplex-dx-mark.png`, supplied 2026-09-06).
 
-That master is still a **polygon trace**, not Bézier paths, so the note below about the true
-vector source stands. It is good to 1024px; it is not good for signage or print. The web
-surfaces listed above are also still on the older, cruder `dripplexMarkSvg` trace in
-`packages/ui` — swapping them onto this better master is worth doing as its own change.
+**Superseded 2026-09-06.** The earlier master, `dripplex-mark.svg` (supplied 2026-08-21),
+was a polygon trace carrying a D and speed lines with **no X** — which never satisfied the
+founder's 2026-08-27 decision that "even the app home screen logo should be dx". Only the
+driver bubble was updated at the time; the launcher icons kept the X-less mark despite a
+code comment in `DriverPresenceOverlay.java` saying otherwise. That is now fixed.
+
+The open item changes shape rather than closing: the new master is a **raster**, not a
+polygon trace, so it is good down to any launcher size and up to about 1.2x its own 939px
+painted width. Ask the designer for a Bézier version of the dX mark for signage and print.
+The web surfaces listed above are also still on the older, cruder `dripplexMarkSvg` trace
+in `packages/ui`, which is now two generations behind — swapping them onto the dX artwork
+is worth doing as its own change.
 
 ## Done
 

@@ -15,6 +15,7 @@ import { AdminDriverShiftsController } from './controllers/admin-driver-shifts.c
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
 import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
+import { CustomerSosAlertsController } from './controllers/customer-sos-alerts.controller';
 import { DriverHelpController } from './controllers/driver-help.controller';
 import { DriverIdentityVerificationController } from './controllers/driver-identity-verification.controller';
 import { DriverIncidentReportsController } from './controllers/driver-incident-reports.controller';
@@ -73,6 +74,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     DriverSupportController,
     DriverIncidentReportsController,
     DriverSosAlertsController,
+    CustomerSosAlertsController,
     DriverShiftsController,
     DriverPlannedAvailabilityController,
     AdminDriverShiftsController,

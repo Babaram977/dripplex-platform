@@ -16,6 +16,7 @@ import type {
   FleetOverviewDto,
   FleetPeriodDto,
   InitiatedCallDto,
+  SosAlertDto,
 } from '@dripplex/types';
 
 /**
@@ -2955,6 +2956,22 @@ export const api = {
     getReceipt: (id: string) => dx<RideReceiptDto>('GET', `/customer/rides/${id}/receipt`),
     /** Mints (or returns) the public link for this trip. Idempotent. */
     share: (id: string) => dx<RideShareLinkDto>('POST', `/customer/rides/${id}/share`),
+    /**
+     * DPX-SAFETY-001 — passenger Emergency SOS. Raises a CRITICAL alert to
+     * DrippleX Operations with the trip and, when the browser grants it, a
+     * live position.
+     *
+     * Only accepted during an active trip: outside one the backend returns
+     * a validation error explaining so, which the screen shows rather than
+     * swallowing. DrippleX never dials emergency services on the
+     * passenger's behalf — the screen offers them the dialler.
+     */
+    sos: (body: { latitude?: number; longitude?: number }) =>
+      dx<SosAlertDto>('POST', '/customer/sos-alerts', body),
+    /** This passenger's own SOS alerts, newest first. Read on opening the
+     * Emergency screen so an alert raised minutes ago is shown as still
+     * open instead of inviting a duplicate. */
+    sosHistory: () => dx<SosAlertDto[]>('GET', '/customer/sos-alerts'),
     /**
      * A driver's real star rating, computed live from every RideRating they
      * have received. Public — a passenger deciding whether to get in the car
