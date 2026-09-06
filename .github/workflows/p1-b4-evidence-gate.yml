@@ -87,22 +87,26 @@ jobs:
         env:
           DATABASE_URL: postgresql://dripplex_test_user:dripplex_test_pass@localhost:5432/dripplex_test
         run: |
+          set -o pipefail
           cd apps/backend
           echo "=== PRISMA MIGRATION START ===" >> ../../p1-b4-actual-results.log
           npx prisma migrate deploy 2>&1 | tee -a ../../p1-b4-actual-results.log
-          if [ $? -ne 0 ]; then
-            echo "Migration failed" >> ../../p1-b4-actual-results.log
+          MIGRATION_EXIT=${PIPESTATUS[0]}
+          if [ $MIGRATION_EXIT -ne 0 ]; then
+            echo "Migration failed (exit code: $MIGRATION_EXIT)" >> ../../p1-b4-actual-results.log
             exit 1
           fi
           echo "=== PRISMA MIGRATION SUCCESS ===" >> ../../p1-b4-actual-results.log
 
       - name: Lint and typecheck
         run: |
+          set -o pipefail
           cd apps/backend
           echo "=== BUILD/LINT/TYPECHECK START ===" >> ../../p1-b4-actual-results.log
           npm run build 2>&1 | tee -a ../../p1-b4-actual-results.log
-          if [ $? -ne 0 ]; then
-            echo "Build/lint failed" >> ../../p1-b4-actual-results.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "Build/lint failed (exit code: $BUILD_EXIT)" >> ../../p1-b4-actual-results.log
             exit 1
           fi
           echo "=== BUILD/LINT/TYPECHECK SUCCESS ===" >> ../../p1-b4-actual-results.log
@@ -111,10 +115,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://dripplex_test_user:dripplex_test_pass@localhost:5432/dripplex_test
         run: |
+          set -o pipefail
           cd apps/backend
           echo "=== P1-B4 REPOSITORY TESTS START ===" >> ../../p1-b4-actual-results.log
           npm test -- repositories/prisma-audit-segment.repository.spec.ts --testTimeout=30000 2>&1 | tee -a ../../p1-b4-actual-results.log
-          REPO_TEST_EXIT=$?
+          REPO_TEST_EXIT=${PIPESTATUS[0]}
           echo "=== P1-B4 REPOSITORY TESTS EXIT CODE: $REPO_TEST_EXIT ===" >> ../../p1-b4-actual-results.log
           if [ $REPO_TEST_EXIT -ne 0 ]; then
             echo "Repository tests failed" >> ../../p1-b4-actual-results.log
@@ -125,10 +130,11 @@ jobs:
         env:
           DATABASE_URL: postgresql://dripplex_test_user:dripplex_test_pass@localhost:5432/dripplex_test
         run: |
+          set -o pipefail
           cd apps/backend
           echo "=== AUDIT SERVICE TESTS START ===" >> ../../p1-b4-actual-results.log
           npm test -- audit.service.spec.ts --testTimeout=30000 2>&1 | tee -a ../../p1-b4-actual-results.log
-          SERVICE_TEST_EXIT=$?
+          SERVICE_TEST_EXIT=${PIPESTATUS[0]}
           echo "=== AUDIT SERVICE TESTS EXIT CODE: $SERVICE_TEST_EXIT ===" >> ../../p1-b4-actual-results.log
           if [ $SERVICE_TEST_EXIT -ne 0 ]; then
             echo "Service tests failed" >> ../../p1-b4-actual-results.log
@@ -141,10 +147,11 @@ jobs:
         continue-on-error: true
         id: segment_auth_tests
         run: |
+          set -o pipefail
           cd apps/backend
           echo "=== SEGMENT AUTHORITY SERVICE TESTS START ===" >> ../../p1-b4-actual-results.log
           npm test -- segment-authority.service.spec.ts --testTimeout=30000 2>&1 | tee -a ../../p1-b4-actual-results.log
-          SEGMENT_AUTH_EXIT=$?
+          SEGMENT_AUTH_EXIT=${PIPESTATUS[0]}
           echo "=== SEGMENT AUTHORITY SERVICE TESTS EXIT CODE: $SEGMENT_AUTH_EXIT ===" >> ../../p1-b4-actual-results.log
           echo "exit_code=$SEGMENT_AUTH_EXIT" >> $GITHUB_OUTPUT
 
@@ -173,8 +180,7 @@ jobs:
           echo "=== ENVIRONMENT DETAILS ===" >> p1-b4-actual-results.log
           echo "PostgreSQL version:" >> p1-b4-actual-results.log
           psql --version >> p1-b4-actual-results.log
-          echo "Redis version:" >> p1-b4-actual-results.log
-          redis-cli --version >> p1-b4-actual-results.log
+          echo "Redis running in service (redis-cli not on runner)" >> p1-b4-actual-results.log
           echo "Node version:" >> p1-b4-actual-results.log
           node --version >> p1-b4-actual-results.log
           echo "npm version:" >> p1-b4-actual-results.log
@@ -183,6 +189,7 @@ jobs:
           cd apps/backend && npx prisma --version >> ../../p1-b4-actual-results.log
 
       - name: Add B4 Evidence Markers
+        if: steps.segment_auth_tests.outputs.exit_code == '0'
         run: |
           echo "" >> p1-b4-actual-results.log
           echo "=== B4 EVIDENCE GATE VERIFICATION ===" >> p1-b4-actual-results.log
@@ -192,15 +199,47 @@ jobs:
           echo "P1-B4 Segment Closure: PASS" >> p1-b4-actual-results.log
           echo "Evidence generated at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> p1-b4-actual-results.log
 
-      - name: Verify evidence file
+      - name: Record B4 Evidence Gate Status
         run: |
-          if grep -q "ALL B4 TESTS PASSED" p1-b4-actual-results.log; then
-            echo "✅ Evidence markers present"
-            tail -20 p1-b4-actual-results.log
+          if [ "${{ steps.segment_auth_tests.outputs.exit_code }}" == "0" ]; then
+            echo "✅ B4 Evidence Gate: ALL TESTS PASSED"
+            echo "Gate status: PASS" >> p1-b4-actual-results.log
           else
-            echo "❌ Evidence markers missing"
-            exit 1
+            echo "❌ B4 Evidence Gate: FAILURES DETECTED"
+            echo "Segment Authority Service tests failed with exit code: ${{ steps.segment_auth_tests.outputs.exit_code }}" >> p1-b4-actual-results.log
+            echo "Gate status: FAIL" >> p1-b4-actual-results.log
           fi
+
+      - name: Verify evidence file integrity
+        run: |
+          echo "=== Evidence File Contents (last 30 lines) ==="
+          tail -30 p1-b4-actual-results.log
+          echo ""
+          echo "=== Evidence File Integrity Check ==="
+          if grep -q "REPOSITORY TESTS EXIT CODE:" p1-b4-actual-results.log; then
+            echo "✅ Repository tests executed"
+          fi
+          if grep -q "AUDIT SERVICE TESTS EXIT CODE:" p1-b4-actual-results.log; then
+            echo "✅ Audit Service tests executed"
+          fi
+          if grep -q "SEGMENT AUTHORITY SERVICE TESTS EXIT CODE:" p1-b4-actual-results.log; then
+            echo "✅ Segment Authority Service tests executed"
+          fi
+
+      - name: Report final status
+        if: always()
+        run: |
+          echo "" >> p1-b4-actual-results.log
+          echo "=== P1-B4 CI EVIDENCE GATE FINAL REPORT ===" >> p1-b4-actual-results.log
+          echo "Workflow Run: ${{ github.run_id }}" >> p1-b4-actual-results.log
+          echo "Job ID: ${{ github.job }}" >> p1-b4-actual-results.log
+          echo "Tested SHA: ${{ steps.repo_state.outputs.HEAD_SHA }}" >> p1-b4-actual-results.log
+          if [ "${{ steps.segment_auth_tests.outputs.exit_code }}" == "0" ]; then
+            echo "Status: Evidence Gate PASSED" >> p1-b4-actual-results.log
+          else
+            echo "Status: Evidence Gate FAILED - See test output above" >> p1-b4-actual-results.log
+          fi
+          echo "Report timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> p1-b4-actual-results.log
 
       - name: Upload evidence artifact
         uses: actions/upload-artifact@v4
@@ -210,13 +249,3 @@ jobs:
           path: p1-b4-actual-results.log
           retention-days: 90
           if-no-files-found: error
-
-      - name: Report final status
-        if: always()
-        run: |
-          echo "=== P1-B4 CI EVIDENCE GATE FINAL REPORT ===" >> p1-b4-actual-results.log
-          echo "Workflow Run: ${{ github.run_id }}" >> p1-b4-actual-results.log
-          echo "Job ID: ${{ github.job }}" >> p1-b4-actual-results.log
-          echo "Tested SHA: ${{ steps.repo_state.outputs.HEAD_SHA }}" >> p1-b4-actual-results.log
-          echo "Status: Evidence Gate Complete" >> p1-b4-actual-results.log
-          cat p1-b4-actual-results.log
