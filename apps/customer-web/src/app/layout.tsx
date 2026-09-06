@@ -30,6 +30,24 @@ const sans = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
+  /**
+   * Self-referencing canonical on every route.
+   *
+   * Search Console reported "Duplicate without user-selected canonical" on
+   * 2026-09-06 and the cause was simply that the site emitted no
+   * `<link rel="canonical">` at all: `metadataBase` alone does not produce
+   * one, Next only writes the tag when `alternates.canonical` is set. Google
+   * was left to pick a representative URL between variants on its own, and
+   * five `/marketplace/products?categoryId=…` URLs plus a plain-HTTP copy of
+   * the home page were all indexed separately as a result.
+   *
+   * `'./'` resolves per route against metadataBase, so each page declares
+   * itself. Routes that must canonicalise somewhere else (the category-
+   * filtered product listing) override this in their own layout.
+   */
+  alternates: {
+    canonical: './',
+  },
   title: {
     default: `${siteConfig.name} — ${siteConfig.tagline}`,
     template: `%s · ${siteConfig.name}`,
