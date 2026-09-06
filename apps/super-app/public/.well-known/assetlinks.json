@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.dripplex.app",
+      "sha256_cert_fingerprints": [
+        "BF:CA:67:AC:85:C8:85:39:3F:F4:F6:61:7E:A4:E7:59:3A:10:AA:C9:81:C7:C9:1C:AB:25:25:0F:6B:3C:EB:21"
+      ]
+    }
+  }
+]
