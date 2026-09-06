@@ -25,6 +25,7 @@ export interface VerificationInput {
   manifestDigest: string;
 
   // From events (populated during verification)
+  // Compatible with both live auditLog and archived event records
   events: {
     sequence: bigint;
     hash: string;
@@ -33,6 +34,19 @@ export interface VerificationInput {
 
   // From predecessor segment (nullable if first segment)
   predecessorTailHash: string | null;
+}
+
+/**
+ * Post-purge verification input: uses archived event records instead of live auditLog.
+ * Proves archive integrity after live detail rows have been deleted.
+ */
+export interface PostPurgeVerificationInput extends VerificationInput {
+  // Explicitly using archived event data
+  archivedEvents: {
+    sequence: bigint;
+    hash: string;
+    predecessorHash: string;
+  }[];
 }
 
 export interface VerificationResult {

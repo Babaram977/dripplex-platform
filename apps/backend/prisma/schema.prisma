@@ -1156,6 +1156,7 @@ model AuditSegment {
   legalHoldReleases  SegmentLegalHoldRelease[]
   controlEvents      SegmentControlEvent[]
   archiveManifest    SegmentArchiveManifest?
+  archivedEvents     SegmentArchivedEvent[]   @relation("SegmentArchivedEventArchive")
 
   @@index([lifecycle, createdAt(sort: Desc)])
   @@index([predecessorSegmentId])
@@ -1251,10 +1252,58 @@ model SegmentArchiveManifest {
   signingMetadata Json?    @map("signing_metadata")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  segment AuditSegment @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  segment AuditSegment                @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  archivedEvents SegmentArchivedEvent[]
 
   @@index([segmentId])
   @@map("segment_archive_manifests")
+}
+
+/// P1-B8.3 Immutable Archived Events: Complete preservation of audit event data for post-purge verification.
+/// Once inserted, cannot be modified or deleted (ON DELETE RESTRICT prevents orphaning).
+/// Survives purge of live auditLog rows and enables independent archive verification.
+model SegmentArchivedEvent {
+  id              String   @id @db.Uuid
+  archiveId       String   @map("archive_id") @db.Uuid // FK to SegmentArchiveManifest
+  segmentId       String   @map("segment_id") @db.Uuid
+  /// Global sequence number (determines event order within segment).
+  sequence        BigInt
+  /// SHA-256 digest of the original event (proves event integrity).
+  hash            String   @db.Char(64)
+  /// Hash of the previous event (proves chain continuity).
+  predecessorHash String   @map("predecessor_hash") @db.Char(64)
+  /// Event actor (may be NULL for anonymous/legacy events).
+  userId          String?  @map("user_id") @db.Uuid
+  /// Event type: what happened (e.g., "user.created", "payment.processed").
+  action          String   @db.VarChar(150)
+  /// Resource type (e.g., "User", "Ride", "Business").
+  resource        String?  @db.VarChar(100)
+  /// Resource instance ID.
+  resourceId      String?  @map("resource_id") @db.Uuid
+  /// Source IP (preserved for audit context).
+  ipAddress       String?  @map("ip_address") @db.VarChar(45)
+  /// User agent (preserved for audit context).
+  userAgent       String?  @map("user_agent") @db.VarChar(512)
+  /// Event payload/data (JSON for flexibility).
+  metadata        Json     @default("{}")
+  /// Original event timestamp (immutable).
+  createdAt       DateTime @map("created_at") @db.Timestamp(3)
+  /// When this event was archived.
+  archivedAt      DateTime @default(now()) @map("archived_at") @db.Timestamp(3)
+
+  // Relations
+  segment AuditSegment  @relation("SegmentArchivedEventArchive", fields: [segmentId], references: [id], onDelete: Restrict)
+  manifest SegmentArchiveManifest @relation(fields: [archiveId], references: [id], onDelete: Restrict)
+
+  // Immutability constraints
+  /// Unique constraint: each segment+sequence appears exactly once.
+  @@unique([segmentId, sequence])
+  /// Indexes for efficient querying.
+  @@index([archiveId])
+  @@index([segmentId])
+  @@index([sequence])
+  @@index([createdAt])
+  @@map("segment_archived_events")
 }
 
 /// P1-B8 Retention Policy: Policy-based eligibility rules for archive/purge authorization.

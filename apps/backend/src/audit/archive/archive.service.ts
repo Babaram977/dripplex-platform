@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { ArchiveManifestBuilder } from './archive-manifest.builder';
-import { SixPartVerifier } from './six-part-verifier';
+import { SixPartVerifier, type VerificationResult } from './six-part-verifier';
 
 /**
  * Archive Service — Segment Archive Creation & Verification
@@ -94,9 +94,18 @@ export class ArchiveService {
       where: { segmentId },
       orderBy: { sequence: 'asc' },
       select: {
+        id: true,
         sequence: true,
         hash: true,
         predecessorHash: true,
+        userId: true,
+        action: true,
+        resource: true,
+        resourceId: true,
+        ipAddress: true,
+        userAgent: true,
+        metadata: true,
+        createdAt: true,
       },
     });
 
@@ -180,7 +189,7 @@ export class ArchiveService {
       );
     }
 
-    // Step 5: Create archive manifest row in database
+    // Step 5a: Create archive manifest row in database
     const createdManifest = await tx.segmentArchiveManifest.create({
       data: {
         id: manifest.id,
@@ -194,6 +203,36 @@ export class ArchiveService {
         manifestDigest: manifest.manifestDigest,
         signingMetadata: (manifest.signingMetadata ?? null) as Prisma.InputJsonValue,
       },
+    });
+
+    // Step 5b: Create immutable archived event records for post-purge verification
+    // These records preserve all essential event data so archive can be verified after live rows are purged
+    const archivedEventRecords = rawEvents.map((e, index) => {
+      const eventData = events[index];
+      if (!eventData) {
+        const idxStr = String(index);
+        throw new Error(`Event data missing for index ${idxStr}`);
+      }
+      return {
+        id: e.id,
+        archiveId: createdManifest.id,
+        segmentId,
+        sequence: eventData.sequence,
+        hash: eventData.hash,
+        predecessorHash: eventData.predecessorHash,
+        userId: e.userId ?? null,
+        action: e.action,
+        resource: e.resource ?? null,
+        resourceId: e.resourceId ?? null,
+        ipAddress: e.ipAddress ?? null,
+        userAgent: e.userAgent ?? null,
+        metadata: e.metadata as Prisma.InputJsonValue,
+        createdAt: e.createdAt,
+      };
+    });
+
+    await tx.segmentArchivedEvent.createMany({
+      data: archivedEventRecords,
     });
 
     // Step 6: Update segment state to ARCHIVE_PENDING, set archivedAt
@@ -302,5 +341,83 @@ export class ArchiveService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  }
+
+  /**
+   * Verify archive integrity using archived event records (post-purge verification).
+   *
+   * After live auditLog rows are deleted during purge, this method verifies the archive
+   * using only the immutable archived event records, proving the archive survived purge.
+   *
+   * @param tx - Caller-owned Prisma.TransactionClient
+   * @param segmentId - Archived segment
+   * @returns Verification result using only archived events
+   */
+  public async verifyArchivePostPurge(
+    tx: Prisma.TransactionClient,
+    segmentId: string,
+  ): Promise<VerificationResult> {
+    // Load segment and manifest
+    const segment = await tx.auditSegment.findUnique({
+      where: { id: segmentId },
+    });
+
+    if (!segment) {
+      throw new Error(`Segment not found: ${segmentId}`);
+    }
+
+    const manifest = await tx.segmentArchiveManifest.findUnique({
+      where: { segmentId },
+    });
+
+    if (!manifest) {
+      throw new Error(`Archive manifest not found for segment ${segmentId}`);
+    }
+
+    // Load archived events (live auditLog rows may be deleted)
+    const archivedEvents = await tx.segmentArchivedEvent.findMany({
+      where: { segmentId },
+      orderBy: { sequence: 'asc' },
+      select: {
+        sequence: true,
+        hash: true,
+        predecessorHash: true,
+      },
+    });
+
+    // Load predecessor segment for anchor verification
+    let predecessorTailHash: string | null = null;
+    if (segment.predecessorSegmentId !== null) {
+      const predecessor = await tx.auditSegment.findUnique({
+        where: { id: segment.predecessorSegmentId },
+        select: { lastHash: true },
+      });
+      if (predecessor) {
+        predecessorTailHash = predecessor.lastHash;
+      }
+    }
+
+    // Run verification against archived events
+    const verificationResult = this.verifier.verify(
+      {
+        segmentId,
+        firstSequence: segment.firstSequence,
+        lastSequence: segment.lastSequence ?? 0n,
+        eventCount: segment.eventCount,
+        firstHash: segment.firstHash,
+        lastHash: segment.lastHash,
+        predecessorHash: manifest.predecessorHash,
+        manifestDigest: manifest.manifestDigest,
+        events: archivedEvents.map((e) => ({
+          sequence: e.sequence,
+          hash: e.hash,
+          predecessorHash: e.predecessorHash,
+        })),
+        predecessorTailHash,
+      },
+      (input) => this.manifestBuilder.calculateManifestDigest(input),
+    );
+
+    return verificationResult;
   }
 }
