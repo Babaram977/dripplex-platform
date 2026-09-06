@@ -20,7 +20,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const serverUrl = process.env['CAPACITOR_SERVER_URL'] ?? 'https://app.dripplex.com';
 
 const config: CapacitorConfig = {
-  appId: 'com.dripplex.customer',
+  appId: 'com.dripplex.app',
   appName: 'DrippleX',
   webDir: 'www',
   server: {

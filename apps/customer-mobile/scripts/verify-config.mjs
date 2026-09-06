@@ -39,8 +39,11 @@ const projectPath = join(root, 'ios/App/App.xcodeproj/project.pbxproj');
 
 if (existsSync(gradlePath)) {
   const gradle = readFileSync(gradlePath, 'utf8');
-  if (!gradle.includes('applicationId "com.dripplex.customer"'))
-    fail('Android applicationId mismatch');
+  // Android only. The iOS bundle identifier below is still
+  // com.dripplex.customer and stays that way: Apple never claimed it, so
+  // nothing forces it to move, and changing it would invalidate the
+  // Associated Domains entry and the appID in assetlinks/AASA for no gain.
+  if (!gradle.includes('applicationId "com.dripplex.app"')) fail('Android applicationId mismatch');
   else ok('Android applicationId');
   // This used to pin the literal `versionCode 1000100`, which is precisely the
   // state that broke: Play accepts a versionCode once per applicationId, for
@@ -182,9 +185,14 @@ if (existsSync(googleServicesPath)) {
     // Firebase registers an app under whatever string is typed, and a mismatch
     // is not a build error — the plugin just finds no matching client and push
     // is silently dead. A real registration used "Com.dripplex.com".
-    if (!packages.includes('com.dripplex.customer')) {
+    // Firebase cannot rename an Android app's package, so the applicationId
+    // move needs a NEW app registered in the dripplex-3a92d project and a
+    // replacement GOOGLE_SERVICES_JSON_BASE64 secret. Until that is done this
+    // check fails loudly, which is the point: the alternative is a green build
+    // whose push is silently dead.
+    if (!packages.includes('com.dripplex.app')) {
       fail(
-        `google-services.json has no client for com.dripplex.customer (declares: ${
+        `google-services.json has no client for com.dripplex.app (declares: ${
           packages.join(', ') || 'none'
         }) — package names are case-sensitive and cannot be renamed in Firebase`,
       );

@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:000000000000:android:placeholder",
         "android_client_info": {
-          "package_name": "com.dripplex.customer"
+          "package_name": "com.dripplex.app"
         }
       },
       "oauth_client": [],

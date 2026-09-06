@@ -26,10 +26,27 @@ apply plugin: 'com.android.application'
 def dripplexVersionCode = (System.getenv("ANDROID_VERSION_CODE") ?: "1000100").toInteger()
 
 android {
+    // Deliberately still com.dripplex.customer while applicationId is not.
+    //
+    // namespace is the package the R class and the manifest's relative class
+    // names resolve against — it is a *code* identity, private to the build.
+    // applicationId is the *Play* identity. AGP has kept them separable since
+    // 3.0 precisely so one can move without the other, and moving this one too
+    // would rename every Java file's package and the directory tree under
+    // src/main/java for no benefit Play can see.
     namespace "com.dripplex.customer"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.dripplex.customer"
+        // Play binds an applicationId to the account that first published it,
+        // permanently, and will not reuse a deleted app's package name.
+        // com.dripplex.customer was uploaded to the personal account dX_hub
+        // (versionCode 1000100, internal testing 2026-08-27) and then deleted,
+        // so it may be spent. See docs/store/GOOGLE-PLAY.md.
+        //
+        // "customer" was always a misnomer: this is one binary serving
+        // customer, merchant, rider and driver (PrivacyInfo.xcprivacy says so).
+        // If a rename is forced, .app is the honest name.
+        applicationId "com.dripplex.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode dripplexVersionCode

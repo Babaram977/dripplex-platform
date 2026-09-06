@@ -8,7 +8,7 @@ Prepare the DrippleX customer mobile application for controlled Android and iOS 
 
 - Customer app: `@dripplex/customer-mobile`
 - Framework: Capacitor 7
-- Android application ID: `com.dripplex.customer`
+- Android application ID: `com.dripplex.app` (code namespace remains `com.dripplex.customer`)
 - iOS bundle identifier: `com.dripplex.customer`
 - Android channels: `production`, `internal`, `closedBeta`
 - Production customer URL: `https://app.dripplex.com` — the Capacitor default, and **settled**: it serves the super-app. See _Shell target_ below.

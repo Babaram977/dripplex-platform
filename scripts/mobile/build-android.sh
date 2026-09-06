@@ -17,7 +17,7 @@ MOBILE="${ROOT}/apps/customer-mobile"
 FLAVOR="${ANDROID_FLAVOR:-production}"
 REQUIRE_SIGNED="${REQUIRE_SIGNED:-0}"
 REQUIRE_PUSH="${REQUIRE_PUSH:-0}"
-APPLICATION_ID="com.dripplex.customer"
+APPLICATION_ID="com.dripplex.app"
 
 cd "${MOBILE}"
 

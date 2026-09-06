@@ -12,7 +12,7 @@ Path: `https://app.dripplex.com/.well-known/assetlinks.json`
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.dripplex.customer",
+      "package_name": "com.dripplex.app",
       "sha256_cert_fingerprints": ["REPLACE_WITH_RELEASE_SHA256"]
     }
   }
@@ -20,6 +20,13 @@ Path: `https://app.dripplex.com/.well-known/assetlinks.json`
 ```
 
 Obtain SHA-256: `keytool -list -v -keystore release.keystore -alias dripplex-customer`
+
+> **`package_name` here is the Android `applicationId`, not the code namespace.** It moved
+> to `com.dripplex.app`; the Java package and the iOS bundle identifier below did not.
+> A hosted assetlinks.json still naming `com.dripplex.customer` silently stops verifying
+> App Links — the intent filter keeps working, but Android stops opening links in the app
+> without the disambiguation dialog. Re-host this file with the build that carries the new
+> id.
 
 ## iOS Universal Links
 

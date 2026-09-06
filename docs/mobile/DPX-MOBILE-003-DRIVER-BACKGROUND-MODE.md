@@ -419,16 +419,16 @@ exactly what the task says must not be the background mechanism. It is not a fal
 
 ### §3.3 Notification centre and FCM — more exists than expected
 
-|                             |                                                                                                |
-| --------------------------- | ---------------------------------------------------------------------------------------------- |
-| Notification centre         | ✅ `NotificationCenterSubscriber`, preferences keyed on (channel, type)                        |
-| `FirebasePushProvider`      | ✅ Real FCM sends, multi-device fan-out, auto-deactivates dead tokens                          |
-| Device token storage        | ✅ `DeviceToken` / `DeviceRegistryService`, idempotent                                         |
-| Super-app registers a token | ✅ **since #294 (merged today)** — `registerPushDevice`, after sign-in                         |
-| `RIDE_OFFERED` → PUSH       | ✅ **since #295 (merged today)** — CRITICAL, `priority: high`, TTL from real expiry            |
-| `google-services.json`      | ✅ Supplied by CI from `GOOGLE_SERVICES_JSON_BASE64` (#293); build fails if push would be dead |
-| Firebase project            | ✅ `dripplex-3a92d`, Android app `com.dripplex.customer`                                       |
-| High-importance channel     | ⏳ **#296, open**                                                                              |
+|                             |                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Notification centre         | ✅ `NotificationCenterSubscriber`, preferences keyed on (channel, type)                                                          |
+| `FirebasePushProvider`      | ✅ Real FCM sends, multi-device fan-out, auto-deactivates dead tokens                                                            |
+| Device token storage        | ✅ `DeviceToken` / `DeviceRegistryService`, idempotent                                                                           |
+| Super-app registers a token | ✅ **since #294 (merged today)** — `registerPushDevice`, after sign-in                                                           |
+| `RIDE_OFFERED` → PUSH       | ✅ **since #295 (merged today)** — CRITICAL, `priority: high`, TTL from real expiry                                              |
+| `google-services.json`      | ✅ Supplied by CI from `GOOGLE_SERVICES_JSON_BASE64` (#293); build fails if push would be dead                                   |
+| Firebase project            | ⚠️ `dripplex-3a92d`, Android app `com.dripplex.customer` — stale once the applicationId moves to `com.dripplex.app`; re-register |
+| High-importance channel     | ⏳ **#296, open**                                                                                                                |
 
 **So the FCM path to a backgrounded phone is already built and is not a blocker.** What does not exist is
 anything that keeps the driver _dispatchable_ while backgrounded — an offer can only be pushed to a driver
