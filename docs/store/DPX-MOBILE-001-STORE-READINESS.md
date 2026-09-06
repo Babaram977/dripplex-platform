@@ -175,7 +175,8 @@ split — was run against production on 2026-08-24.
 
 Launcher and splash assets shipped the **stock Capacitor logo** up to 2026-08-21 —
 verified by opening the files, not by reading a manifest. They are now generated from the
-founder-supplied master vector `apps/customer-mobile/resources/dripplex-mark.svg`.
+founder-supplied dX master `apps/customer-mobile/resources/dripplex-dx-mark.png`
+(2026-09-06), which replaced the X-less `dripplex-mark.svg`.
 
 Required:
 

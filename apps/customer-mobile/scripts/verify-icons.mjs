@@ -14,12 +14,14 @@ import { createRequire } from 'node:module';
 
 import {
   ROOT,
-  markGeometry,
-  ADAPTIVE_COVER,
-  ICONS,
+  loadMaster,
+  approvedCover,
+  adaptiveCover,
+  APPROVED_PROPORTION,
+  icons,
   ROUND_ICONS,
   ADAPTIVE_FOREGROUNDS,
-  STORE_ICONS,
+  storeIcons,
   SPLASHES,
   FEATURE_GRAPHIC,
 } from './asset-spec.mjs';
@@ -72,11 +74,14 @@ async function checkSize(file, width, height) {
 }
 
 /**
- * The mark has four elements stacked vertically — top bar, middle bar, long
- * bar, and the diagonal/bowl. A column through all four must cross exactly
- * four painted bands. Three means one was dropped, which is precisely what a
- * degenerate gradient does to a zero-height shape: it renders nothing at all,
- * with no error anywhere.
+ * A column at 34% of the width crosses exactly four painted bands — the three
+ * speed bars and then the body of the D. Three means one was dropped.
+ *
+ * The old vector mark happened to give the same answer at the same column,
+ * for a different reason (its fourth band was the diagonal/bowl); the count
+ * was re-measured against the dX master rather than carried over on faith. It
+ * holds anywhere between 28% and 50% of the width, so the check is not
+ * balanced on a knife edge.
  */
 async function checkMarkIntact(file, size) {
   if (size < 96) return; // below this the bands merge; covered at larger sizes
@@ -222,15 +227,18 @@ async function checkFeatureGraphic(spec) {
   }
 }
 
-const g = markGeometry();
-if (Math.abs(g.w / g.canvas - 0.7536) > 0.001) {
+const g = await loadMaster();
+const ICONS = icons(approvedCover(g));
+const STORE_ICONS = storeIcons(approvedCover(g));
+
+if (Math.abs(approvedCover(g) - APPROVED_PROPORTION) > 0.001) {
   fail(
-    'resources/dripplex-mark.svg',
-    `mark now covers ${(g.w / g.canvas).toFixed(4)} of its canvas; the approved proportion is 0.7536`,
+    'resources/dripplex-dx-mark.png',
+    `mark now covers ${approvedCover(g).toFixed(4)} of its canvas; the approved proportion is ${APPROVED_PROPORTION}`,
   );
 }
-if (ADAPTIVE_COVER * Math.hypot(1, g.h / g.w) > 0.6667 + 1e-9) {
-  fail('asset-spec.mjs', 'ADAPTIVE_COVER would put the mark outside the adaptive-icon safe circle');
+if (adaptiveCover(g) * Math.hypot(1, g.h / g.w) > 0.6667 + 1e-9) {
+  fail('asset-spec.mjs', 'adaptiveCover would put the mark outside the adaptive-icon safe circle');
 }
 
 for (const { file, size, alpha } of [...ICONS, ...STORE_ICONS]) {

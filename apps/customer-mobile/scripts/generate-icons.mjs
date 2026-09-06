@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Regenerate every native launcher icon, store icon and splash image from
- * resources/dripplex-mark.svg.
+ * resources/dripplex-dx-mark.png.
  *
  * Run after any change to the master. Output is deterministic: the same master
  * always produces the same bytes, so a dirty git tree after running this means
@@ -18,14 +18,15 @@ import {
   ROOT,
   BLACK,
   FONT_DIR,
-  markGeometry,
-  ADAPTIVE_COVER,
+  loadMaster,
+  approvedCover,
+  adaptiveCover,
   ROUND_COVER,
   SPLASH_COVER,
-  ICONS,
+  icons,
   ROUND_ICONS,
   ADAPTIVE_FOREGROUNDS,
-  STORE_ICONS,
+  storeIcons,
   SPLASHES,
   FEATURE_GRAPHIC,
 } from './asset-spec.mjs';
@@ -58,15 +59,19 @@ process.env['FONTCONFIG_FILE'] = FONTCONF;
 const require = createRequire(import.meta.url);
 const sharp = require('sharp');
 
-const g = markGeometry();
+const g = await loadMaster();
+const ICONS = icons(approvedCover(g));
+const STORE_ICONS = storeIcons(approvedCover(g));
+const ADAPTIVE_COVER = adaptiveCover(g);
 
-/** The master's <defs> and drawing group, without its own black backdrop. */
-const ART = (() => {
-  const defs = g.svg.match(/<defs>[\s\S]*?<\/defs>/)?.[0] ?? '';
-  const body = g.svg.match(/<g\b[\s\S]*<\/g>/)?.[0];
-  if (!body) throw new Error('master SVG has no drawing group');
-  return { defs, body };
-})();
+/**
+ * The master's artwork on a transparent ground, embedded so every canvas
+ * below is composed in the master's own coordinate space — the same space the
+ * measured bounds (g.x/g.y/g.w/g.h) are expressed in, which is what lets the
+ * placement maths be identical for a raster master and the vector one it
+ * replaced.
+ */
+const ART = `<image x="0" y="0" width="${g.canvas}" height="${g.canvas}" href="data:image/png;base64,${g.artwork.toString('base64')}"/>`;
 
 /**
  * Compose the mark onto a canvas.
@@ -88,8 +93,8 @@ function compose({ width, height, cover, background, circle = false }) {
       ? `<circle cx="${width / 2}" cy="${height / 2}" r="${fit / 2}" fill="${background}"/>`
       : `<rect width="${width}" height="${height}" fill="${background}"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-${bg}${ART.defs}
-<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART.body}</g>
+${bg}
+<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART}</g>
 </svg>`;
 }
 
@@ -122,9 +127,9 @@ function composeFeature({ width, height, markCover, safeInset, title, tagline },
   const taglineY = titleY + taglineSize * 1.62;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-<rect width="${width}" height="${height}" fill="${BLACK}"/>${ART.defs}
+<rect width="${width}" height="${height}" fill="${BLACK}"/>
 <g transform="translate(${dx.toFixed(4)} 0)">
-<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART.body}</g>
+<g transform="translate(${tx.toFixed(4)} ${ty.toFixed(4)}) scale(${s.toFixed(6)})">${ART}</g>
 <text x="${textX.toFixed(2)}" y="${titleY.toFixed(2)}" fill="#FFFFFF" font-family="Poppins SemiBold, Poppins, sans-serif" font-weight="600" font-size="${titleSize.toFixed(2)}" letter-spacing="${(-titleSize * 0.018).toFixed(3)}">${title}</text>
 <text x="${textX.toFixed(2)}" y="${taglineY.toFixed(2)}" fill="#62FF00" font-family="Inter, sans-serif" font-weight="400" font-size="${taglineSize.toFixed(2)}" letter-spacing="${(taglineSize * 0.01).toFixed(3)}">${tagline}</text>
 </g>
@@ -224,4 +229,4 @@ jobs.push(
 );
 
 const written = await Promise.all(jobs);
-console.log(`generated ${written.length} assets from resources/dripplex-mark.svg`);
+console.log(`generated ${written.length} assets from resources/dripplex-dx-mark.png`);

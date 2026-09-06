@@ -375,10 +375,11 @@ installed app does not have.
 | Phone screenshots       | 2–8, min 1080×1920 | ✅ `resources/play-screenshots/` — 5 captured, **2 worth uploading** |
 | 7-inch / 10-inch tablet | Optional           | ⏳                                                                   |
 
-The icon and the feature graphic are generated from `resources/dripplex-mark.svg`,
-not drawn by hand. Regenerate with `node scripts/generate-icons.mjs` and check
-with `node scripts/verify-icons.mjs` from `apps/customer-mobile`. A dirty git
-tree after a regenerate means someone edited a PNG directly.
+The icon and the feature graphic are generated from `resources/dripplex-dx-mark.png`
+— the approved dX artwork — not drawn by hand. Regenerate with
+`node scripts/generate-icons.mjs` and check with `node scripts/verify-icons.mjs`
+from `apps/customer-mobile`. A dirty git tree after a regenerate means someone
+edited a PNG directly.
 
 Screenshots are different: they photograph live production data through the
 real app (`node scripts/capture-screenshots.mjs`), so they are **not** byte

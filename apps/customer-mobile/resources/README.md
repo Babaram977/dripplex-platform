@@ -1,9 +1,16 @@
 # Native brand assets — source of truth
 
-`dripplex-mark.svg` is the **master**. Every launcher icon, store icon and splash
+`dripplex-dx-mark.png` is the **master** — the approved dX artwork, founder-supplied
+2026-09-06, committed exactly as delivered. Every launcher icon, store icon and splash
 image under `android/` and `ios/` is generated from it by
 `scripts/generate-icons.mjs`. Nothing in those directories is hand-edited — if an
 asset looks wrong, fix the master or the generator, never the PNG.
+
+It replaces `dripplex-mark.svg`, which carried a D and speed lines with no X. The
+master is a raster because that is the form the artwork was approved in; the generator
+resamples it and never redraws it. Sizes above the master's own 939px painted width —
+only the 2732px splashes — are a mild upscale. A Bézier version would remove that
+ceiling and is worth asking the designer for.
 
 ```
 pnpm --filter @dripplex/customer-mobile icons:generate   # rewrite every asset

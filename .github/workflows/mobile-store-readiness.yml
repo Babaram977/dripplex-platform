@@ -42,11 +42,11 @@ jobs:
         run: bash scripts/mobile/verify-mobile.sh
       - name: Verify native brand assets
         run: pnpm --filter @dripplex/customer-mobile icons:verify
-      - name: Assert brand assets match the master vector
+      - name: Assert brand assets match the master artwork
         run: |
           pnpm --filter @dripplex/customer-mobile icons:generate
           if ! git diff --quiet -- apps/customer-mobile; then
-            echo "::error::Native brand assets differ from what resources/dripplex-mark.svg generates."
+            echo "::error::Native brand assets differ from what resources/dripplex-dx-mark.png generates."
             echo "Run 'pnpm --filter @dripplex/customer-mobile icons:generate' and commit the result."
             git --no-pager diff --stat -- apps/customer-mobile
             exit 1

@@ -45,7 +45,7 @@ const config: CapacitorConfig = {
       launchShowDuration: 2000,
       launchAutoHide: true,
       // Black to match the black-ground brand artwork in
-      // resources/dripplex-mark.svg. The previous green (#0E7A3E) framed
+      // resources/dripplex-dx-mark.png. The previous green (#0E7A3E) framed
       // the splash image in a colour the image itself does not contain.
       backgroundColor: '#000000',
       androidSplashResourceName: 'splash',
