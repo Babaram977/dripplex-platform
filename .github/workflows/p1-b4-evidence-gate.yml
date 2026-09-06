@@ -50,9 +50,10 @@ jobs:
         run: |
           echo "HEAD_SHA=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
           echo "BRANCH=$(git rev-parse --abbrev-ref HEAD)" >> $GITHUB_OUTPUT
-          echo "COMMIT_MSG=$(git log -1 --pretty=%B)" >> $GITHUB_OUTPUT
           git log --oneline -10 > /tmp/recent_commits.txt
           cat /tmp/recent_commits.txt
+          echo "=== Commit Message ===" >> /tmp/recent_commits.txt
+          git log -1 --pretty=%B >> /tmp/recent_commits.txt
 
       - name: Setup Node.js and pnpm
         uses: pnpm/action-setup@v2
