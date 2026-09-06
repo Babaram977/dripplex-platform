@@ -117,14 +117,21 @@ The record resolved 2026-08-28 and D&B quoted 2–3 business days to become visi
 **2026-09-02 is the earliest date a Google lookup can succeed**. That date has arrived.
 Starting verification earlier would have stalled the application rather than queuing it.
 
-### ⛔ 2026-09-05 — no Console access at all, and the app has been deleted
+### 2026-09-05 — the account was locked out for two days, and the app was deleted
 
 **This supersedes the transfer/conversion reasoning in the section below.** Both routes
 described there assumed two things that are no longer true: that an account could reach
 the Console, and that there was an app to move.
 
-**The organization account exists, is paid for, and is D-U-N-S verified — and is
-unreachable.** It was created under **`play@dripplex.com`**, and Google **disabled that
+> **Appeal accepted 2026-09-05.** Access to the organization account is restored, so the
+> access half of this section is history. What follows is kept as the record of what
+> happened and why it must not happen again. The organization account is **`dx_tech`,
+> account ID 8449411381684511998** — a different account from the personal `dX_hub` that
+> held the deleted app. Its identity was verified 2026-09-03 and its website ownership
+> 2026-09-04, both via `play@dripplex.com`.
+
+**The organization account exists, is paid for, and is D-U-N-S verified — and was for two
+days unreachable.** It was created under **`play@dripplex.com`**, and Google **disabled that
 Google account on 2026-09-04**, with:
 
 > It looks like this account was created or used with multiple other accounts to violate
@@ -147,7 +154,19 @@ the personal account **`dX_hub` (account ID 8299498816806668700)** as a Draft on
 internal testing track with 0 installed audience — and the founder **deleted it** from
 that account. So there is no app to transfer and nothing to convert.
 
-#### The consequence that costs code: the package name may be spent
+#### Resolved 2026-09-05: the package name IS spent
+
+Confirmed in the Console. Creating the app on the organization account with
+`com.dripplex.customer` is refused:
+
+> This package name is already in use. Use a different package name.
+
+So the rename is not a contingency any more — it is required. `com.dripplex.app` replaces
+it; see `claude/android-application-id`. The reasoning that follows is kept because it is
+the explanation, and because the same trap applies to the new name: **once
+`com.dripplex.app` has a bundle uploaded, deleting that app spends it too.**
+
+#### Why it was spent
 
 Play does not let a deleted app's package name be reused. `com.dripplex.customer` had a
 bundle uploaded before deletion — `versionCode 1000100`, internal testing 2026-08-27 — so
@@ -158,10 +177,8 @@ the name was used, not merely reserved.
 > no agent session can read the Console. Do not plan around either answer until it is
 > tested.
 
-**Test it on the organization account once the appeal restores access** — create the app
-there and upload the existing AAB. If Play rejects the package name, rename; if it
-accepts, nothing to do. `claude/android-application-id` carries the rename, prepared and
-verified but deliberately unmerged, so the answer decides it rather than a guess.
+**Tested 2026-09-05 on the organization account: Play rejected the name.** That settles
+it — `claude/android-application-id` is required, not contingent.
 
 **Do not test by uploading to `dX_hub`.** Uploading binds whichever package name is used
 to that personal account, which recreates the transfer problem this section exists to
