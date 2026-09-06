@@ -164,8 +164,10 @@ jobs:
           set -o pipefail
           cd apps/backend
           echo "=== SEGMENT AUTHORITY SERVICE TESTS START ===" >> ../../p1-b4-actual-results.log
+          set +e  # Temporarily disable exit-on-error to capture exit code
           npm test -- segment-authority.service.spec.ts --testTimeout=30000 2>&1 | tee -a ../../p1-b4-actual-results.log
           SEGMENT_AUTH_EXIT=${PIPESTATUS[0]}
+          set -e  # Re-enable exit-on-error
           echo "=== SEGMENT AUTHORITY SERVICE TESTS EXIT CODE: $SEGMENT_AUTH_EXIT ===" >> ../../p1-b4-actual-results.log
           echo "exit_code=$SEGMENT_AUTH_EXIT" >> $GITHUB_OUTPUT
 
@@ -203,7 +205,7 @@ jobs:
           cd apps/backend && npx prisma --version >> ../../p1-b4-actual-results.log
 
       - name: Add B4 Evidence Markers
-        if: steps.segment_auth_tests.outputs.exit_code == '0'
+        if: steps.segment_auth_tests.outputs.exit_code != '' && steps.segment_auth_tests.outputs.exit_code == '0'
         run: |
           echo "" >> p1-b4-actual-results.log
           echo "=== B4 EVIDENCE GATE VERIFICATION ===" >> p1-b4-actual-results.log
@@ -215,12 +217,17 @@ jobs:
 
       - name: Record B4 Evidence Gate Status
         run: |
-          if [ "${{ steps.segment_auth_tests.outputs.exit_code }}" == "0" ]; then
+          EXIT_CODE="${{ steps.segment_auth_tests.outputs.exit_code }}"
+          if [ -z "$EXIT_CODE" ]; then
+            echo "❌ B4 Evidence Gate: EXIT CODE NOT CAPTURED"
+            echo "Gate status: FAIL" >> p1-b4-actual-results.log
+            echo "Error: SegmentAuthorityService exit code was not captured" >> p1-b4-actual-results.log
+          elif [ "$EXIT_CODE" == "0" ]; then
             echo "✅ B4 Evidence Gate: ALL TESTS PASSED"
             echo "Gate status: PASS" >> p1-b4-actual-results.log
           else
             echo "❌ B4 Evidence Gate: FAILURES DETECTED"
-            echo "Segment Authority Service tests failed with exit code: ${{ steps.segment_auth_tests.outputs.exit_code }}" >> p1-b4-actual-results.log
+            echo "Segment Authority Service tests failed with exit code: $EXIT_CODE" >> p1-b4-actual-results.log
             echo "Gate status: FAIL" >> p1-b4-actual-results.log
           fi
 
