@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { PrismaModule } from '../prisma/prisma.module';
 
+import { ArchiveService } from './archive/archive.service';
 import { AuditChainService } from './audit-chain.service';
 import { AuditController } from './audit.controller';
 import { AuditService } from './audit.service';
@@ -17,12 +18,13 @@ import { SegmentAuthorityService } from './segment-authority.service';
     AuditService,
     SegmentAuthorityService,
     AuditChainService,
+    ArchiveService,
     PrismaAuditSegmentRepository,
     {
       provide: AUDIT_LOG_REPOSITORY,
       useClass: PrismaAuditLogRepository,
     },
   ],
-  exports: [AuditService],
+  exports: [AuditService, ArchiveService],
 })
 export class AuditModule {}
