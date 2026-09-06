@@ -20,7 +20,6 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: dripplex_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -77,6 +76,8 @@ jobs:
             echo "Waiting for PostgreSQL..."
             sleep 1
           done
+          psql -h localhost -U postgres -c "DROP DATABASE IF EXISTS dripplex_test;"
+          psql -h localhost -U postgres -c "DROP USER IF EXISTS dripplex_test_user;"
           psql -h localhost -U postgres -c "CREATE DATABASE dripplex_test;"
           psql -h localhost -U postgres -c "CREATE USER dripplex_test_user WITH PASSWORD 'dripplex_test_pass';"
           psql -h localhost -U postgres -c "ALTER DATABASE dripplex_test OWNER TO dripplex_test_user;"
