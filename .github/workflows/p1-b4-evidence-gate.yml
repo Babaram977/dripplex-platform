@@ -114,15 +114,16 @@ jobs:
       - name: Lint and typecheck
         run: |
           set -o pipefail
-          cd apps/backend
-          echo "=== BUILD/LINT/TYPECHECK START ===" >> ../../p1-b4-actual-results.log
-          npm run build 2>&1 | tee -a ../../p1-b4-actual-results.log
+          echo "=== BUILD/LINT/TYPECHECK START ===" >> p1-b4-actual-results.log
+          # Use turbo to build with proper dependency ordering
+          # turbo.json specifies: build depends on ^build (dependencies build first)
+          pnpm exec turbo run build --filter=@dripplex/backend 2>&1 | tee -a p1-b4-actual-results.log
           BUILD_EXIT=${PIPESTATUS[0]}
           if [ $BUILD_EXIT -ne 0 ]; then
-            echo "Build/lint failed (exit code: $BUILD_EXIT)" >> ../../p1-b4-actual-results.log
+            echo "Build/lint failed (exit code: $BUILD_EXIT)" >> p1-b4-actual-results.log
             exit 1
           fi
-          echo "=== BUILD/LINT/TYPECHECK SUCCESS ===" >> ../../p1-b4-actual-results.log
+          echo "=== BUILD/LINT/TYPECHECK SUCCESS ===" >> p1-b4-actual-results.log
 
       - name: Run P1-B4 Repository Tests
         env:
