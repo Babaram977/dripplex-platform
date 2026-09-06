@@ -117,7 +117,94 @@ The record resolved 2026-08-28 and D&B quoted 2–3 business days to become visi
 **2026-09-02 is the earliest date a Google lookup can succeed**. That date has arrived.
 Starting verification earlier would have stalled the application rather than queuing it.
 
+### 2026-09-05 — the account was locked out for two days, and the app was deleted
+
+**This supersedes the transfer/conversion reasoning in the section below.** Both routes
+described there assumed two things that are no longer true: that an account could reach
+the Console, and that there was an app to move.
+
+> **Appeal accepted 2026-09-05.** Access to the organization account is restored, so the
+> access half of this section is history. What follows is kept as the record of what
+> happened and why it must not happen again. The organization account is **`dx_tech`,
+> account ID 8449411381684511998** — a different account from the personal `dX_hub` that
+> held the deleted app. Its identity was verified 2026-09-03 and its website ownership
+> 2026-09-04, both via `play@dripplex.com`.
+
+**The organization account exists, is paid for, and is D-U-N-S verified — and was for two
+days unreachable.** It was created under **`play@dripplex.com`**, and Google **disabled that
+Google account on 2026-09-04**, with:
+
+> It looks like this account was created or used with multiple other accounts to violate
+> Google's policies. The account might have been created by a computer program or bot.
+
+Founder's account of the cause, 2026-09-05: repeated sign-in attempts from changing
+networks while travelling. That is a false positive rather than a real violation, which is
+the kind of case an appeal is for — but it is Google's automated judgement that has to be
+reversed, and until it is, the paid organization account cannot be opened by anybody.
+
+- **Appeal submitted 2026-09-05.** Google quotes ~2 business days; it was submitted on a
+  Saturday, so **2026-09-08/09** is the realistic window.
+- The account is scheduled to be **considered for deletion from 2027-07-31** if never
+  restored. That is the outer bound, not the deadline that matters.
+- **No AAB was ever uploaded to the organization account.** Nothing is half-migrated there:
+  a successful appeal returns a clean, paid, verified account.
+
+**And the app is gone from the account that held it.** `com.dripplex.customer` lived on
+the personal account **`dX_hub` (account ID 8299498816806668700)** as a Draft on the
+internal testing track with 0 installed audience — and the founder **deleted it** from
+that account. So there is no app to transfer and nothing to convert.
+
+#### Resolved 2026-09-05: the package name IS spent
+
+Confirmed in the Console. Creating the app on the organization account with
+`com.dripplex.customer` is refused:
+
+> This package name is already in use. Use a different package name.
+
+So the rename is not a contingency any more — it is required. `com.dripplex.app` replaces
+it; see `claude/android-application-id`. The reasoning that follows is kept because it is
+the explanation, and because the same trap applies to the new name: **once
+`com.dripplex.app` has a bundle uploaded, deleting that app spends it too.**
+
+#### Why it was spent
+
+Play does not let a deleted app's package name be reused. `com.dripplex.customer` had a
+bundle uploaded before deletion — `versionCode 1000100`, internal testing 2026-08-27 — so
+the name was used, not merely reserved.
+
+> **Unverified, and it decides whether there is code work.** Play's behaviour for a draft
+> that was uploaded but never _publicly published_ is not quoted anywhere in this repo and
+> no agent session can read the Console. Do not plan around either answer until it is
+> tested.
+
+**Tested 2026-09-05 on the organization account: Play rejected the name.** That settles
+it — `claude/android-application-id` is required, not contingent.
+
+**Do not test by uploading to `dX_hub`.** Uploading binds whichever package name is used
+to that personal account, which recreates the transfer problem this section exists to
+describe.
+
+#### While the appeal is open
+
+- **Do not create another Google account, and do not enrol a second developer account.**
+  Play treats a second developer account opened while the first is suspended or under
+  appeal as evasion, and it can terminate the new one too — this time with the company's
+  name and D-U-N-S attached to a termination.
+- **Do not upload anything to `dX_hub`**, for the reason above.
+- **Distribute by sideloading.** The signed APK needs no Console: it installs from a link
+  and is enough for the Kano tester cohort and for the Gate C device pass.
+- **Keep the evidence** — the card charge for the developer fee, the D&B resolution email,
+  the disable screenshot and the appeal confirmation. A second-stage appeal goes better
+  with dates and receipts.
+
+---
+
 ### ⚠️ `com.dripplex.customer` is already claimed — settle this before creating anything
+
+> **Superseded 2026-09-05 by the section above.** The app has since been deleted from the
+> account that held it, so neither the transfer route nor the conversion route below is
+> available. Kept because the reasoning about `applicationId` being permanently bound
+> still explains why the package name may now be unusable.
 
 **A new organization account cannot publish the existing app.** On Play an
 `applicationId` is globally unique and permanently bound to the account that first
@@ -151,12 +238,17 @@ closed off. It costs the internal testing track, the Play App Signing key and an
 base, it starts a fresh listing with no history, and it invalidates the current AAB —
 `applicationId` is compiled in, so it needs a code change and a rebuild.
 
-### Recorded gap — which account holds the app today
+### Which account held the app — answered 2026-09-05
 
-**Nothing in this repository records which Play account currently owns
-`com.dripplex.customer`.** That detail becomes load-bearing during a transfer or a
-conversion, and it currently lives only in the founder's memory. Write it here when
-known.
+The gap this section recorded is closed, and the answer is part of the problem.
+
+`com.dripplex.customer` was held by the **personal** account **`dX_hub`, account ID
+8299498816806668700** — confirmed from the Console on 2026-08-31, showing one app,
+`com.dripplex.customer`, status Draft / Internal testing, 0 installed audience. The
+founder has since **deleted** that app.
+
+The organization account under `play@dripplex.com` is a _different_ account and never held
+it.
 
 ## App details
 
