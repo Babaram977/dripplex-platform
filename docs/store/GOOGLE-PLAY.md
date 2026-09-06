@@ -252,17 +252,29 @@ it.
 
 ## App details
 
-| Field                            | Value                                                                   |
-| -------------------------------- | ----------------------------------------------------------------------- |
-| **Title**                        | Dripplex                                                                |
-| **Short description** (80 chars) | Nigeria’s Super Platform — shop, food, rides, wallet. life, Simplified. |
-| **Full description**             | See below                                                               |
-| **Category**                     | Shopping                                                                |
-| **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, parcel, pharmacy    |
-| **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                      |
-| **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                             |
-| **Support URL**                  | `https://www.dripplex.com/contact`                                      |
-| **Email**                        | support@dripplex.com                                                    |
+| Field                            | Value                                                                      |
+| -------------------------------- | -------------------------------------------------------------------------- |
+| **Title**                        | DrippleX                                                                   |
+| **Short description** (80 chars) | Book rides, order from local shops, pay bills and send money — one wallet. |
+| **Full description**             | See below                                                                  |
+| **Category**                     | Shopping — **unconfirmed**, see note below                                 |
+| **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, pharmacy, airtime      |
+| **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                         |
+| **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                                |
+| **Support URL**                  | `https://www.dripplex.com/contact`                                         |
+| **Email**                        | support@dripplex.com                                                       |
+
+**Title casing is `DrippleX`** (founder-confirmed 2026-09-06), matching
+`android/app/src/main/res/values/strings.xml` and `capacitor.config.ts`.
+
+`parcel` left the keyword list with the copy below: nothing in the codebase
+sends a standalone parcel. `DeliveryJob` exists, but it delivers a
+marketplace `Order` — there is no customer-facing "send a package" flow.
+
+**Category is still the founder's call.** `Shopping` was chosen when the
+listing was a marketplace draft. The app now leads with rides and a wallet,
+so `Maps & Navigation` or `Finance` may fit better — and `Finance` carries
+extra Play scrutiny. Recorded as open rather than silently changed.
 
 Listing URLs use **www**, because the bare apex 308-redirects to it
 (`apps/customer-web/next.config.ts`). The apex forms still resolve — Google
@@ -270,23 +282,89 @@ follows the redirect — but pointing the Console straight at the destination
 avoids a needless hop and keeps the value stable if the redirect is ever
 tightened.
 
-### Full description (template)
+### Full description — final copy (2026-09-06)
+
+Replaces the earlier template, which was written before the app was built
+and described two things that do not exist: **parcels** (no standalone
+send-a-package flow) and **home services** (`MerchantCategory` has
+`SERVICES`, but it is a merchant listing category, not a booking product).
+Every line below was checked against the code on 2026-09-06 — see the
+verification note after the block.
+
+2,032 of 4,000 characters.
 
 ```
-Dripplex is Nigeria’s Super Platform for everyday life — marketplace, food delivery, parcels, rides, pharmacy, home services, and wallet in one app.
+DrippleX brings the things you do every day into one app: getting around, getting things delivered, paying bills, and moving money.
 
-life, Simplified.
+ONE WALLET FOR EVERYTHING
+Top up your DrippleX Wallet with your bank card or a bank transfer, then use the same balance across the whole app. Send money to another DrippleX user with just their phone number or email address. Withdraw to any Nigerian bank account. Every transfer gets its own reference and receipt, so you always have a record.
 
-• Shop local merchants and essentials
-• Order food with live delivery tracking
-• Send parcels and book rides
-• Pay and manage money with Dripplex Wallet
-• Track orders and notifications in one place
+Your wallet is protected by a PIN you set yourself, and you can view or download a statement for any month.
 
-Built for Nigeria. Secure sign-in, device-aware sessions, and a fast mobile experience.
+RIDES
+Book Economy, Comfort, XL or Tricycle. You see the fare before you book, not after. Track your driver on the map, share your live trip with someone you trust, and pay with your wallet, cash or card. Rate your driver at the end, add a tip if you want to, and keep the receipt.
 
-Questions? support@dripplex.com
+Emergency SOS is built into every trip. If something feels wrong, hold the SOS button and DrippleX Operations is alerted immediately with your trip details and your location.
+
+SHOP AND GET IT DELIVERED
+Browse supermarkets, restaurants, pharmacies, electronics stores, fashion, beauty, hardware, furniture and wholesalers near you. Add to your cart, check out with your wallet, and follow your order from the shop to your door.
+
+HOTELS
+Find and book rooms directly in the app.
+
+BILLS AND TOP-UPS
+Buy airtime and data for any network. Pay for electricity and get your token. Renew cable TV. Buy exam result-checker PINs. All from your wallet balance.
+
+REWARDS
+Earn loyalty points as you use the app, and get rewarded when friends you invite join DrippleX.
+
+STAY IN TOUCH
+Call or message your driver or delivery rider inside the app, without sharing your personal phone number.
+
+EARN WITH DRIPPLEX
+The same app is where you drive, deliver, or sell. Sign up as a driver, a delivery rider, or a merchant and start earning.
+
+BUILT FOR NIGERIA
+Prices in naira. Payouts to Nigerian banks. Support that understands where you are.
+
+DrippleX is operated by AFNAN HOMES LTD.
 ```
+
+#### What each claim rests on
+
+| Claim                                            | Code                                                                                                             |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Wallet top-up / withdraw / send                  | `wallet/customer-wallet-funding.controller.ts`, `wallet/withdrawal.service.ts`, `POST /customer/wallet/transfer` |
+| Send by phone **or email**                       | `wallet/wallet-recipients.service.ts` (`findByPhone` / `findByEmail`)                                            |
+| Reference + receipt per transfer                 | `WALLET_TRANSFER_REFERENCE_TYPE`, `WalletTransferReceiptDto`                                                     |
+| Wallet PIN, monthly statement                    | `wallet/wallet-pin.service.ts`, `GET /customer/wallet/statement`                                                 |
+| Economy / Comfort / XL / Tricycle                | `enum RideType` (schema.prisma)                                                                                  |
+| Fare before booking                              | `POST /customer/rides/estimate`                                                                                  |
+| Share live trip                                  | `POST /customer/rides/:id/share` → `ShareTripScreen`                                                             |
+| **Emergency SOS**                                | `POST /customer/sos-alerts` — DPX-SAFETY-001, shipped 2026-09-06                                                 |
+| Merchant categories listed                       | `enum MerchantCategory` (12 values; the 9 named are real)                                                        |
+| Order → delivery tracking                        | `model Order`, `model DeliveryJob`, `model DeliveryTracking`                                                     |
+| Hotels                                           | `model Booking`, `apps/super-app/src/app/hotelBookingScreens.tsx`                                                |
+| Airtime / data / electricity / cable / exam PINs | `enum UtilityServiceType`                                                                                        |
+| Loyalty points, referrals                        | `model LoyaltyAccount`, `model Referral`                                                                         |
+| In-app call / message                            | DPX-MOBILE-002 (LiveKit), ride chat                                                                              |
+
+#### Deliberate omission — betting top-ups
+
+`UtilityServiceType.BETTING` (funding a bookmaker account) is live and is
+**not** named in the listing. Google Play's real-money gambling policy is
+country-gated and strictly enforced, and advertising bookmaker funding
+invites a reviewer to apply it. Nigerian VTU platforms treat this as an
+ordinary bill payment, and DrippleX is not a gambling operator — so the
+feature ships, it is simply not marketed. **Founder confirmation wanted**
+before that changes.
+
+#### Do not publish this listing before the SOS build ships
+
+The Emergency SOS paragraph became true on 2026-09-06 (DPX-SAFETY-001).
+Any APK/AAB built before that commit has an inert SOS screen, so shipping
+this copy against an older artifact would describe a safety feature the
+installed app does not have.
 
 ## Graphics (required)
 
