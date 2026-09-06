@@ -81,10 +81,11 @@ describe('SegmentAuthorityService', () => {
 
       const result = await service.allocateSequenceAndObtainTail(mockTx);
 
+      // Verify sequence allocation
       expect(result.sequence).toBe(1n);
-      expect(mockTx.auditStreamState.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: 'main' },
-      });
+      // Verify that $queryRaw was called to execute SELECT...FOR UPDATE
+      // (This is the mechanism used for explicit row-level locking on audit_stream_state)
+      expect(mockTx.$queryRaw).toHaveBeenCalled();
     });
 
     it('should return activeSegmentId from stream state', async () => {
