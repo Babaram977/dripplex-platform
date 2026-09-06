@@ -108,10 +108,12 @@ echo "=========================================="
 
 if [ $TEST_RESULT -eq 0 ]; then
   echo -e "${GREEN}✓ ALL TESTS PASSED${NC}"
+  echo "ALL TESTS PASSED" >> "$OUTPUT_FILE"
   TEST_COUNT=$(grep "Tests:" "$OUTPUT_FILE" | tail -1 || true)
   if [ -n "$TEST_COUNT" ]; then echo "$TEST_COUNT"; fi
   echo ""
   echo -e "${GREEN}✓ P1-B2 PostgreSQL Integration Tests: PASS${NC}"
+  echo "P1-B2 PostgreSQL Integration Tests: PASS" >> "$OUTPUT_FILE"
   echo ""
   echo "Full output saved to: $OUTPUT_FILE"
   echo ""
