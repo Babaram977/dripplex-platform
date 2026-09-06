@@ -368,12 +368,12 @@ installed app does not have.
 
 ## Graphics (required)
 
-| Asset                   | Spec               | Status                                                               |
-| ----------------------- | ------------------ | -------------------------------------------------------------------- |
-| App icon                | 512×512 PNG        | ✅ `resources/play-store-icon-512.png`                               |
-| Feature graphic         | 1024×500           | ✅ `resources/play-feature-graphic-1024x500.png`                     |
-| Phone screenshots       | 2–8, min 1080×1920 | ✅ `resources/play-screenshots/` — 5 captured, **2 worth uploading** |
-| 7-inch / 10-inch tablet | Optional           | ⏳                                                                   |
+| Asset                   | Spec               | Status                                                                        |
+| ----------------------- | ------------------ | ----------------------------------------------------------------------------- |
+| App icon                | 512×512 PNG        | ✅ `resources/play-store-icon-512.png`                                        |
+| Feature graphic         | 1024×500           | ✅ `resources/play-feature-graphic-1024x500.png`                              |
+| Phone screenshots       | 2–8, min 1080×1920 | ⚠️ `resources/play-screenshots/` — 5 captured, **1 that sells**, 3 uploadable |
+| 7-inch / 10-inch tablet | Optional           | ⏳                                                                            |
 
 The icon and the feature graphic are generated from `resources/dripplex-dx-mark.png`
 — the approved dX artwork — not drawn by hand. Regenerate with
@@ -384,10 +384,22 @@ edited a PNG directly.
 Screenshots are different: they photograph live production data through the
 real app (`node scripts/capture-screenshots.mjs`), so they are **not** byte
 reproducible and CI does not check them. `resources/play-screenshots/README.md`
-grades each one and says why. In short: home and marketplace are listing
-quality; wallet (₦0.00, no transactions) and orders (a single order on an empty
-screen) are thin because the data is thin, and the fix is real usage, not
-seeded rows.
+grades each one and says why.
+
+**Regraded 2026-09-06.** This page used to say "home and marketplace are
+listing quality". Home is not: its largest card reads "Ask Drip — Coming
+soon" / "Our AI assistant isn't available yet", and two Quick Actions carry
+SOON badges. Advertising absent functionality in a store screenshot is a Play
+metadata-policy risk and, policy aside, is the worst possible first
+impression. Only `02-marketplace` actively sells anything; `03-ride` and
+`04-wallet` are uploadable but thin, and `05-orders` should not ship.
+
+Upload `02-marketplace` + `03-ride` + `04-wallet` to clear the minimum of
+two. The account is a testing account (founder-confirmed 2026-09-06), so the
+first name visible in three frames is not customer PII — and funding that
+wallet and placing orders through the app, then recapturing, is the intended
+way to make the thin frames strong. Four or more at 1080px also unlocks
+promotion eligibility.
 
 The feature graphic's type no longer depends on the machine: Poppins and Inter
 are vendored in `resources/fonts/` and the generator points fontconfig there, so
