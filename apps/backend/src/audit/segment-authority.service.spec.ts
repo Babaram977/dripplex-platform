@@ -1,9 +1,11 @@
 import { type Prisma } from '@prisma/client';
 
+import { type PrismaAuditSegmentRepository } from './repositories/prisma-audit-segment.repository';
 import { SegmentAuthorityService } from './segment-authority.service';
 
 describe('SegmentAuthorityService', () => {
   let service: SegmentAuthorityService;
+  let mockAuditSegmentRepository: jest.Mocked<PrismaAuditSegmentRepository>;
 
   const mockStreamState = {
     id: 'main',
@@ -38,19 +40,44 @@ describe('SegmentAuthorityService', () => {
   };
 
   beforeEach(() => {
-    service = new SegmentAuthorityService();
+    mockAuditSegmentRepository = {
+      closeSegment: jest.fn(),
+    };
+    service = new SegmentAuthorityService(mockAuditSegmentRepository);
   });
 
   describe('allocateSequenceAndObtainTail', () => {
-    it('should allocate nextSequence from stream state', async () => {
-      const mockTx = {
+    // Helper function to create a properly mocked transaction client
+    const createMockTx = (
+      streamStateOverride?: typeof mockStreamState,
+      segmentOverride?: Record<string, unknown>,
+    ): Prisma.TransactionClient => {
+      const streamState = streamStateOverride ?? mockStreamState;
+      const segment = {
+        ...mockActiveSegment,
+        ...segmentOverride,
+      };
+
+      return {
+        $queryRaw: jest.fn().mockResolvedValue([
+          {
+            id: streamState.id,
+            next_sequence: streamState.nextSequence,
+            tail_hash: streamState.tailHash,
+            active_segment_id: streamState.activeSegmentId,
+          },
+        ]),
         auditStreamState: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockStreamState),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(streamState),
         },
         auditSegment: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockActiveSegment),
+          findUniqueOrThrow: jest.fn().mockResolvedValue(segment),
         },
       } as unknown as Prisma.TransactionClient;
+    };
+
+    it('should allocate nextSequence from stream state', async () => {
+      const mockTx = createMockTx();
 
       const result = await service.allocateSequenceAndObtainTail(mockTx);
 
@@ -61,14 +88,7 @@ describe('SegmentAuthorityService', () => {
     });
 
     it('should return activeSegmentId from stream state', async () => {
-      const mockTx = {
-        auditStreamState: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockStreamState),
-        },
-        auditSegment: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockActiveSegment),
-        },
-      } as unknown as Prisma.TransactionClient;
+      const mockTx = createMockTx();
 
       const result = await service.allocateSequenceAndObtainTail(mockTx);
 
@@ -76,14 +96,7 @@ describe('SegmentAuthorityService', () => {
     });
 
     it('should return predecessorHash from stream state tail', async () => {
-      const mockTx = {
-        auditStreamState: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockStreamState),
-        },
-        auditSegment: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockActiveSegment),
-        },
-      } as unknown as Prisma.TransactionClient;
+      const mockTx = createMockTx();
 
       const result = await service.allocateSequenceAndObtainTail(mockTx);
 
@@ -93,29 +106,13 @@ describe('SegmentAuthorityService', () => {
     });
 
     it('should throw error if ACTIVE segment is not ACTIVE', async () => {
-      const closedSegment = { ...mockActiveSegment, lifecycle: 'CLOSED' };
-
-      const mockTx = {
-        auditStreamState: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockStreamState),
-        },
-        auditSegment: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(closedSegment),
-        },
-      } as unknown as Prisma.TransactionClient;
+      const mockTx = createMockTx(mockStreamState, { lifecycle: 'CLOSED' as const });
 
       await expect(service.allocateSequenceAndObtainTail(mockTx)).rejects.toThrow('not ACTIVE');
     });
 
     it('should validate segment is really ACTIVE (concurrency check)', async () => {
-      const mockTx = {
-        auditStreamState: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockStreamState),
-        },
-        auditSegment: {
-          findUniqueOrThrow: jest.fn().mockResolvedValue(mockActiveSegment),
-        },
-      } as unknown as Prisma.TransactionClient;
+      const mockTx = createMockTx();
 
       await service.allocateSequenceAndObtainTail(mockTx);
 
