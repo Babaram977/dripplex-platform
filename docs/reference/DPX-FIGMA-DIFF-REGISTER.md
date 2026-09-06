@@ -755,3 +755,21 @@ into the file rather than re-derive.
 
 `DriverPresenceStatus` renders nothing on web and iOS: the presence service is Android-only, and
 `not-android` there is the correct answer rather than a fault to report.
+
+## Emergency SOS — three Figma elements removed as unbacked (DPX-SAFETY-001, 2026-09-06)
+
+The Figma `EmergencySOSScreen` shows three action cards and an emergency-contacts
+list. Implementing the screen against a real endpoint meant deciding, per element,
+whether a backend exists for it. Two do not, and one was factually wrong for the
+launch market, so the implementation diverges from the design as follows.
+
+| Figma element                                                                     | Shipped as                                                                    | Why                                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Call 911 / Emergency" card                                                       | **"Call emergency services (112)"**, a real `tel:` link                       | 911 is not an emergency number in Nigeria. 112 is the national line. The card was previously not a link at all. Whether 112 is the number DrippleX should surface — some states also run 767 — is open question 2 in `docs/DPX-SAFETY-001-CUSTOMER-SOS.md`. |
+| "Share Live Location" card                                                        | **"Share live trip"**, navigating to the existing `ShareTripScreen`           | That screen already mints a real public tracking link via `api.rides.share()`. Rebuilding a second sharing mechanism inside SOS would duplicate it. Shown only when there is a trip to share.                                                               |
+| "Contact DrippleX Safety" card                                                    | **Removed**                                                                   | No safety-team chat endpoint exists. The SOS alert itself is what reaches Operations, so the card was also redundant; the screen now states that Operations is notified automatically rather than offering a button that goes nowhere.                      |
+| Emergency contacts list (`Mum · +234 803 000 0001`) and "+ Add emergency contact" | **Removed**, replaced by one line saying saved contacts are not available yet | The row was hardcoded and the button was dead. Customers have no stored emergency contacts — only drivers do, through KYC (`SubmitEmergencyContactRequest`). Inventing customer-side storage was out of scope and would have been speculative.              |
+
+The hold-to-send interaction, the progress ring and the overall layout are
+unchanged from the design. The "Current Trip" card is unchanged in shape but now
+reads real values rather than placeholders.

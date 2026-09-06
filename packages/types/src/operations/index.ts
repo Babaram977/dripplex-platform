@@ -5,6 +5,7 @@ import type {
   IncidentCategory,
   IncidentReportStatus,
   IncidentSeverity,
+  SosAlertOrigin,
   SosAlertStatus,
 } from '../driver/index.js';
 import type {
@@ -395,6 +396,13 @@ export interface OperationsCaseBaseDto {
 export interface SosQueueItemDto extends OperationsCaseBaseDto {
   caseType: 'SOS';
   sourceStatus: SosAlertStatus;
+  /** DPX-SAFETY-001 — who pressed it. The inherited `driverId`/
+   * `driverName`/`driverPhone` are the driver ON the alert either way; on
+   * a `CUSTOMER` alert that is context, not the person in trouble. */
+  origin: SosAlertOrigin;
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
   rideId: string | null;
   vehicleId: string | null;
   latitude: number | null;

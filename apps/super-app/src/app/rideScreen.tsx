@@ -36,6 +36,7 @@ import {
 import { referralShareUrl } from '../lib/referralLink';
 
 import type { AddressPrediction } from '../lib/maps';
+import type { SosAlertDto } from '@dripplex/types';
 import type {
   CardProviderOptionDto,
   CustomerRideDto,
@@ -5664,21 +5665,103 @@ export function ReferralScreen({ onBack }: { onBack?: () => void }) {
   );
 }
 
-// 11. EmergencySOSScreen
-export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onSOS?: () => void }) {
+// 11. EmergencySOSScreen — a real alert to real people.
+//
+// DPX-SAFETY-001 (founder-requested 2026-09-06). This screen used to be
+// entirely inert: three action cards rendered from a static array with no
+// onClick, a hardcoded emergency contact ("Mum · +234 803 000 0001"), a dead
+// "+ Add emergency contact", and a hold-to-send button whose only effect was
+// to navigate back to the trip. A passenger in trouble pressed something that
+// looked like it summoned help and did nothing.
+//
+// It now POSTs /customer/sos-alerts, which files a durable alert and pushes it
+// at CRITICAL priority to everyone in DrippleX Operations. Three things are
+// deliberately NOT faked, because no backend exists for them:
+//   - DrippleX never dials emergency services for you. The button opens your
+//     dialler on 112 and you place the call.
+//   - There is no safety-team chat endpoint, so no chat card is offered; the
+//     alert itself is what reaches Operations.
+//   - Customers have no stored emergency contacts (only drivers do, via KYC),
+//     so none are listed rather than inventing one.
+export function EmergencySOSScreen({
+  onBack,
+  rideId,
+  onShareTrip,
+}: {
+  onBack?: () => void;
+  rideId?: string;
+  onShareTrip?: () => void;
+}) {
+  const ride = useLiveRide(rideId);
   const [holding, setHolding] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [sending, setSending] = useState(false);
+  const [alert, setAlert] = useState<SosAlertDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendingRef = useRef(false);
+
+  // An alert raised minutes ago is still the live one. Showing it beats
+  // inviting a second alert for the same emergency, which splits Operations'
+  // attention across two records.
+  useEffect(() => {
+    let alive = true;
+    api.rides
+      .sosHistory()
+      .then((alerts) => {
+        const open = alerts.find((a) => a.status !== 'RESOLVED');
+        if (alive && open) setAlert(open);
+      })
+      .catch(() => {
+        // A failed history read must never block raising a new alert.
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const send = useCallback(async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setSending(true);
+    setError(null);
+    try {
+      // Position is worth waiting for — it is the single most useful field
+      // Operations gets — but never at the cost of the alert itself. Whatever
+      // has not arrived in five seconds is sent as absent.
+      const position = await Promise.race([
+        getCurrentPosition(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000)),
+      ]);
+      const created = await api.rides.sos(
+        position ? { latitude: position.latitude, longitude: position.longitude } : {},
+      );
+      setAlert(created);
+    } catch (e: unknown) {
+      // Never pretend this succeeded, and never navigate away: believing help
+      // is coming when it is not is the worst outcome this screen has.
+      setError(
+        e instanceof ApiError || e instanceof Error
+          ? e.message
+          : 'We could not send your alert. Call emergency services directly.',
+      );
+    } finally {
+      sendingRef.current = false;
+      setSending(false);
+      setProgress(0);
+    }
+  }, []);
 
   const startHold = () => {
+    if (sending || alert) return;
     setHolding(true);
     setProgress(0);
     timerRef.current = setInterval(() => {
       setProgress((p) => {
         if (p >= 100) {
-          clearInterval(timerRef.current!);
+          if (timerRef.current) clearInterval(timerRef.current);
           setHolding(false);
-          onSOS && onSOS();
+          void send();
           return 100;
         }
         return p + 100 / 30;
@@ -5691,7 +5774,18 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
+  useEffect(
+    () => () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    },
+    [],
+  );
+
   const circumference = 2 * Math.PI * 44;
+  const plate = ride?.driverVehicle?.plateNumber ?? null;
+  const car = ride?.driverVehicle
+    ? `${ride.driverVehicle.color} ${ride.driverVehicle.make} ${ride.driverVehicle.model}`
+    : null;
 
   return (
     <div
@@ -5707,7 +5801,42 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
         </p>
       </div>
       <div className="flex-1 overflow-y-auto px-5" style={{ scrollbarWidth: 'none' }}>
-        {/* Trip info */}
+        {alert ? (
+          <div
+            className="mb-4 rounded-2xl p-4"
+            style={{ background: 'rgba(34,197,94,.1)', border: `1px solid ${G3}33` }}
+          >
+            <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: G3 }}>
+              DrippleX Operations has been alerted
+            </p>
+            <p style={{ fontSize: 13, color: '#fff', fontFamily: IT, marginTop: 6 }}>
+              Reference {alert.id.slice(0, 8).toUpperCase()}
+            </p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 2 }}>
+              Sent {new Date(alert.createdAt).toLocaleTimeString()} ·{' '}
+              {alert.latitude !== null && alert.longitude !== null
+                ? 'your location was included'
+                : 'no location could be read'}
+            </p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT, marginTop: 8 }}>
+              Stay on the line if you are in immediate danger — call emergency services below.
+            </p>
+          </div>
+        ) : null}
+
+        {error ? (
+          <div
+            className="mb-4 rounded-2xl p-4"
+            style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)' }}
+          >
+            <p style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: COLOR_ERROR }}>
+              Alert not sent
+            </p>
+            <p style={{ fontSize: 13, color: '#fff', fontFamily: IT, marginTop: 4 }}>{error}</p>
+          </div>
+        ) : null}
+
+        {/* Real trip context, read off the live ride — no invented driver or plate. */}
         <div
           className="mb-4 rounded-2xl p-4"
           style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.2)' }}
@@ -5723,97 +5852,87 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
           >
             Current Trip
           </p>
-          {/* GAP: no live driver name/plate endpoint (RideDto exposes only driverId). */}
-          <p style={{ fontSize: 13, color: '#fff', fontFamily: IT }}>Driver: Assigned</p>
-          <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>Plate: —</p>
-          <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
-            Location: Ozumba Mbadiwe Ave, VI
-          </p>
+          {ride ? (
+            <>
+              <p style={{ fontSize: 13, color: '#fff', fontFamily: IT }}>
+                Driver: {ride.driverName ?? 'Assigned'}
+              </p>
+              <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
+                Vehicle: {car ? `${car}${plate ? ` · ${plate}` : ''}` : '—'}
+              </p>
+              <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
+                Heading to: {ride.dropoffAddress ?? '—'}
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: TEXT_SECONDARY, fontFamily: IT }}>
+              No trip in progress. Emergency SOS reaches DrippleX Operations during a trip — if you
+              need help now, call emergency services below.
+            </p>
+          )}
         </div>
-        {/* Action cards */}
-        {[
-          {
-            icon: '🚨',
-            label: 'Call 911 / Emergency',
-            sub: 'Connect to emergency services',
-            color: '#EF4444',
-            bg: 'rgba(239,68,68,.1)',
-          },
-          {
-            icon: '📍',
-            label: 'Share Live Location',
-            sub: 'Send trip details to your contacts',
-            color: '#3B82F6',
-            bg: 'rgba(59,130,246,.1)',
-          },
-          {
-            icon: '💬',
-            label: 'Contact DrippleX Safety',
-            sub: 'Chat with our safety team',
-            color: G3,
-            bg: 'rgba(34,197,94,.1)',
-          },
-        ].map((a) => (
+
+        {/* Emergency services: a real dialler link. DrippleX never places the
+            call itself — that stays the passenger's action, per the locked v1
+            decision not to auto-contact emergency services. */}
+        <a
+          href="tel:112"
+          className="mb-3 flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all active:scale-[.97]"
+          style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.13)' }}
+        >
+          <div
+            className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl"
+            style={{ background: 'rgba(239,68,68,.13)' }}
+          >
+            <span style={{ fontSize: 22 }}>🚨</span>
+          </div>
+          <div>
+            <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: '#EF4444' }}>
+              Call emergency services (112)
+            </p>
+            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
+              Opens your phone&apos;s dialler
+            </p>
+          </div>
+        </a>
+
+        {rideId && onShareTrip ? (
           <button
-            key={a.label}
+            onClick={onShareTrip}
             className="mb-3 flex w-full items-center gap-4 rounded-2xl p-4 text-left transition-all active:scale-[.97]"
-            style={{ background: a.bg, border: `1px solid ${a.color}22` }}
+            style={{ background: 'rgba(59,130,246,.1)', border: '1px solid rgba(59,130,246,.13)' }}
           >
             <div
               className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl"
-              style={{ background: `${a.color}22` }}
+              style={{ background: 'rgba(59,130,246,.13)' }}
             >
-              <span style={{ fontSize: 22 }}>{a.icon}</span>
+              <span style={{ fontSize: 22 }}>📍</span>
             </div>
             <div>
-              <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: a.color }}>
-                {a.label}
+              <p style={{ fontFamily: PP, fontSize: 14, fontWeight: 700, color: '#3B82F6' }}>
+                Share live trip
               </p>
-              <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>{a.sub}</p>
+              <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>
+                Send a tracking link to someone you trust
+              </p>
             </div>
           </button>
-        ))}
-        {/* Emergency contacts */}
+        ) : null}
+
         <p
           style={{
-            fontFamily: PP,
-            fontSize: 13,
-            fontWeight: 600,
-            color: '#fff',
+            fontSize: 12,
+            color: TEXT_SECONDARY,
+            fontFamily: IT,
             marginTop: 8,
-            marginBottom: 10,
+            marginBottom: 24,
           }}
         >
-          Emergency Contacts
+          Sending an SOS notifies the DrippleX safety team immediately — you do not need to contact
+          them separately. Saved emergency contacts are not available yet.
         </p>
-        <div
-          className="mb-2 flex items-center justify-between rounded-xl p-3.5"
-          style={{ background: NAVY_CARD, border: `1px solid ${BORDER}` }}
-        >
-          <div>
-            <p style={{ fontSize: 13, color: '#fff', fontFamily: PP, fontWeight: 600 }}>Mum</p>
-            <p style={{ fontSize: 12, color: TEXT_SECONDARY, fontFamily: IT }}>+234 803 000 0001</p>
-          </div>
-          <button
-            className="rounded-full px-3 py-1 text-xs"
-            style={{
-              background: 'rgba(34,197,94,.1)',
-              color: G3,
-              fontFamily: PP,
-              fontWeight: 600,
-              border: `1px solid rgba(34,197,94,.2)`,
-            }}
-          >
-            Call
-          </button>
-        </div>
-        <button
-          className="mb-6 w-full p-3 text-left"
-          style={{ color: G3, fontSize: 13, fontFamily: IT }}
-        >
-          + Add emergency contact
-        </button>
       </div>
+
       {/* SOS hold button */}
       <div className="flex flex-col items-center pb-6 pt-2">
         <p
@@ -5825,7 +5944,9 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
             textAlign: 'center',
           }}
         >
-          Your location is shared with our safety team during this ride.
+          {ride
+            ? 'Your location is shared with our safety team during this ride.'
+            : 'Emergency SOS reaches Operations during an active trip.'}
         </p>
         <div
           className="relative flex items-center justify-center"
@@ -5858,9 +5979,14 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
           </svg>
           <button
             className="flex h-24 w-24 flex-col items-center justify-center rounded-full transition-all active:scale-95"
-            style={{ background: holding ? '#DC2626' : '#EF4444' }}
+            style={{
+              background: holding ? '#DC2626' : '#EF4444',
+              opacity: sending || alert ? 0.6 : 1,
+            }}
+            disabled={sending || alert !== null}
             onMouseDown={startHold}
             onMouseUp={stopHold}
+            onMouseLeave={stopHold}
             onTouchStart={startHold}
             onTouchEnd={stopHold}
           >
@@ -5868,12 +5994,12 @@ export function EmergencySOSScreen({ onBack, onSOS }: { onBack?: () => void; onS
             <p
               style={{ fontSize: 10, fontFamily: PP, fontWeight: 700, color: '#fff', marginTop: 2 }}
             >
-              HOLD 3 SEC
+              {sending ? 'SENDING…' : alert ? 'SENT' : 'HOLD 3 SEC'}
             </p>
           </button>
         </div>
         <p style={{ fontSize: 12, color: MUTED, fontFamily: IT, marginTop: 8 }}>
-          Hold to Alert Contacts
+          {alert ? 'Operations has your alert' : 'Hold to alert DrippleX Operations'}
         </p>
       </div>
     </div>

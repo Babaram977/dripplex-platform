@@ -91,7 +91,22 @@ export default function SosQueuePage(): React.JSX.Element {
                     className="hover:bg-muted/40 flex flex-col gap-2 px-4 py-3 transition-colors sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div>
-                      <p className="text-sm font-medium">{item.driverName}</p>
+                      {/*
+                        DPX-SAFETY-001 — name the person in trouble, not the
+                        driver on the record. On a passenger-raised alert the
+                        driver is context, and a dispatcher who calls them
+                        instead of the passenger has called the wrong person.
+                      */}
+                      <p className="text-sm font-medium">
+                        {item.origin === 'CUSTOMER'
+                          ? (item.customerName ?? 'Passenger')
+                          : item.driverName}
+                        <span className="text-muted-foreground ml-2 text-xs font-normal">
+                          {item.origin === 'CUSTOMER'
+                            ? `Passenger · driver ${item.driverName}`
+                            : 'Driver'}
+                        </span>
+                      </p>
                       <p className="text-muted-foreground mt-0.5 text-xs">
                         {item.latitude !== null && item.longitude !== null
                           ? `${item.latitude.toFixed(4)}, ${item.longitude.toFixed(4)}`

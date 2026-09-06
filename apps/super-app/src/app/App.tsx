@@ -1661,9 +1661,14 @@ function AppShell() {
     ),
     ridereferral: <ReferralScreen onBack={() => goBack('ridehome')} />,
     ridesos: (
+      // DPX-SAFETY-001: no onSOS handler any more. Pressing SOS used to
+      // navigate back to the trip, which is how an inert screen looked like
+      // it had done something; the screen now files a real alert and shows
+      // the passenger its reference, so it must stay on screen.
       <EmergencySOSScreen
         onBack={() => goBack('rideinprogress')}
-        onSOS={() => go('rideinprogress')}
+        rideId={activeCustomerRideId}
+        onShareTrip={() => go('rideshare')}
       />
     ),
     rideshare: (

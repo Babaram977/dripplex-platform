@@ -544,9 +544,20 @@ export interface IncidentReportListDto {
  * and can't be spoofed to a ride/vehicle that isn't actually theirs. */
 export type SosAlertStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED';
 
+/** DPX-SAFETY-001 — who pressed SOS. Slice 2 only had the driver; the
+ * passenger's Emergency SOS screen now raises the same alert type so
+ * Operations keeps one queue. */
+export type SosAlertOrigin = 'DRIVER' | 'CUSTOMER';
+
 export interface SosAlertDto {
   id: string;
+  origin: SosAlertOrigin;
+  /** Always present, for both origins — a customer may only raise SOS
+   * during an active ride, and an active ride always has a driver. Read
+   * `origin` to know who actually pressed it. */
   driverId: string;
+  /** The passenger who raised it; null on a driver-raised alert. */
+  customerId: string | null;
   rideId: string | null;
   vehicleId: string | null;
   latitude: number | null;

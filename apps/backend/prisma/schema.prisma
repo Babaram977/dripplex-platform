@@ -555,6 +555,7 @@ model User {
   incidentReports             IncidentReport[]             @relation("IncidentReportDriver")
   incidentReportsAcknowledged IncidentReport[]             @relation("IncidentReportAcknowledger")
   sosAlerts                   SosAlert[]                   @relation("SosAlertDriver")
+  sosAlertsRaised             SosAlert[]                   @relation("SosAlertCustomer")
   sosAlertsAcknowledged       SosAlert[]                   @relation("SosAlertAcknowledger")
   driverShifts                DriverShift[]                @relation("DriverShiftDriver")
   driverShiftsForceEnded      DriverShift[]                @relation("DriverShiftForceEnder")
@@ -2588,6 +2589,17 @@ model IncidentReport {
 /// operational policy the founder deferred. `rideId` mirrors
 /// `IncidentReport.rideId` — a plain id, no Prisma relation to the frozen
 /// `Ride` model.
+/// DPX-SAFETY-001 (founder-requested 2026-09-06) — who pressed SOS.
+/// Slice 2's alert was driver-only; the passenger's Emergency SOS screen
+/// now raises the same alert into the same Operations queue rather than a
+/// parallel table, so a dispatcher watching one queue sees every
+/// emergency. `DRIVER` is the default so every pre-existing row keeps its
+/// original meaning without a backfill.
+enum SosAlertOrigin {
+  DRIVER
+  CUSTOMER
+}
+
 enum SosAlertStatus {
   OPEN
   ACKNOWLEDGED
@@ -2596,7 +2608,17 @@ enum SosAlertStatus {
 
 model SosAlert {
   id                 String         @id @default(uuid()) @db.Uuid
+  origin             SosAlertOrigin @default(DRIVER)
+  /// Always set, for both origins. A CUSTOMER-origin alert is only
+  /// accepted during an active ride, so the driver on that ride is always
+  /// known — which is what lets the Operations queue keep rendering one
+  /// row shape. It does NOT mean the driver raised it: read `origin`.
   driverId           String         @map("driver_id") @db.Uuid
+  /// The passenger who pressed SOS (CUSTOMER origin only; null for
+  /// DRIVER origin). `SetNull` rather than `Cascade` on purpose — a
+  /// life-safety record must outlive the account that raised it, which
+  /// deleting a customer would otherwise erase.
+  customerId         String?        @map("customer_id") @db.Uuid
   rideId             String?        @map("ride_id") @db.Uuid
   vehicleId          String?        @map("vehicle_id") @db.Uuid
   latitude           Decimal?       @db.Decimal(10, 7)
@@ -2615,10 +2637,12 @@ model SosAlert {
   createdAt          DateTime       @default(now()) @map("created_at")
   updatedAt          DateTime       @updatedAt @map("updated_at")
   driver             User           @relation("SosAlertDriver", fields: [driverId], references: [id], onDelete: Cascade)
+  customer           User?          @relation("SosAlertCustomer", fields: [customerId], references: [id], onDelete: SetNull)
   acknowledger       User?          @relation("SosAlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
   vehicle            Vehicle?       @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
 
   @@index([driverId])
+  @@index([customerId])
   @@index([rideId])
   @@index([status])
   // DPX-OPS-001 module-level audit (2026-08-05): Live Activity Feed sort.

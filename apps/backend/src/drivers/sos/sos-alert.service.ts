@@ -5,6 +5,7 @@ import {
   NotificationPriority,
   NotificationType,
   RideStatus,
+  SosAlertOrigin,
   SosAlertStatus,
   VehicleApprovalStatus,
 } from '@prisma/client';
@@ -13,6 +14,7 @@ import { AuditService, type AuditContext } from '../../audit/audit.service';
 import {
   ForbiddenDomainException,
   NotFoundDomainException,
+  ValidationDomainException,
 } from '../../common/exceptions/domain.exception';
 import { NotificationCenterService } from '../../notification-center/notification-center.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -39,7 +41,26 @@ import type { SosAlert } from '@prisma/client';
  *
  * Lives under `drivers/`, not `rides/` — Ride module is frozen. `rideId`
  * is a plain scalar id (no Prisma relation), same pattern as
- * IncidentReport/DriverRideContactService. */
+ * IncidentReport/DriverRideContactService.
+ *
+ * DPX-SAFETY-001 (founder-requested 2026-09-06) adds the passenger side:
+ * `triggerForCustomer` writes the SAME `SosAlert` row with
+ * `origin = CUSTOMER`, so Operations keeps one queue instead of two. The
+ * three decisions that shaped it, recorded here because none was covered
+ * by the 2026-08-04 approval:
+ *
+ * 1. A customer may only raise SOS during an active ride. The screen is
+ *    reached from the in-ride flow and renders a "Current Trip" card, and
+ *    an active ride is what supplies the driver, vehicle and route context
+ *    that makes an alert actionable. SOS with no trip in progress is a
+ *    real gap, deferred rather than guessed at.
+ * 2. The driver is NOT notified that their passenger raised an SOS. The
+ *    mirror of the driver flow would be to tell them, but the passenger's
+ *    emergency may be the driver — telling them is the one action that
+ *    could make it worse. Operations decides who to contact.
+ * 3. Still no auto-dial to emergency services, unchanged from the locked
+ *    v1 decision. The screen offers the passenger a dialler; DrippleX
+ *    never places the call itself. */
 @Injectable()
 export class SosAlertService {
   constructor(
@@ -76,6 +97,7 @@ export class SosAlertService {
 
     const alert = await this.prisma.sosAlert.create({
       data: {
+        origin: SosAlertOrigin.DRIVER,
         driverId: driverUserId,
         ...(activeRide ? { rideId: activeRide.id } : {}),
         ...(activeVehicle ? { vehicleId: activeVehicle.id } : {}),
@@ -91,7 +113,7 @@ export class SosAlertService {
       {
         resource: 'sos_alert',
         resourceId: alert.id,
-        metadata: { rideId: alert.rideId, vehicleId: alert.vehicleId },
+        metadata: { origin: alert.origin, rideId: alert.rideId, vehicleId: alert.vehicleId },
       },
     );
 
@@ -119,9 +141,85 @@ export class SosAlertService {
     return toSosAlertDto(updated);
   }
 
+  /**
+   * DPX-SAFETY-001 — the passenger pressed SOS.
+   *
+   * Same row, same Operations queue, same CRITICAL push as the driver
+   * path. Only available during an active ride (decision 1 on the class
+   * doc); the driver is resolved server-side from that ride rather than
+   * accepted from the client, for the same anti-spoofing reason
+   * `CreateSosAlertDto` refuses a `rideId`.
+   */
+  public async triggerForCustomer(
+    customerUserId: string,
+    dto: CreateSosAlertDto,
+    context: AuditContext,
+  ): Promise<SosAlertDto> {
+    const activeRide = await this.prisma.ride.findFirst({
+      where: {
+        customerId: customerUserId,
+        status: {
+          in: [RideStatus.DRIVER_ASSIGNED, RideStatus.ARRIVED, RideStatus.IN_PROGRESS],
+        },
+      },
+      orderBy: { requestedAt: 'desc' },
+      select: { id: true, driverId: true },
+    });
+
+    // Deliberately explicit rather than silently filing a context-free
+    // alert: an alert Operations cannot act on is worse than a clear "not
+    // yet" the screen can show. `Ride.driverId` is nullable in the schema,
+    // so it is checked rather than asserted even though the three statuses
+    // above always have one.
+    if (!activeRide?.driverId) {
+      throw new ValidationDomainException(
+        'Emergency SOS is available while a trip is in progress. Call emergency services directly if you need help now.',
+      );
+    }
+
+    const activeVehicle = await this.prisma.vehicle.findFirst({
+      where: {
+        driverId: activeRide.driverId,
+        isActive: true,
+        approvalStatus: VehicleApprovalStatus.APPROVED,
+      },
+      select: { id: true },
+    });
+
+    const alert = await this.prisma.sosAlert.create({
+      data: {
+        origin: SosAlertOrigin.CUSTOMER,
+        driverId: activeRide.driverId,
+        customerId: customerUserId,
+        rideId: activeRide.id,
+        ...(activeVehicle ? { vehicleId: activeVehicle.id } : {}),
+        ...(dto.latitude !== undefined ? { latitude: dto.latitude } : {}),
+        ...(dto.longitude !== undefined ? { longitude: dto.longitude } : {}),
+        ...(dto.batteryLevel !== undefined ? { batteryLevel: dto.batteryLevel } : {}),
+      },
+    });
+
+    await this.auditService.record(
+      DRIVER_AUDIT_ACTIONS.SOS_ALERT_TRIGGERED,
+      { ...context, userId: customerUserId },
+      {
+        resource: 'sos_alert',
+        resourceId: alert.id,
+        metadata: { origin: alert.origin, rideId: alert.rideId, vehicleId: alert.vehicleId },
+      },
+    );
+
+    await this.notifyOperations(alert);
+
+    // No notification to the driver — decision 2 on the class doc.
+    return toSosAlertDto(alert);
+  }
+
+  /** Driver-raised alerts only. A customer-raised alert on this driver's
+   * ride is Operations' business, not the driver's — see decision 2. */
   public async listOwnAlerts(driverUserId: string): Promise<SosAlertDto[]> {
     const alerts = await this.prisma.sosAlert.findMany({
-      where: { driverId: driverUserId },
+      where: { driverId: driverUserId, origin: SosAlertOrigin.DRIVER },
       orderBy: { createdAt: 'desc' },
     });
     return alerts.map(toSosAlertDto);
@@ -129,6 +227,22 @@ export class SosAlertService {
 
   public async getOwnAlert(driverUserId: string, alertId: string): Promise<SosAlertDto> {
     const alert = await this.requireOwnedAlert(driverUserId, alertId);
+    return toSosAlertDto(alert);
+  }
+
+  public async listOwnCustomerAlerts(customerUserId: string): Promise<SosAlertDto[]> {
+    const alerts = await this.prisma.sosAlert.findMany({
+      where: { customerId: customerUserId, origin: SosAlertOrigin.CUSTOMER },
+      orderBy: { createdAt: 'desc' },
+    });
+    return alerts.map(toSosAlertDto);
+  }
+
+  public async getOwnCustomerAlert(customerUserId: string, alertId: string): Promise<SosAlertDto> {
+    const alert = await this.requireAlert(alertId);
+    if (alert.origin !== SosAlertOrigin.CUSTOMER || alert.customerId !== customerUserId) {
+      throw new ForbiddenDomainException('You do not have access to this SOS alert');
+    }
     return toSosAlertDto(alert);
   }
 
@@ -189,16 +303,25 @@ export class SosAlertService {
       },
     );
 
-    await this.notificationCenter.send({
-      userId: updated.driverId,
-      category: NotificationCategory.EMERGENCY,
-      channel: NotificationChannel.IN_APP,
-      type: NotificationType.SOS_ALERT_UPDATED,
-      priority: NotificationPriority.HIGH,
-      title: 'SOS alert updated',
-      body: dto.adminNotes ?? `Your SOS alert is now ${updated.status.toLowerCase()}.`,
-      payload: { sosAlertId: updated.id, status: updated.status },
-    });
+    // The raiser, not the driver. On a customer-raised alert the driver is
+    // recorded for context only and must not be told about it (decision 2
+    // on the class doc); `customerId` is checked rather than asserted
+    // because it is nullable in the schema.
+    const raiserUserId =
+      updated.origin === SosAlertOrigin.CUSTOMER ? updated.customerId : updated.driverId;
+
+    if (raiserUserId) {
+      await this.notificationCenter.send({
+        userId: raiserUserId,
+        category: NotificationCategory.EMERGENCY,
+        channel: NotificationChannel.IN_APP,
+        type: NotificationType.SOS_ALERT_UPDATED,
+        priority: NotificationPriority.HIGH,
+        title: 'SOS alert updated',
+        body: dto.adminNotes ?? `Your SOS alert is now ${updated.status.toLowerCase()}.`,
+        payload: { sosAlertId: updated.id, status: updated.status },
+      });
+    }
 
     return toSosAlertDto(updated);
   }
@@ -226,17 +349,26 @@ export class SosAlertService {
       return;
     }
 
+    // A dispatcher must be able to tell from the push alone whether the
+    // person in trouble is the driver or the passenger, because who they
+    // call back differs.
+    const raisedByCustomer = alert.origin === SosAlertOrigin.CUSTOMER;
+
     await this.notificationCenter.broadcast({
       userIds: opsUsers.map((user) => user.id),
       category: NotificationCategory.EMERGENCY,
       channel: NotificationChannel.IN_APP,
       type: NotificationType.SOS_ALERT_TRIGGERED,
       priority: NotificationPriority.CRITICAL,
-      title: 'SOS: driver needs assistance',
-      body: 'A driver has triggered an SOS alert. Review immediately.',
+      title: raisedByCustomer ? 'SOS: passenger needs assistance' : 'SOS: driver needs assistance',
+      body: raisedByCustomer
+        ? 'A passenger has triggered an SOS alert during a trip. Review immediately.'
+        : 'A driver has triggered an SOS alert. Review immediately.',
       payload: {
         sosAlertId: alert.id,
+        origin: alert.origin,
         driverId: alert.driverId,
+        customerId: alert.customerId,
         rideId: alert.rideId,
         vehicleId: alert.vehicleId,
         latitude: alert.latitude ? Number(alert.latitude) : null,
@@ -257,7 +389,7 @@ export class SosAlertService {
 
   private async requireOwnedAlert(driverUserId: string, alertId: string): Promise<SosAlert> {
     const alert = await this.requireAlert(alertId);
-    if (alert.driverId !== driverUserId) {
+    if (alert.driverId !== driverUserId || alert.origin !== SosAlertOrigin.DRIVER) {
       throw new ForbiddenDomainException('You do not have access to this SOS alert');
     }
     return alert;
