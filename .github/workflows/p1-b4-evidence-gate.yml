@@ -187,7 +187,7 @@ jobs:
           echo "HEAD SHA: ${{ steps.repo_state.outputs.HEAD_SHA }}" >> ../../p1-b4-actual-results.log
           echo "Branch: ${{ steps.repo_state.outputs.BRANCH }}" >> ../../p1-b4-actual-results.log
           echo "P1-B4 commits present:" >> ../../p1-b4-actual-results.log
-          git log --oneline | grep -E "P1-B4|Implement Segment Closure|Fix segment repository" >> ../../p1-b4-actual-results.log
+          git log --oneline | grep -E "P1-B4|Implement Segment Closure|Fix segment repository" >> ../../p1-b4-actual-results.log || true
 
       - name: Capture environment details
         run: |
