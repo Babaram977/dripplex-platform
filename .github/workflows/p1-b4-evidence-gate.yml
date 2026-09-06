@@ -188,8 +188,27 @@ jobs:
           echo "=== REPOSITORY STATE VERIFICATION ===" >> ../../p1-b4-actual-results.log
           echo "HEAD SHA: ${{ steps.repo_state.outputs.HEAD_SHA }}" >> ../../p1-b4-actual-results.log
           echo "Branch: ${{ steps.repo_state.outputs.BRANCH }}" >> ../../p1-b4-actual-results.log
-          echo "P1-B4 commits present:" >> ../../p1-b4-actual-results.log
-          git log --oneline | grep -E "P1-B4|Implement Segment Closure|Fix segment repository" >> ../../p1-b4-actual-results.log
+          echo "P1-B4 implementation files present:" >> ../../p1-b4-actual-results.log
+          # Verify B4 implementation files exist (not relying on commit message matching)
+          if [ -f "src/audit/segment-authority.service.ts" ]; then
+            echo "✅ SegmentAuthorityService implementation" >> ../../p1-b4-actual-results.log
+          else
+            echo "❌ SegmentAuthorityService implementation NOT FOUND" >> ../../p1-b4-actual-results.log
+            exit 1
+          fi
+          if [ -f "src/audit/segment-authority.service.spec.ts" ]; then
+            echo "✅ SegmentAuthorityService test harness" >> ../../p1-b4-actual-results.log
+          else
+            echo "❌ SegmentAuthorityService test harness NOT FOUND" >> ../../p1-b4-actual-results.log
+            exit 1
+          fi
+          if grep -q "closeSegment" "src/audit/segment-authority.service.ts" 2>/dev/null; then
+            echo "✅ Segment closure method present" >> ../../p1-b4-actual-results.log
+          else
+            echo "❌ Segment closure method NOT FOUND" >> ../../p1-b4-actual-results.log
+            exit 1
+          fi
+          echo "Repository state verification: PASS" >> ../../p1-b4-actual-results.log
 
       - name: Capture environment details
         run: |
@@ -255,10 +274,38 @@ jobs:
           echo "Workflow Run: ${{ github.run_id }}" >> p1-b4-actual-results.log
           echo "Job ID: ${{ github.job }}" >> p1-b4-actual-results.log
           echo "Tested SHA: ${{ steps.repo_state.outputs.HEAD_SHA }}" >> p1-b4-actual-results.log
-          if [ "${{ steps.segment_auth_tests.outputs.exit_code }}" == "0" ]; then
+
+          # Check ALL required gates (not just SegmentAuthority)
+          # Final status is PASSED only if ALL gates passed
+          REPO_TESTS="${{ env.REPO_TESTS_EXIT }}"
+          AUDIT_TESTS="${{ env.AUDIT_TESTS_EXIT }}"
+          SEGMENT_AUTH_TESTS="${{ steps.segment_auth_tests.outputs.exit_code }}"
+
+          # Extract exit codes from log file to verify gates
+          if grep -q "REPOSITORY TESTS EXIT CODE: 0" p1-b4-actual-results.log && \
+             grep -q "AUDIT SERVICE TESTS EXIT CODE: 0" p1-b4-actual-results.log && \
+             grep -q "SEGMENT AUTHORITY SERVICE TESTS EXIT CODE: 0" p1-b4-actual-results.log && \
+             grep -q "Repository state verification: PASS" p1-b4-actual-results.log && \
+             grep -q "BUILD/LINT/TYPECHECK SUCCESS" p1-b4-actual-results.log; then
             echo "Status: Evidence Gate PASSED" >> p1-b4-actual-results.log
+            echo "All 7 required gates passed." >> p1-b4-actual-results.log
           else
-            echo "Status: Evidence Gate FAILED - See test output above" >> p1-b4-actual-results.log
+            echo "Status: Evidence Gate FAILED - One or more required gates did not pass" >> p1-b4-actual-results.log
+            if ! grep -q "BUILD/LINT/TYPECHECK SUCCESS" p1-b4-actual-results.log; then
+              echo "  Failed: Build/typecheck did not pass" >> p1-b4-actual-results.log
+            fi
+            if ! grep -q "REPOSITORY TESTS EXIT CODE: 0" p1-b4-actual-results.log; then
+              echo "  Failed: Repository tests did not pass" >> p1-b4-actual-results.log
+            fi
+            if ! grep -q "AUDIT SERVICE TESTS EXIT CODE: 0" p1-b4-actual-results.log; then
+              echo "  Failed: Audit Service tests did not pass" >> p1-b4-actual-results.log
+            fi
+            if ! grep -q "SEGMENT AUTHORITY SERVICE TESTS EXIT CODE: 0" p1-b4-actual-results.log; then
+              echo "  Failed: SegmentAuthority tests did not pass" >> p1-b4-actual-results.log
+            fi
+            if ! grep -q "Repository state verification: PASS" p1-b4-actual-results.log; then
+              echo "  Failed: Repository state verification did not pass" >> p1-b4-actual-results.log
+            fi
           fi
           echo "Report timestamp: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> p1-b4-actual-results.log
 
