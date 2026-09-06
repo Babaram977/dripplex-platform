@@ -1,25 +1,53 @@
 # Well-known files for mobile deep linking
 
-# Host on production CDN / app.dripplex.com before store submission.
+## Android App Links — SHIPPED 2026-09-06
 
-## Android App Links
+The file is no longer a template here. It lives at
+`apps/super-app/public/.well-known/assetlinks.json`, which Vite copies into
+`dist/` and the super-app's `serve` container publishes at
+`https://app.dripplex.com/.well-known/assetlinks.json`.
 
-Path: `https://app.dripplex.com/.well-known/assetlinks.json`
+**Do not use `keytool` on the release keystore for this.** That was the
+instruction until Play App Signing was enabled on 2026-09-06, and it is now
+the single easiest way to break App Links silently. `keytool -list -v
+-keystore release.keystore` prints the **upload key** fingerprint — the
+certificate you sign with. Google re-signs every bundle before it reaches a
+device, so a phone never sees that certificate, and verification fails
+against it while every other symptom looks normal: the intent filter still
+matches, links just stop opening in the app.
 
-```json
-[
-  {
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "com.dripplex.app",
-      "sha256_cert_fingerprints": ["REPLACE_WITH_RELEASE_SHA256"]
-    }
-  }
-]
+The correct fingerprint is the **app signing key**, and the only safe way to
+get it is to copy the whole snippet Google generates:
+
+> Play Console → Test and release → App integrity → App signing →
+> **Digital Asset Links JSON** → copy icon
+
+Copy that verbatim rather than assembling it by hand. This app's signing key
+is Quantum-ready (beta), so it carries four fingerprints (classical and
+post-quantum, SHA-256 and SHA-1) and there is already a rotated previous key
+in the Console — picking one out of that set by eye is how the wrong value
+gets shipped. Google's snippet resolves all of it.
+
+Re-copy and re-commit the file whenever the app signing key is rotated.
+
+### Verifying it is actually served
+
+The super-app runs `serve -s dist` with `rewrites: [{ source: "**",
+destination: "/index.html" }]`, so any path that does not resolve to a real
+file returns the HTML app instead of a 404. A missing or misplaced
+`assetlinks.json` therefore answers `200` with `text/html`, Android reads it
+as malformed, and nothing anywhere reports an error. Check the content type,
+not just the status:
+
+```
+curl -i https://app.dripplex.com/.well-known/assetlinks.json
+# expect: 200, Content-Type: application/json
 ```
 
-Obtain SHA-256: `keytool -list -v -keystore release.keystore -alias dripplex-customer`
+Google's own checker is the other half:
+`https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://app.dripplex.com&relation=delegate_permission/common.handle_all_urls`
+
+> **`package_name` is the Android `applicationId`, not the code namespace.**
 
 > **`package_name` here is the Android `applicationId`, not the code namespace.** It moved
 > to `com.dripplex.app`; the Java package and the iOS bundle identifier below did not.

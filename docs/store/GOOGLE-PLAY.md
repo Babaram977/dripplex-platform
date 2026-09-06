@@ -257,7 +257,7 @@ it.
 | **Title**                        | DrippleX                                                                   |
 | **Short description** (80 chars) | Book rides, order from local shops, pay bills and send money — one wallet. |
 | **Full description**             | See below                                                                  |
-| **Category**                     | Shopping — **unconfirmed**, see note below                                 |
+| **Category**                     | Travel & Local (founder-selected 2026-09-06)                               |
 | **Tags / keywords**              | marketplace, food delivery, Nigeria, wallet, rides, pharmacy, airtime      |
 | **Privacy Policy URL**           | `https://www.dripplex.com/privacy`                                         |
 | **Account deletion URL**         | `https://www.dripplex.com/account-deletion`                                |
@@ -271,10 +271,10 @@ it.
 sends a standalone parcel. `DeliveryJob` exists, but it delivers a
 marketplace `Order` — there is no customer-facing "send a package" flow.
 
-**Category is still the founder's call.** `Shopping` was chosen when the
-listing was a marketplace draft. The app now leads with rides and a wallet,
-so `Maps & Navigation` or `Finance` may fit better — and `Finance` carries
-extra Play scrutiny. Recorded as open rather than silently changed.
+**Category resolved 2026-09-06: Travel & Local.** `Shopping` was chosen when
+the listing was a marketplace draft; the founder changed it in the Console
+once rides led the product. `Finance` was the other candidate and was not
+taken — it carries extra Play scrutiny for no listing benefit.
 
 Listing URLs use **www**, because the bare apex 308-redirects to it
 (`apps/customer-web/next.config.ts`). The apex forms still resolve — Google
@@ -462,6 +462,53 @@ declare them as service providers. `DPX-MOBILE-003` §3 carries the full list.
 Card numbers are never collected — Paystack and Flutterwave hold them, and the
 schema has no `cardNumber`/`cvv`/`pan`. "Payment info" above is the merchant
 bank account used for payouts.
+
+## App signing and App Links
+
+Play App Signing was enabled on 2026-09-06, at the first publish to an open
+track. **That choice is permanent** — Google holds the app signing key and
+re-signs every bundle; DrippleX holds only the upload key, which can be reset
+from the Console if it is ever lost. Bringing our own key would have made a
+lost key unrecoverable and the listing unupdatable.
+
+The key is **Quantum-ready (beta)**, so it publishes four fingerprints —
+classical and post-quantum, each SHA-256 and SHA-1 — and one rotated previous
+key is already listed (first used 2026-09-06 02:57, 0% install base).
+
+`assetlinks.json` therefore carries the **app signing** SHA-256, not the
+upload key's. The distinction is not cosmetic: the upload certificate never
+reaches a device, so an assetlinks file built from it fails verification
+while every visible symptom stays normal — the intent filter still matches,
+links just stop opening in the app. The committed file is Google's own
+generated snippet, copied verbatim from App integrity → App signing →
+Digital Asset Links JSON.
+
+| Field        | Value                                                  |
+| ------------ | ------------------------------------------------------ |
+| Hosted at    | `https://app.dripplex.com/.well-known/assetlinks.json` |
+| Source       | `apps/super-app/public/.well-known/assetlinks.json`    |
+| package_name | `com.dripplex.app`                                     |
+| SHA-256      | `BF:CA:67:…:EB:21` (app signing key, 32 octets)        |
+
+Verified before commit by building the super-app and serving `dist` with the
+same `serve -s dist --config serve.json` the container runs: the path answers
+`200` with `Content-Type: application/json`. That check matters because the
+SPA rewrite (`"**"` → `/index.html`) makes any missing file answer `200` with
+HTML rather than `404` — a silent failure with no error anywhere.
+
+Re-copy the snippet and re-commit whenever the app signing key rotates.
+
+## Publishing controls — founder decisions 2026-09-06
+
+- **Managed publishing: ON.** An approved release parks until it is published
+  by hand, rather than going live unattended during the review window.
+- **Countries: worldwide** (156 named plus "rest of world"). Recorded as the
+  founder's call. The standing engineering note against it: everything in the
+  product is Nigeria-specific — naira pricing, Paystack payouts to Nigerian
+  banks, Nigerian merchants and networks, emergency number 112 — so installs
+  outside Nigeria reach an app where nothing works, and early one-star
+  ratings are weighted heavily and hard to recover from. Narrowing later is a
+  Console change; a damaged rating average is not.
 
 ## Release
 

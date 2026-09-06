@@ -64,7 +64,7 @@ CI: `.github/workflows/mobile-build.yml` (workflow_dispatch + branch push).
 | Deep links (HTTPS + `dripplex://`)              | ✅ intent filters                             |
 | Network security (HTTPS default)                | ✅ `network_security_config.xml`              |
 | FCM                                             | ⏳ Add `google-services.json` from Firebase   |
-| Play asset links                                | ⏳ Host `assetlinks.json`                     |
+| Play asset links                                | ✅ `apps/super-app/public/.well-known/`       |
 
 ## Internal / Closed beta
 
