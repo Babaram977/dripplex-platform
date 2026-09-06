@@ -68,6 +68,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Ensure workspace package links
+        run: |
+          # Create symlinks for workspace packages if they don't exist
+          mkdir -p node_modules/@dripplex
+          [ -L node_modules/@dripplex/types ] || ln -s ../../packages/types node_modules/@dripplex/types
+          [ -L node_modules/@dripplex/config ] || ln -s ../../packages/config node_modules/@dripplex/config
+          [ -L node_modules/@dripplex/utils ] || ln -s ../../packages/utils node_modules/@dripplex/utils
+          [ -L node_modules/@dripplex/sdk ] || ln -s ../../packages/sdk node_modules/@dripplex/sdk
+          [ -L node_modules/@dripplex/ui ] || ln -s ../../packages/ui node_modules/@dripplex/ui
+          [ -L node_modules/@dripplex/hooks ] || ln -s ../../packages/hooks node_modules/@dripplex/hooks
+          # Verify links
+          ls -la node_modules/@dripplex/ | grep -E "types|config|utils|sdk|ui|hooks"
+
       - name: Setup PostgreSQL database
         env:
           PGPASSWORD: postgres
