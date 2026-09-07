@@ -22,6 +22,7 @@ import { DeliveryModule } from './delivery/delivery.module';
 import { DriversModule } from './drivers/drivers.module';
 import { EventsModule } from './events/events.module';
 import { FleetsModule } from './fleets/fleets.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { FraudModule } from './fraud/fraud.module';
 import { HealthModule } from './health/health.module';
 import { KycModule } from './kyc/kyc.module';
@@ -78,6 +79,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     DeliveryModule,
     DriversModule,
     FleetsModule,
+    IntegrationsModule,
     RidersModule,
     RidesModule,
     ReviewsModule,

@@ -1,0 +1,1675 @@
+# DPX-MKT-INT-001-D — Credential Rotation & Lifecycle Management
+
+**Status:** 🟡 **CTO REVIEW READY — IMPLEMENTATION BLOCKED PENDING GATE 1 VERIFICATION AND GATE 2 POLICY APPROVAL**
+
+**Document Purpose:** Detailed implementation plan for D-phase credential rotation and lifecycle management, identifying all architectural decisions, API contracts, database changes, test strategy, and interactions with C-phase functionality.
+
+---
+
+## 1. Problem Statement
+
+C-phase established credential generation, masking, and basic lifecycle (creation → use → delete). D-phase extends this to support **rotation without downtime**, **revocation**, **lifecycle state management**, and **secure outbound credential delivery**.
+
+### Key Requirements
+
+- Merchants must rotate integration credentials without downtime (old + new valid simultaneously during transition)
+- Credentials must have explicit lifecycle states (ACTIVE, ROTATED, REVOKED, EXPIRED)
+- Outbound API calls to integrations must use encrypted/padded credentials (not plaintext)
+- Revocation must be immediate (no grace period for revoked keys)
+- Rotation history must be auditable (audit trail of all rotations and revocations)
+- Authorization must enforce merchant isolation (can't rotate another merchant's credential)
+- Rate limiting must prevent credential enumeration attacks
+- Failure recovery must support rollback to previous credential without data loss
+
+---
+
+## 2. Architecture Overview
+
+### 2.1 Credential Lifecycle State Machine
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Credential Lifecycle States (new enum: CredentialStatus)    │
+└─────────────────────────────────────────────────────────────┘
+
+CREATED (initial)
+   ↓
+ACTIVE (ready for use)
+   ↓
+ROTATED (new credential generated; old still valid during overlap)
+   ↓
+REVOKED (explicit revocation; immediate invalidity)
+   ↓
+EXPIRED (past retention window; can be deleted)
+
+Parallel path from ACTIVE/ROTATED:
+   → REVOKED (can happen at any time)
+
+Transition Rules:
+- CREATED → ACTIVE: happens at first successful test or after rotation setup
+- ACTIVE → ROTATED: when new credential generated, old stays ACTIVE during overlap
+- ACTIVE/ROTATED → REVOKED: immediate, explicit action
+- ROTATED → ACTIVE: after overlap period, old credential becomes EXPIRED
+- EXPIRED: eligible for hard deletion (not soft-delete)
+- REVOKED: cannot transition back; can be hard-deleted per retention policy
+```
+
+### 2.2 Credential Overlap & Rotation Window
+
+**Rotation Overlap Period:** 7 days (configurable per environment)
+
+When rotation occurs:
+
+1. New credential generated and marked CREATED
+2. Merchant notified (email) with new credential and rotation deadline
+3. During overlap period (7 days):
+   - Old credential marked ROTATED (still valid for incoming webhook validation)
+   - New credential marked ACTIVE (ready for outbound calls)
+   - Both credentials accepted for webhook signature validation
+4. After overlap expires:
+   - Old credential transitions to EXPIRED
+   - If old credential still in use after deadline, it becomes REVOKED (hard cut-off)
+5. Hard-delete eligible after retention period (30 days post-EXPIRED)
+
+**Rationale:**
+
+- 7-day overlap: enough time for merchant to deploy new credential
+- Email notification: merchant can track rotation status
+- Hard cut-off: ensures old credentials don't linger indefinitely
+- Auditability: timestamp each transition
+
+### 2.3 Encrypted Outbound Credentials
+
+When DrippleX makes outbound API calls to merchant integrations (e.g., webhook retries, sync requests), credentials must be encrypted in transit and stored in logs.
+
+**Approach:**
+
+1. Credentials stored in memory as plaintext only during request setup
+2. Request headers include encrypted credential (AES-256-GCM)
+3. Encryption key = per-integration ephemeral key (not stored)
+4. Decryption on webhook validation happens with original credential hash (not plaintext)
+5. No plaintext credential appears in request logs, error traces, or audit logs
+
+**Example:**
+
+```typescript
+// Outbound request with encrypted credential
+const credential = await this.credentialsService.getActiveCredential(integrationId);
+const encryptedHeader = this.encrypt(credential.plaintext);
+const response = await http.post(webhookUrl, payload, {
+  headers: { 'x-dripplex-credential': encryptedHeader },
+});
+// After request, plaintext credential memory cleared
+```
+
+### 2.4 Revocation Mechanism
+
+**Immediate Revocation:**
+
+- Merchant clicks "Revoke" on credential detail page
+- Credential status transitions to REVOKED immediately
+- Any in-flight requests using this credential fail (hard validation check)
+- Webhook validation against REVOKED credential returns 401 (was using this credential)
+- No grace period; no queued operations allowed to complete
+
+**Revocation Audit:**
+
+- Event logged: `credential_revoked` with merchant ID, credential ID, actor (user), timestamp
+- Stored in `credential_audit_events` table
+- Visible to merchant in credential history
+
+**Failure Scenario:**
+
+- Merchant revokes credential by mistake
+- Old credential REVOKED immediately
+- Webhook calls start failing (401 Unauthorized — credential revoked)
+- Merchant can rotate immediately to new credential (fast-path)
+- Or restore from backup (if implemented; not in D scope)
+
+---
+
+## 3. Database Schema Changes
+
+### 3.1 New Enum: CredentialStatus
+
+```prisma
+enum CredentialStatus {
+  CREATED
+  ACTIVE
+  ROTATED
+  REVOKED
+  EXPIRED
+}
+```
+
+### 3.2 Extended MerchantIntegrationCredential Model
+
+**Current Schema (from C):**
+
+```prisma
+model MerchantIntegrationCredential {
+  id                    String    @id @default(uuid()) @db.Uuid
+  integrationId         String    @map("integration_id") @db.Uuid
+  type                  String    // "api_key"
+  plaintextHash         String    @map("plaintext_hash") @db.VarChar(64)
+  publicSuffix          String    @map("public_suffix") @db.VarChar(32)
+  encryptedValue        String    @map("encrypted_value") // encrypted plaintext
+  encryptionIv          String    @map("encryption_iv") @db.VarChar(32)
+  encryptionAuthTag     String?   @map("encryption_auth_tag") @db.VarChar(32)
+  isActive              Boolean   @map("is_active") @default(true)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+  createdBy             String    @map("created_by") @db.Uuid // which merchant user created
+
+  integration           MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  @@index([integrationId])
+  @@index([isActive])
+  @@map("merchant_integration_credentials")
+}
+```
+
+**Extended Schema (for D):**
+
+```prisma
+model MerchantIntegrationCredential {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  integrationId         String                    @map("integration_id") @db.Uuid
+  type                  String                    // "api_key"
+  plaintextHash         String                    @map("plaintext_hash") @db.VarChar(64) @unique
+  publicSuffix          String                    @map("public_suffix") @db.VarChar(32)
+  encryptedValue        String                    @map("encrypted_value")
+  encryptionIv          String                    @map("encryption_iv") @db.VarChar(32)
+  encryptionAuthTag     String?                   @map("encryption_auth_tag") @db.VarChar(32)
+
+  // D-phase additions
+  status                CredentialStatus          @default(CREATED)  // NEW
+  isActive              Boolean                   @map("is_active") @default(true)
+  previousCredentialId  String?                   @map("previous_credential_id") @db.Uuid  // rotation chain
+  rotationReason        String?                   @map("rotation_reason") @db.VarChar(500)  // why it was rotated
+  expiresAt             DateTime?                 @map("expires_at")  // rotation deadline
+  revokedAt             DateTime?                 @map("revoked_at")  // when revoked (if ever)
+  revokedBy             String?                   @map("revoked_by") @db.Uuid  // who revoked it
+
+  createdAt             DateTime                  @default(now()) @map("created_at")
+  updatedAt             DateTime                  @updatedAt @map("updated_at")
+  createdBy             String                    @map("created_by") @db.Uuid
+  deletedAt             DateTime?                 @map("deleted_at")  // soft-delete after expiry
+
+  integration           MerchantIntegration       @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  previousCredential    MerchantIntegrationCredential? @relation("CredentialChain", fields: [previousCredentialId], references: [id])
+  nextCredential        MerchantIntegrationCredential? @relation("CredentialChain")
+  auditEvents           CredentialAuditEvent[]
+
+  @@unique([integrationId, plaintextHash])
+  @@index([integrationId])
+  @@index([status])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@index([revokedAt])
+  @@map("merchant_integration_credentials")
+}
+```
+
+### 3.3 New Table: CredentialAuditEvent
+
+```prisma
+model CredentialAuditEvent {
+  id                    String    @id @default(uuid()) @db.Uuid
+  credentialId          String    @map("credential_id") @db.Uuid
+  integrationId         String    @map("integration_id") @db.Uuid
+  action                String    // "created", "rotated", "revoked", "expired", "tested"
+  actor                 String    @map("actor") @db.Uuid  // user ID who performed action
+  reason                String?   @map("reason") @db.VarChar(500)  // why (for revocation)
+  ipAddress             String?   @map("ip_address") @db.VarChar(45)
+  userAgent             String?   @map("user_agent") @db.VarChar(512)
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  credential            MerchantIntegrationCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+
+  @@index([credentialId])
+  @@index([integrationId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("credential_audit_events")
+}
+```
+
+### 3.4 Migration Strategy
+
+**Migration File:** `apps/backend/prisma/migrations/[timestamp]_add_credential_rotation.sql`
+
+**Steps:**
+
+1. Add new columns to `merchant_integration_credentials`:
+   - `status` (default ACTIVE for existing credentials)
+   - `previous_credential_id` (nullable)
+   - `rotation_reason` (nullable)
+   - `expires_at` (nullable)
+   - `revoked_at` (nullable)
+   - `revoked_by` (nullable)
+   - `deleted_at` (nullable, for future hard-delete)
+
+2. Create new `credential_audit_events` table
+
+3. Backfill existing credentials:
+
+   ```sql
+   UPDATE merchant_integration_credentials
+   SET status = 'ACTIVE'::credential_status
+   WHERE deleted_at IS NULL AND is_active = true;
+
+   UPDATE merchant_integration_credentials
+   SET status = 'REVOKED'::credential_status
+   WHERE deleted_at IS NOT NULL;
+   ```
+
+4. Create indexes for new columns
+
+5. Add audit events for all existing credentials (creation event with action='created')
+
+---
+
+## 4. API Changes
+
+### 4.1 Existing Endpoints (C-phase) — No Breaking Changes
+
+All C-phase endpoints (`POST`, `GET`, `PUT`, `DELETE /integrations/{id}`) continue unchanged. Credentials in responses show masked `publicSuffix` (as in C).
+
+### 4.2 New Endpoints (D-phase)
+
+#### POST /integrations/{integrationId}/credentials/{credentialId}/rotate
+
+**Purpose:** Initiate credential rotation (generate new credential).
+
+**Request:**
+
+```json
+{
+  "rotationReason": "routine maintenance" // optional
+}
+```
+
+**Response (201 Created):**
+
+```json
+{
+  "old": {
+    "credentialId": "cred-001",
+    "status": "ROTATED",
+    "publicSuffix": "Ab1Cd2Ef3G4h",
+    "expiresAt": "2026-09-11T00:00:00Z" // overlap deadline
+  },
+  "new": {
+    "credentialId": "cred-002",
+    "apiKey": "dpx_integration_[uuid]_[hash]", // plaintext, only on rotation
+    "status": "ACTIVE",
+    "publicSuffix": "Yz9Mn0Pq1Rs2"
+  },
+  "overlapPeriodEndsAt": "2026-09-11T00:00:00Z",
+  "nextSteps": "Update your integration to use the new credential by the deadline."
+}
+```
+
+**Authorization:** `integrations:write` + merchant owns integration
+
+**Merchant Isolation:** Only merchant who owns the integration can rotate its credentials
+
+**Rate Limiting:** Max 1 rotation per credential per 24 hours (prevent abuse)
+
+**Behavior:**
+
+- Old credential status → ROTATED
+- New credential generated, status = ACTIVE
+- Both credentials valid for webhook signature validation (overlap)
+- Merchant receives notification email with deadline
+- Audit event: `credential_rotated`
+
+---
+
+#### POST /integrations/{integrationId}/credentials/{credentialId}/revoke
+
+**Purpose:** Immediately revoke a credential.
+
+**Request:**
+
+```json
+{
+  "reason": "credential leaked" // optional
+}
+```
+
+**Response (204 No Content):**
+
+**Authorization:** `integrations:write` + merchant owns integration
+
+**Behavior:**
+
+- Credential status → REVOKED immediately
+- `revokedAt` timestamp set
+- `revokedBy` = current user ID
+- Audit event: `credential_revoked`
+- In-flight requests using this credential fail (401)
+
+**Error Cases:**
+
+- 404: Credential not found
+- 403: Merchant doesn't own integration
+- 400: Cannot revoke if it's the only ACTIVE credential (must rotate first)
+
+---
+
+#### GET /integrations/{integrationId}/credentials
+
+**Purpose:** List all credentials for an integration (with status and history).
+
+**Response (200 OK):**
+
+```json
+{
+  "integration": "integration-uuid",
+  "credentials": [
+    {
+      "credentialId": "cred-001",
+      "status": "ROTATED",
+      "type": "api_key",
+      "publicSuffix": "Ab1Cd2Ef3G4h",
+      "createdAt": "2026-08-04T00:00:00Z",
+      "expiresAt": "2026-09-11T00:00:00Z",
+      "rotationReason": null,
+      "createdBy": "user-uuid"
+    },
+    {
+      "credentialId": "cred-002",
+      "status": "ACTIVE",
+      "type": "api_key",
+      "publicSuffix": "Yz9Mn0Pq1Rs2",
+      "createdAt": "2026-09-04T00:00:00Z",
+      "expiresAt": null,
+      "rotationReason": "routine maintenance",
+      "createdBy": "user-uuid"
+    }
+  ],
+  "activeCredential": "cred-002"
+}
+```
+
+**Authorization:** `integrations:read` + merchant owns integration
+
+**Merchant Isolation:** Only merchant's own credentials visible
+
+**Notes:**
+
+- Includes all non-deleted credentials (CREATED, ACTIVE, ROTATED, REVOKED, EXPIRED)
+- Plaintext keys never exposed (only masked publicSuffix)
+- Shows rotation history (oldCredentialId chain)
+
+---
+
+#### GET /integrations/{integrationId}/credentials/{credentialId}/audit
+
+**Purpose:** Audit trail for a specific credential.
+
+**Response (200 OK):**
+
+```json
+{
+  "credentialId": "cred-001",
+  "events": [
+    {
+      "id": "event-001",
+      "action": "created",
+      "actor": "user-uuid",
+      "timestamp": "2026-08-04T12:30:00Z",
+      "ipAddress": "203.0.113.42",
+      "userAgent": "Mozilla/5.0..."
+    },
+    {
+      "id": "event-002",
+      "action": "tested",
+      "actor": "system",
+      "timestamp": "2026-08-04T12:35:00Z",
+      "result": "SUCCESS"
+    },
+    {
+      "id": "event-003",
+      "action": "rotated",
+      "actor": "user-uuid",
+      "reason": "routine maintenance",
+      "timestamp": "2026-09-04T00:00:00Z",
+      "ipAddress": "203.0.113.42"
+    }
+  ]
+}
+```
+
+**Authorization:** `integrations:read` + merchant owns integration
+
+---
+
+#### POST /integrations/{integrationId}/credentials/{credentialId}/test
+
+**Purpose:** Test webhook connectivity with a specific credential.
+
+**Request:** (body optional)
+
+**Response (200 OK):**
+
+```json
+{
+  "credentialId": "cred-001",
+  "status": "SUCCESS", // SUCCESS | FAILED | TIMEOUT
+  "testedAt": "2026-09-04T21:00:00Z",
+  "responseTime": 145, // ms
+  "httpStatus": 200,
+  "message": "Webhook responded with HTTP 200"
+}
+```
+
+**Behavior:**
+
+- Uses the specific credential to sign test request
+- Validates webhook signature with that credential's hash
+- Logs audit event: `credential_tested`
+
+---
+
+### 4.3 Webhook Signature Validation (Inbound Authentication)
+
+**Inbound-Valid Credential States:**
+
+- ✅ ACTIVE (current credential, fully deployed by merchant)
+- ✅ ROTATED (previous credential during 7-day overlap)
+- ❌ CREATED (not yet authenticated; security boundary)
+- ❌ EXPIRED (past overlap deadline; no longer trusted)
+- ❌ REVOKED (explicitly invalidated; immediate effect)
+
+**Change to existing C functionality:**
+
+When validating incoming webhook signature, check only ACTIVE and ROTATED credentials:
+
+```typescript
+async validateWebhookSignature(integrationId: string, signature: string, payload: string): Promise<boolean> {
+  // Get only inbound-valid credentials for this integration
+  const credentials = await this.credentialsService.getInboundValidCredentials(integrationId);
+  // Inbound-valid credentials: ACTIVE, ROTATED (not CREATED, EXPIRED, or REVOKED)
+
+  for (const cred of credentials) {
+    // Decrypt the actual credential secret (plaintextHash is for reuse detection, not signing)
+    const plaintextSecret = this.decrypt(
+      cred.encryptedValue,
+      cred.encryptionIv,
+      cred.encryptionAuthTag
+    );
+
+    // Use HMAC-SHA256 with actual secret (cryptographically sound keyed MAC)
+    // CRITICAL: plaintextSecret must be transient-only (not logged, persisted, or returned)
+    const expectedSignature = crypto
+      .createHmac('sha256', plaintextSecret)
+      .update(payload)  // CRITICAL: payload must be canonical/byte-identical for verification
+      .digest('hex');
+
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+    if (isValid) return true;
+  }
+  return false;
+}
+```
+
+**CRITICAL Verification Requirements (Gate 1):**
+
+1. **Plaintext Secret Transience:** The decrypted `plaintextSecret` must exist only transiently in application memory during HMAC computation. It must **never**:
+   - Be logged (info, debug, error logs)
+   - Be persisted to database
+   - Be returned through API responses
+   - Be included in telemetry or monitoring
+   - Be included in exception/error messages
+
+2. **Canonical Payload:** The webhook payload used for signing and verification must be byte-identical. This requires:
+   - Deterministic JSON serialization (consistent key order, no extra whitespace)
+   - Handle merchant-side payload modifications carefully (signing raw bytes, not deserialized/reserialized JSON)
+   - Test coverage: verify legitimate signatures don't fail due to JSON serialization differences
+
+**Rationale:**
+
+- During rotation overlap (7 days), both old (ROTATED) and new (ACTIVE) credentials validate incoming webhooks (zero-downtime rotation).
+- After overlap expires, old credential becomes EXPIRED → no longer inbound-valid.
+- CREATED credentials are excluded to prevent security window; new credentials must be explicitly deployed before authentication.
+- REVOKED credentials immediately reject all inbound requests (401 Unauthorized).
+
+**Database Query:**
+
+```sql
+-- Inbound-valid credentials for an integration
+SELECT id, plaintextHash FROM merchant_integration_credentials
+WHERE integration_id = $1
+  AND status IN ('ACTIVE', 'ROTATED')
+  AND revoked_at IS NULL
+  AND deleted_at IS NULL
+ORDER BY created_at DESC;
+```
+
+---
+
+## 5. Authorization & Merchant Isolation
+
+### 5.1 Authorization Requirements
+
+**For Credential Operations:**
+
+| Operation                    | Permission           | Scope                            |
+| ---------------------------- | -------------------- | -------------------------------- |
+| Create credential (via POST) | `integrations:write` | own merchant's integrations only |
+| Rotate credential            | `integrations:write` | own merchant's integrations only |
+| Revoke credential            | `integrations:write` | own merchant's integrations only |
+| List credentials             | `integrations:read`  | own merchant's integrations only |
+| View audit                   | `integrations:read`  | own merchant's integrations only |
+| Test credential              | `integrations:write` | own merchant's integrations only |
+
+### 5.2 Merchant Isolation Implementation
+
+**All credential operations check:**
+
+```typescript
+async rotateCredential(integrationId: string, credentialId: string, merchantId: string) {
+  // 1. Verify integration exists and belongs to merchant
+  const integration = await this.integrations.getByIdAndMerchant(integrationId, merchantId);
+  if (!integration) throw new ForbiddenException('Integration not found');
+
+  // 2. Verify credential belongs to this integration
+  const credential = await this.credentials.getByIdAndIntegration(credentialId, integrationId);
+  if (!credential) throw new ForbiddenException('Credential not found');
+
+  // 3. Proceed with rotation
+  // ...
+}
+```
+
+**Error Responses:**
+
+- 404: If credential/integration not found (no information disclosure)
+- 403: If merchant doesn't own the integration (explicit rejection)
+
+---
+
+## 6. Rate Limiting
+
+### 6.1 Credential Rotation Rate Limit
+
+**Rule:** Max 1 rotation per credential per 24 hours
+
+**Rationale:** Prevents abuse/enumeration, ensures planned rotation windows
+
+**Implementation:**
+
+```typescript
+async rotateCredential(integrationId: string, credentialId: string) {
+  const lastRotation = await this.auditEvents.getLastRotation(credentialId);
+  if (lastRotation && Date.now() - lastRotation < 86400000) {
+    throw new TooManyRequestsException('Can only rotate once per 24 hours');
+  }
+  // Proceed
+}
+```
+
+### 6.2 Test Credential Rate Limit
+
+**Rule:** Max 10 tests per credential per minute
+
+**Rationale:** Prevents enumeration attacks, excessive webhook calls
+
+---
+
+## 7. Secret Exposure Prevention
+
+### 7.1 Plaintext Handling
+
+**When plaintext key is exposed:**
+
+- Only at POST /integrations creation (C-phase)
+- Only at POST /integrations/{id}/credentials/rotate (D-phase)
+- In both cases, merchant receives one-time plaintext; we do NOT store it
+
+**Plaintext never stored, never logged, never cached:**
+
+- Store only `plaintextHash` (SHA256 of plaintext + random salt)
+- Encrypt the plaintext with AES-256-GCM before storage
+- Decryption requires encryption key (not stored; ephemeral per request)
+
+### 7.2 Error Messages
+
+**Never expose in error messages:**
+
+- Plaintext credential
+- Plaintext hash (could be used for precomputation)
+- Integration webhook URL (could leak merchant endpoints)
+- Previous rotation timestamps (timing attacks)
+
+**Example safe error:**
+
+```
+❌ "Credential validation failed: hash doesn't match stored hash ab1cd2ef3"
+✅ "Credential validation failed: invalid signature"
+```
+
+### 7.3 Logging & Audit Trail
+
+**Safe to log:**
+
+- Credential ID (UUID, not plaintext)
+- Status changes (CREATED, ACTIVE, ROTATED, REVOKED)
+- Actions (created, rotated, revoked, tested)
+- Actor (user ID)
+- Timestamps
+- IP address, user agent
+
+**Never log:**
+
+- Plaintext credential or hash
+- Encrypted values (unless explicitly for debugging in staging)
+
+---
+
+## 8. Concurrency Control & Idempotency
+
+**Critical Design:** Prevent race conditions when multiple admins rotate simultaneously or when requests are retried.
+
+### 8.1 Optimistic Locking
+
+**Add version field to MerchantIntegrationCredential:**
+
+```prisma
+model MerchantIntegrationCredential {
+  // ... existing fields
+  version              Int                       @default(1)  // optimistic lock
+  // ... rest of fields
+}
+```
+
+**Rotation transaction checks version:**
+
+```typescript
+async rotateCredential(integrationId: string, credentialId: string, expectedVersion: Int) {
+  return this.db.transaction(async (trx) => {
+    // 1. Lock and read current credential
+    const currentCred = await trx
+      .select('*')
+      .from('merchant_integration_credentials')
+      .where({ id: credentialId, integration_id: integrationId })
+      .forUpdate();  // Database row-level lock
+
+    if (!currentCred) throw new NotFoundException('Credential not found');
+    if (currentCred.version !== expectedVersion) {
+      throw new ConflictException('Credential was modified by another request. Retry to get latest version.');
+    }
+
+    // 2. Verify state is ACTIVE (only ACTIVE credentials can rotate)
+    if (currentCred.status !== 'ACTIVE') {
+      throw new BadRequestException(`Cannot rotate credential in ${currentCred.status} state`);
+    }
+
+    // 3. Create new credential
+    const newCred = await trx.insert({
+      integration_id: integrationId,
+      status: 'ACTIVE',
+      plaintext_hash: hash(plaintext),
+      public_suffix: plaintext.slice(-12),
+      // ... other fields
+    }).into('merchant_integration_credentials');
+
+    // 4. Mark old credential as ROTATED
+    await trx.update('merchant_integration_credentials')
+      .set({
+        status: 'ROTATED',
+        version: currentCred.version + 1,
+        expires_at: now().add(7, 'days'),
+        updated_at: now()
+      })
+      .where({ id: credentialId });
+
+    // 5. Log audit event
+    await trx.insert({
+      credential_id: credentialId,
+      action: 'rotated',
+      actor: userId,
+      timestamp: now()
+    }).into('credential_audit_events');
+
+    // 6. Store idempotency record INSIDE transaction to prevent retry-induced duplicates
+    if (idempotencyKey) {
+      await trx.insert({
+        idempotency_key: idempotencyKey,
+        operation_type: 'credential_rotation',
+        resource_id: credentialId,
+        response_status: 201,
+        response_body: JSON.stringify({ old: credentialId, new: newCred.id }),
+        expires_at: now().add(24, 'hours')
+      }).into('request_idempotency_records');
+    }
+
+    // If any step fails, entire transaction rolls back automatically
+    return { old: credentialId, new: newCred.id };
+  });
+}
+```
+
+**Behavior:**
+
+- If another admin rotates simultaneously, the second request gets a 409 Conflict
+- Client retries and gets the latest version
+- No duplicate credentials are created
+
+### 8.2 Idempotency Keys
+
+**Accept Idempotency-Key request header — application/API idempotency mechanism:**
+
+```typescript
+POST /integrations/{integrationId}/credentials/{credentialId}/rotate
+Idempotency-Key: "550e8400-e29b-41d4-a716-446655440099"
+```
+
+**Store idempotency mapping:**
+
+```prisma
+model RequestIdempotencyRecord {
+  id                    String    @id @default(uuid()) @db.Uuid
+  idempotencyKey        String    @unique @map("idempotency_key") @db.VarChar(255)
+  operationType         String    @map("operation_type") // "credential_rotation"
+  resourceId            String    @map("resource_id") @db.Uuid  // credentialId
+  responseStatus        Int       @map("response_status")
+  responseBody          String    @map("response_body")  // JSON
+  createdAt             DateTime  @default(now()) @map("created_at")
+  expiresAt             DateTime  @map("expires_at")  // 24-hour retention
+
+  @@unique([idempotencyKey, operationType])
+  @@index([createdAt])
+  @@map("request_idempotency_records")
+}
+```
+
+**Implementation:**
+
+```typescript
+async rotateCredential(idempotencyKey: string, integrationId: string, credentialId: string) {
+  // 1. Check if this idempotency key was already processed
+  const existingRecord = await this.db
+    .select('*')
+    .from('request_idempotency_records')
+    .where({ idempotency_key: idempotencyKey, operation_type: 'credential_rotation' });
+
+  if (existingRecord) {
+    // Return cached response for idempotent replay
+    return JSON.parse(existingRecord.response_body);
+  }
+
+  // 2. Perform rotation with idempotency key passed to transaction
+  // (idempotency record is written INSIDE the transaction, see § 8.1)
+  const result = await this.rotation.rotate(integrationId, credentialId, idempotencyKey);
+
+  return result;
+}
+```
+
+**Database Constraint (CRITICAL):**
+
+The idempotency key must have a UNIQUE constraint in the database:
+
+```sql
+CREATE UNIQUE INDEX unique_idempotency_key
+  ON request_idempotency_records(idempotency_key, operation_type);
+```
+
+This prevents a race condition where two simultaneous requests both observe "no idempotency record exists" and both proceed to create credentials.
+
+**Transactional Atomicity (CRITICAL):**
+
+The correct sequence is:
+
+```
+receive Idempotency-Key header
+        ↓
+check for existing record (outside transaction)
+        ↓
+if exists: return cached result (early exit)
+        ↓
+else: BEGIN TRANSACTION
+        ↓
+lock integration/current credential (forUpdate)
+        ↓
+verify version/state
+        ↓
+create new credential
+        ↓
+mark old credential ROTATED
+        ↓
+create idempotency record (INSIDE transaction)
+        ↓
+create audit event
+        ↓
+COMMIT (or ROLLBACK if any step fails)
+```
+
+**If first transaction fails/rolls back:**
+
+- Idempotency record rolls back with it
+- Client can safely retry with same key
+- Second request observes no idempotency record and proceeds
+- Both rows (idempotency + credentials) are atomic: succeed together or fail together
+
+**Behavior:**
+
+- Idempotency record written **inside the same transaction** as the rotation
+- Idempotency key has UNIQUE constraint → prevents both simultaneous requests from proceeding
+- If transaction fails, idempotency record is rolled back (safe retry)
+- If transaction succeeds, idempotency record is committed
+- Same idempotency key = cached response (idempotent)
+- Different idempotency key = new operation (concurrency check applies)
+- Idempotency records expire after 24 hours (automatic cleanup prevents unbounded storage)
+
+**CRITICAL Verification Requirement (Gate 1):**
+
+True concurrent idempotency must be demonstrated with executed tests, not merely documented. Test scenarios:
+
+1. **Concurrent identical requests (same key):**
+   - Two simultaneous requests with Idempotency-Key="X"
+   - First acquires database UNIQUE constraint
+   - Second observes constraint violation and returns cached result
+   - Result: Only one credential created, both clients receive same response
+
+2. **Concurrent transaction failure (rollback releases lock):**
+   - Request 1: Acquire key, start rotation, simulate error mid-transaction
+   - Transaction rolls back; idempotency record is deleted
+   - Request 2 (retry): Same key; observes no record; proceeds with new rotation
+   - Result: Safe retry allowed after transient failure
+
+3. **Concurrent different requests (different keys):**
+   - Request A: Idempotency-Key="A"; acquires version lock
+   - Request B: Idempotency-Key="B"; encounters version conflict (concurrency check)
+   - Result: Proper 409 Conflict response; client retries with latest version
+
+### 8.3 Database Uniqueness Constraints
+
+**Enforce invariants at database level:**
+
+```sql
+-- Only one ACTIVE credential per integration at a time
+CREATE UNIQUE INDEX unique_active_credential_per_integration
+  ON merchant_integration_credentials(integration_id, status)
+  WHERE status = 'ACTIVE' AND deleted_at IS NULL;
+
+-- Prevent duplicate plaintextHash across integration (no secret reuse)
+ALTER TABLE merchant_integration_credentials
+  ADD CONSTRAINT unique_plaintext_hash_per_integration
+  UNIQUE (integration_id, plaintext_hash);
+```
+
+**Rationale:**
+
+- Database constraint prevents application-layer races from creating invalid state
+- Unique index on (integration_id, status='ACTIVE') ensures only one active credential
+- Unique constraint on plaintext_hash prevents same secret being reused
+
+**IMPORTANT — Permanent Secret Reuse Prevention (POLICY DECISION):**
+
+The UNIQUE(integration_id, plaintext_hash) constraint enforces a **permanent** prohibition on credential cycling (e.g., rotating A → B → C → A).
+
+This is a **security policy choice**, not an inherent technical requirement. It may be desirable, but requires explicit CTO approval because:
+
+- Permanent retention of credential hashes has operational/security implications
+- The policy states: "No integration may ever reuse a previous credential secret"
+- Compromised credentials remain permanently invalid, even if rotated away years ago
+- This prevents merchants from accidentally reverting to an old (potentially compromised) credential
+
+**CTO Decision Required:** Does DrippleX want to enforce permanent secret reuse prevention?
+
+If YES → UNIQUE(integration_id, plaintextHash) constraint is correct.  
+If NO → Remove constraint; credentials can be rotated in a cycle (A → B → C → A).
+
+This decision should be explicitly documented in the implementation plan before coding begins.
+
+### 8.4 State-Transition Enforcement
+
+**Legal transitions enforced at service boundary:**
+
+```typescript
+// Only these transitions are allowed
+const LEGAL_TRANSITIONS = {
+  'CREATED': ['ACTIVE', 'REVOKED'],
+  'ACTIVE': ['ROTATED', 'REVOKED'],
+  'ROTATED': ['EXPIRED', 'REVOKED'],
+  'REVOKED': [],  // Terminal state
+  'EXPIRED': []   // Terminal state
+};
+
+async transitionCredentialStatus(credentialId: string, fromStatus: string, toStatus: string) {
+  const legal = LEGAL_TRANSITIONS[fromStatus];
+  if (!legal.includes(toStatus)) {
+    throw new BadRequestException(
+      `Cannot transition from ${fromStatus} to ${toStatus}. Legal transitions: ${legal.join(', ')}`
+    );
+  }
+  // Proceed with transition
+}
+```
+
+**Concurrency protection:**
+
+- Stored procedure or transaction verifies current status before transition
+- If status has changed since request started, transaction aborts with conflict
+
+### 8.5 Audit Both Success and Conflict
+
+**Log all rotation attempts (success and failure):**
+
+```typescript
+// Success case
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_rotated',
+  actor: userId,
+  status: 'success',
+  timestamp: now(),
+  reason: 'routine maintenance',
+});
+
+// Conflict case
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_rotation_attempted',
+  actor: userId,
+  status: 'conflict',
+  error: 'Version mismatch; concurrent rotation detected',
+  timestamp: now(),
+});
+
+// Revocation attempted on non-existent credential
+await auditLog.insert({
+  credential_id: credentialId,
+  action: 'credential_revocation_attempted',
+  actor: userId,
+  status: 'rejected',
+  error: 'Credential not found or already revoked',
+  timestamp: now(),
+});
+```
+
+**Rationale:**
+
+- Audit trail shows both intended actions and actual outcomes
+- Security investigation can identify concurrent attempts or unusual patterns
+- Rejected attempts are logged for compliance and debugging
+
+### 8.6 ROTATED → EXPIRED Enforcement Mechanism
+
+**Explicit execution to prevent accidental validity if expiry worker fails:**
+
+Store explicit timestamps on MerchantIntegrationCredential:
+
+```prisma
+model MerchantIntegrationCredential {
+  // ...
+  rotatedAt             DateTime?  @map("rotated_at")  // When status changed to ROTATED
+  expiresAt             DateTime?  @map("expires_at")  // When credential should become EXPIRED
+  // ...
+}
+```
+
+**Webhook signature validation enforces expiry at query time:**
+
+```typescript
+async validateWebhookSignature(integrationId: string, signature: string, payload: string): Promise<boolean> {
+  const credentials = await this.credentialsService.getInboundValidCredentials(integrationId);
+
+  // Query ensures ROTATED credentials are not valid past expiresAt
+  // SELECT * FROM credentials
+  // WHERE integration_id = ?
+  // AND status IN ('ACTIVE', 'ROTATED')
+  // AND (status != 'ROTATED' OR expires_at > NOW())
+
+  for (const cred of credentials) {
+    // Cryptographically sound keyed MAC
+    const expectedSignature = crypto
+      .createHmac('sha256', cred.plaintextHash)
+      .update(payload)
+      .digest('hex');
+
+    if (crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature))) {
+      return true;
+    }
+  }
+  return false;
+}
+```
+
+**Async cleanup job (optional optimization):**
+
+- Scheduled worker runs every 1 hour
+- Updates status = 'EXPIRED' WHERE status = 'ROTATED' AND expires_at < NOW()
+- Prevents query-time evaluation on credentials already past deadline
+- But if worker fails, query-time check still enforces correctness
+
+**Rationale:**
+
+- Query-time enforcement prevents accidental validity if worker fails
+- Explicit `rotatedAt` + `expiresAt` timestamps enable audit trail clarity
+- Database constraint prevents invalid state (no lingering ROTATED credentials)
+
+---
+
+## 9. Rotation Without Downtime
+
+### 8.1 Zero-Downtime Rotation Flow
+
+**Before Rotation:**
+
+```
+Merchant uses: cred-001 (ACTIVE)
+Webhooks validate against: cred-001
+```
+
+**Step 1: Rotate (Day 0)**
+
+```
+POST /integrations/{id}/credentials/{cred-001}/rotate
+Response: old=cred-001 (now ROTATED), new=cred-002 (ACTIVE)
+Merchant notified via email
+```
+
+**Step 2: Overlap Period (Days 0-7)**
+
+```
+Merchant uses: cred-001 (ROTATED) → cred-002 (ACTIVE) transition
+Webhooks validate against: cred-001 (ROTATED) OR cred-002 (ACTIVE)
+Both credentials work for incoming webhooks (no downtime)
+```
+
+**Step 3: Deadline Approaches (Day 7)**
+
+```
+Merchant deadline: Deploy new credential (cred-002)
+Grace period ends; old credential (cred-001) transitions to EXPIRED
+```
+
+**Step 4: Post-Overlap (Day 8+)**
+
+```
+Merchant using: cred-002 (ACTIVE)
+Webhooks validate against: cred-002 only
+Old credential (cred-001) eligible for hard deletion after retention window
+```
+
+### 8.2 Handling Slow Merchant Deployment
+
+**If merchant doesn't deploy new credential by deadline:**
+
+Option A (Lenient):
+
+- Old credential (cred-001) stays ROTATED, doesn't auto-expire
+- Webhooks continue validating against both for compliance
+- Merchant receives reminder email before each retry
+- Soft deadline (no hard cutoff)
+
+Option B (Strict):
+
+- After deadline, old credential (cred-001) transitions to EXPIRED
+- Webhooks no longer validate against cred-001
+- Merchant's integrations fail if still using old credential
+- Requires immediate rotation or hard cutoff
+
+**CTO Decision Required:** Lenient vs. Strict policy?
+
+---
+
+## 10. Failure & Rollback Behavior
+
+### 9.1 Failed Rotation
+
+**Scenario:** Rotation initiated but something goes wrong (e.g., DB error mid-transaction)
+
+**Protection:** Database transaction atomicity
+
+- Either full rotation succeeds or entire operation rolls back
+- No partial states (e.g., new credential created but old not marked ROTATED)
+
+**Implementation:**
+
+```typescript
+async rotateCredential(integrationId: string, credentialId: string) {
+  return this.db.transaction(async (trx) => {
+    // 1. Mark old credential as ROTATED
+    await trx.update(...).where(...);
+    // 2. Create new credential as ACTIVE
+    await trx.insert(...);
+    // 3. Log audit event
+    await trx.insert(...);
+    // If any step fails, entire transaction rolls back
+  });
+}
+```
+
+### 9.2 Accidental Revocation Recovery
+
+**Scenario:** Merchant revokes a credential by mistake, breaks production
+
+**Recovery Options:**
+
+Option A (Revert within grace period):
+
+- Add 15-minute grace period before revocation takes effect
+- Merchant can "undo revoke" within grace period
+- Audit event: `revocation_undone`
+
+Option B (Restore from backup):
+
+- Not in D scope; requires separate backup/restore system
+- Manual CTO action to restore credential
+
+Option C (Fast rotation):
+
+- No grace period; revocation immediate
+- Merchant must rotate immediately to recover
+- Old credential can be "un-revoked" if still within rotation overlap
+
+**CTO Decision Required:** Which recovery option?
+
+### 9.3 Cascade Delete Safety
+
+**When integration is deleted (via DELETE /integrations/{id}):**
+
+- Integration soft-deleted (archivedAt timestamp set)
+- All credentials should also be soft-deleted (marked deletedAt)
+- Audit events preserved for compliance
+
+**Implementation:**
+
+```prisma
+model MerchantIntegration {
+  // ... existing fields
+  credentials MerchantIntegrationCredential[]  // relation
+}
+
+model MerchantIntegrationCredential {
+  // ... existing fields
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+}
+```
+
+Cascade ensures no orphaned credentials when integration deleted.
+
+---
+
+## 11. Test Strategy
+
+### 10.1 Credential Rotation Tests
+
+**Unit Tests:** (not requiring backend)
+
+- State machine transitions (ACTIVE → ROTATED → EXPIRED)
+- Overlap period calculation
+- Credential chain validation (previousCredentialId)
+
+**Integration Tests:** (against PostgreSQL + Redis)
+
+```typescript
+describe('Credential Rotation', () => {
+
+  test('POST /rotate generates new credential with ACTIVE status', async () => {
+    // 1. Create integration + credential (C-phase)
+    // 2. POST /rotate
+    // 3. Verify: old status = ROTATED, new status = ACTIVE
+    // 4. Verify: both credentials valid for webhook validation
+  });
+
+  test('POST /revoke makes credential invalid immediately', async () => {
+    // 1. Create + rotate credential
+    // 2. POST /revoke
+    // 3. Verify: status = REVOKED
+    // 4. Webhook validation against revoked credential fails (401)
+  });
+
+  test('Overlap period: both old and new credentials validate webhooks', async () => {
+    // 1. Rotate credential
+    // 2. Generate webhook payload signed with old credential
+    // 3. Send webhook
+    // 4. Verify: validation succeeds (old credential still valid)
+    // 5. Generate payload signed with new credential
+    // 6. Send webhook
+    // 7. Verify: validation succeeds (new credential valid)
+  });
+
+  test('After overlap expires, old credential no longer validates', async () => {
+    // 1. Rotate credential
+    // 2. Advance time past overlap deadline (7 days)
+    // 3. Mark old credential as EXPIRED (cron job or manual)
+    // 4. Generate webhook payload signed with old credential
+    // 5. Send webhook
+    // 6. Verify: validation fails (401)
+  });
+
+  test('Rate limit: cannot rotate same credential twice in 24 hours', async () => {
+    // 1. Rotate credential
+    // 2. Attempt second rotation immediately
+    // 3. Verify: 429 Too Many Requests
+  });
+
+  test('Merchant isolation: cannot rotate another merchant's credential', async () => {
+    // 1. Create integration as Merchant A
+    // 2. Attempt rotate as Merchant B
+    // 3. Verify: 403 Forbidden
+  });
+
+  test('Authorization: cannot rotate without integrations:write permission', async () => {
+    // 1. Create user with integrations:read only
+    // 2. Attempt rotate
+    // 3. Verify: 403 Forbidden
+  });
+
+  test('Audit trail: all rotations logged with actor and reason', async () => {
+    // 1. Rotate credential with reason
+    // 2. GET /audit
+    // 3. Verify: audit event includes action, actor, reason, timestamp
+  });
+
+  test('Failed rotation rolls back atomically', async () => {
+    // 1. Simulate DB error during rotation (mock)
+    // 2. Verify: transaction rolls back
+    // 3. Verify: old credential still ACTIVE, no new credential created
+  });
+
+});
+```
+
+### 10.2 Encrypted Outbound Credentials Tests
+
+**Scenario:** DrippleX makes outbound API call with encrypted credential
+
+```typescript
+describe('Outbound Credential Encryption', () => {
+  test('Outbound request encrypts credential in header', async () => {
+    // 1. Create mock webhook endpoint
+    // 2. Request outbound call from DrippleX
+    // 3. Verify: request includes encrypted credential header
+    // 4. Verify: plaintext never exposed in logs
+  });
+
+  test('Webhook validation decrypts and validates signature', async () => {
+    // 1. Simulate webhook call with encrypted credential
+    // 2. Verify: signature validation succeeds
+  });
+});
+```
+
+### 10.3 Acceptance Tests (D-Phase)
+
+**Full behavioral test suite (like C-phase):**
+
+```
+D1: Credential Rotation
+  ✓ POST /rotate generates new credential with ACTIVE status
+  ✓ Old credential marked ROTATED
+  ✓ Overlap period configured correctly
+  ✓ Merchant notified (email or in-app)
+
+D2: Credential Revocation
+  ✓ POST /revoke marks credential REVOKED
+  ✓ Revocation is immediate (no grace period)
+  ✓ Revoked credential fails webhook validation
+  ✓ Cannot revoke only ACTIVE credential
+
+D3: Credential Status Lifecycle
+  ✓ CREATED → ACTIVE transition
+  ✓ ACTIVE → ROTATED transition
+  ✓ ROTATED → EXPIRED transition
+  ✓ REVOKED stays REVOKED (no transition)
+
+D4: Merchant Isolation
+  ✓ Cannot rotate another merchant's credential
+  ✓ Cannot view another merchant's credentials
+  ✓ Cannot list audit events for another merchant's credential
+
+D5: Rate Limiting
+  ✓ Cannot rotate same credential twice in 24 hours
+  ✓ Cannot test credential more than 10 times per minute
+
+D6: Webhook Validation During Overlap
+  ✓ Both old (ROTATED) and new (ACTIVE) credentials validate webhooks
+  ✓ After overlap, old credential no longer validates
+
+D7: Audit Trail
+  ✓ All rotations logged with actor, reason, timestamp
+  ✓ All revocations logged with actor, reason
+  ✓ All tests logged with result
+
+D8: Authorization
+  ✓ integrations:write required for rotate/revoke
+  ✓ integrations:read required for list/view
+  ✓ Missing permission returns 403
+
+D9: Secret Exposure Prevention
+  ✓ Plaintext credential never logged
+  ✓ Plaintext credential never cached
+  ✓ Plaintext credential never appears in audit trail
+```
+
+---
+
+## 12. Migration Impact
+
+### 11.1 Data Migration
+
+**Existing Credentials (from C):**
+
+- All existing credentials in DB must be backfilled with status = ACTIVE
+- All existing credentials treated as created during initial implementation (audit events backfilled)
+
+**No Data Loss:**
+
+- All existing plaintext values continue working
+- Encrypted values not affected
+- Soft-delete semantics unchanged
+
+### 11.2 API Compatibility
+
+**Backward Compatibility:**
+
+- All C-phase endpoints continue unchanged
+- New D-phase endpoints are additions, not modifications
+- Existing clients see no breaking changes
+
+**Migration Path for Merchants:**
+
+1. D launches; merchants can optionally use new rotation APIs
+2. C functionality continues unchanged (old credential model works)
+3. Merchants gradually migrate to D rotation endpoints as needed
+4. No forced migration; optional adoption
+
+### 11.3 Deployment Order
+
+1. **Database Migration:** Apply new schema (credentials table extended)
+2. **Code Deployment:** New D endpoints live, but gated behind feature flag
+3. **Feature Flag:** Enable D endpoints for canary merchants (1%)
+4. **Monitoring:** 24-48 hours in canary
+5. **Rollout:** Gradual 25% → 50% → 100%
+6. **Grace Period:** C-phase functionality available in parallel for 30 days minimum
+
+---
+
+## 13. Interaction with C-Phase
+
+### 12.1 No Breaking Changes to C
+
+All C-phase functionality continues unchanged:
+
+- `POST /integrations` still returns plaintext key
+- `GET /integrations` still shows masked credential
+- `PUT /integrations` still updates integration metadata
+- `DELETE /integrations` still soft-deletes
+- JWT authentication still enforced
+- SSRF validation still active
+- Merchant isolation still enforced
+
+### 12.2 C Credentials in D Context
+
+C-phase credentials are immediately compatible with D:
+
+- Existing credentials automatically get status = ACTIVE
+- Existing credentials can be rotated via D endpoints
+- Existing credentials visible in D credential list
+- No migration required; opt-in to rotation features
+
+### 12.3 Overlapping Concerns
+
+**Webhook Signature Validation:**
+
+- C: Validates against single ACTIVE credential
+- D: Validates against all non-REVOKED credentials (enables overlap)
+
+**Credential Masking:**
+
+- C: publicSuffix shown in GET responses
+- D: publicSuffix shown in credential list; no change
+
+**Authorization:**
+
+- C: `integrations:read/write` enforced
+- D: Same permissions apply to credential operations
+
+---
+
+## 14. Configuration & Deployment Parameters
+
+### 13.1 Environment Variables (New for D)
+
+```bash
+# Rotation overlap period (days)
+CREDENTIAL_ROTATION_OVERLAP_DAYS=7
+
+# Hard-delete retention window (days after EXPIRED)
+CREDENTIAL_RETENTION_DAYS=30
+
+# Test rate limit (tests per minute)
+CREDENTIAL_TEST_RATE_LIMIT=10
+
+# Rotation rate limit (rotations per 24 hours per credential)
+CREDENTIAL_ROTATION_RATE_LIMIT=1
+
+# Lenient vs strict deadline enforcement
+CREDENTIAL_DEADLINE_POLICY=lenient  # or "strict"
+
+# Grace period for accidental revocation (minutes, 0 = no grace period)
+CREDENTIAL_REVOCATION_GRACE_PERIOD_MINUTES=0  # or 15
+```
+
+### 13.2 Feature Flags (Initial Rollout)
+
+```typescript
+// In code, gate D endpoints behind feature flag
+if (featureFlags.isEnabled('credential_rotation_beta', merchantId)) {
+  // D endpoints available
+} else {
+  // D endpoints return 404 (not implemented for this merchant)
+}
+```
+
+---
+
+## 15. Open Questions for CTO Review
+
+1. **Deadlines:** Lenient (old credential stays valid) or Strict (hard cutoff after 7 days)?
+2. **Revocation Recovery:** Grace period, backup restore, or fast rotation only?
+3. **Retention Policy:** Hard-delete after 30 days, or indefinite retention?
+4. **Rate Limits:** Proposed limits (1 rotation/24h, 10 tests/min) sufficient? Too restrictive?
+5. **Overlap Period:** 7 days sufficient for merchant deployment? Too long?
+6. **Merchant Notification:** Email, in-app notification, or both?
+7. **Encryption:** AES-256-GCM sufficient? HSM storage required for keys?
+8. **Audit Retention:** How long keep audit logs? Compliance requirements?
+9. **Backward Compat:** C-phase credentials visible in D list? Or separate?
+10. **Rollout:** Canary 1% → 25% → 50% → 100% timeline?
+
+---
+
+## 16. Success Criteria (for CTO Approval)
+
+Before D implementation begins, this plan must address:
+
+- ✅ Credential rotation without downtime (zero-downtime swap)
+- ✅ Revocation mechanism (immediate, not grace-period)
+- ✅ Lifecycle states (CREATED, ACTIVE, ROTATED, REVOKED, EXPIRED)
+- ✅ Outbound encrypted credentials (plaintext not exposed in transit)
+- ✅ Old/new overlap rules (both valid during transition)
+- ✅ Audit trail (full history of all operations)
+- ✅ Authorization (integrations:write/read enforced)
+- ✅ Merchant isolation (cannot access/modify others' credentials)
+- ✅ Rate limiting (prevents abuse and enumeration)
+- ✅ Secret exposure prevention (plaintext only at generation)
+- ✅ Failure/rollback (atomic transactions, recovery options)
+- ✅ Tests (unit, integration, acceptance)
+- ✅ Migration (backward compatible, no data loss)
+- ✅ C interaction (no breaking changes)
+
+---
+
+## 16.1 Explicit Implementation Gate (Governance)
+
+**NO D-PHASE IMPLEMENTATION MAY BEGIN UNTIL:**
+
+1. **All Gate 1 Technical Requirements pass automated tests:**
+   - HMAC-SHA256 validation uses actual plaintext secret (not hash)
+   - ROTATED → EXPIRED query-time enforcement + async cleanup job
+   - Idempotency key UNIQUE constraint prevents duplicate simultaneous requests
+   - Idempotency record transactional atomicity (rolls back if transaction fails)
+
+2. **All Gate 2 Policy Decisions are resolved and recorded:**
+   - Decision 1: Deadline policy (lenient vs. strict)
+   - Decision 2: Revocation recovery mechanism
+   - Decision 3: Retention window for hard-delete
+   - Decision 4: Rate limits (1/24h, 10/min or different)
+   - Decision 5: Overlap period (7 days or different)
+   - Decision 6: Merchant notification method (email/in-app/both)
+   - Decision 7: Encryption standard (AES-256-GCM or HSM)
+   - Decision 8: Audit retention duration and compliance
+   - Decision 9: Backward compatibility (C credentials in D list?)
+   - Decision 10: Rollout timeline (canary percentages)
+   - **Decision 11 (NEW):** Permanent secret reuse prevention (YES or NO)
+
+**Audit Trail:**
+
+Once approved, this creates a durable record:
+
+- Plan → CTO technical approval → policy decisions → implementation → tests → rollout
+
+---
+
+## 17. Estimated Effort
+
+**Implementation (after CTO approval):**
+
+- Database schema + migration: 2-4 hours
+- Credential service (rotate, revoke, list, audit): 8-12 hours
+- API endpoints (POST rotate, revoke, GET list, audit): 4-6 hours
+- Webhook validation updates: 2-3 hours
+- Authorization & merchant isolation: 2-3 hours
+- Rate limiting: 2-3 hours
+- Tests (unit, integration, acceptance): 12-16 hours
+- Feature flags & deployment: 2-3 hours
+- **Total: 36-50 hours**
+
+**Assumes:**
+
+- CTO decisions made (open questions resolved)
+- C-phase already approved and tested
+- OpenAPI/SDK specs available
+
+---
+
+## Next Steps
+
+**Phase 1: CTO Technical Review (immediate)**
+
+1. Verify HMAC-SHA256 uses actual plaintext secret ✓ (amended)
+2. Verify idempotency UNIQUE constraint + transactional atomicity ✓ (amended)
+3. Verify ROTATED → EXPIRED mechanism ✓ (already in place)
+4. Approve that all Gate 1 technical requirements are satisfied
+
+**Phase 2: CTO Policy Decisions (pending)** 5. Resolve all 10 business questions (§ 15) 6. Decide: permanent secret reuse prevention YES or NO (new decision) 7. Record all decisions in implementation plan addendum
+
+**Phase 3: Implementation Gate (only after Phase 1 + 2 complete)** 8. CTO signs: "D-Phase plan APPROVED FOR IMPLEMENTATION" 9. Begin coding (36-50 hours) 10. Full acceptance test harness (like C-phase) 11. Staged canary deployment with monitoring
+
+---
+
+## CTO Approval Status
+
+| Component            | Status                    | Notes                                                                         |
+| -------------------- | ------------------------- | ----------------------------------------------------------------------------- |
+| **Architecture**     | 🟡 READY FOR APPROVAL     | Concurrency, state machine, audit all addressed; awaiting formal CTO sign-off |
+| **Security Design**  | 🟡 READY FOR VERIFICATION | HMAC, idempotency, encryption require code review + execution testing         |
+| **Technical Gate 1** | ✅ READY                  | 5 clarifications complete; verification checklist documented                  |
+| **Policy Gate 2**    | 🟡 PENDING                | 11 decisions required (10 existing + 1 new)                                   |
+| **Implementation**   | 🔴 BLOCKED                | Frozen until both gates pass                                                  |
+
+---
+
+**Status:** 🟡 **CTO REVIEW READY — IMPLEMENTATION BLOCKED PENDING GATE 1 VERIFICATION AND GATE 2 POLICY APPROVAL**
+
+**Engineering Instruction:** Prepare, review code sections (§ 4.3, § 8.2, § 8.6), design acceptance test harness with concurrent idempotency tests. **DO NOT BEGIN IMPLEMENTATION** until CTO formally approves both gates.
+
+---
+
+## Approval Chain (to be recorded when CTO approves)
+
+This section documents the formal approval when it occurs. **DO NOT EDIT UNTIL CTO APPROVAL.**
+
+### Gate 1 — Technical Requirements
+
+**Status:** ⏳ Awaiting CTO review
+
+```
+Gate 1 — Technical: [PENDING]
+Commit reviewed: 97e1d30
+Approver: [CTO name]
+Date: [YYYY-MM-DD HH:MM UTC]
+Conditions: [if any]
+Verification status:
+  - HMAC-SHA256 transient plaintext handling: [VERIFIED | CONDITION]
+  - Idempotency UNIQUE constraint: [VERIFIED | CONDITION]
+  - Concurrent scenario 1 (same key): [TESTED | CONDITION]
+  - Concurrent scenario 2 (rollback safety): [TESTED | CONDITION]
+  - Concurrent scenario 3 (409 conflict): [TESTED | CONDITION]
+```
+
+### Gate 2 — Policy Decisions
+
+**Status:** ⏳ Awaiting CTO decisions
+
+```
+Gate 2 — Policy: [PENDING]
+Decisions 1–11 recorded in: §15 (Addendum A)
+Approver: [CTO name]
+Date: [YYYY-MM-DD HH:MM UTC]
+Decision summary:
+  1. Deadline policy: [LENIENT | STRICT]
+  2. Revocation recovery: [GRACE | BACKUP | ROTATION]
+  3. Retention window: [30 DAYS | ____ DAYS]
+  4. Rate limits: [1/24h, 10/min | CUSTOM]
+  5. Overlap period: [7 DAYS | ____ DAYS]
+  6. Merchant notification: [EMAIL | IN-APP | BOTH]
+  7. Encryption: [AES-256-GCM | HSM-BACKED]
+  8. Audit retention: [____ MONTHS/YEARS]
+  9. Backward compatibility: [YES | NO]
+  10. Rollout timeline: [1% → 25% → 50% → 100%]
+  11. Secret reuse prevention: [YES | NO]
+```
+
+### Implementation Authorization
+
+**Status:** 🔴 BLOCKED until both gates approved
+
+```
+When BOTH Gate 1 AND Gate 2 are approved:
+
+🟢 Implementation Authorization: GO
+
+Approved baseline: 97e1d30
+Gate 1 approved by: [CTO name], [date]
+Gate 2 approved by: [CTO name], [date]
+Estimated effort: 36-50 hours
+Start authorization: [CTO date/time]
+Target completion: [date based on start + 50h]
+
+Chain of custody:
+Design → Verification → Decision → Authorization → Implementation → Testing → Rollout
+```
+
+---
+
+## Plan Freeze Status
+
+**🔴 D-PHASE PLAN IS FROZEN FOR CTO REVIEW**
+
+No further architectural changes will be made unless CTO testing or review discovers a real defect.
+
+Current baseline: Commit `97e1d30`
+
+Any changes after this point require explicit CTO approval and will be tracked separately from the frozen review baseline.
