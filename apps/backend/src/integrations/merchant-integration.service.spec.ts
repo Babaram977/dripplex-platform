@@ -385,36 +385,82 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
       await prisma.merchantIntegration.delete({ where: { id: integration.id } });
     });
 
-    it('should cascade delete credentials when integration is deleted', async () => {
+    /**
+     * Renamed from "should cascade delete credentials". It asserted cascade; the
+     * schema does not implement it, so it could never pass. What the schema
+     * actually declares is two different things, proven separately here.
+     *
+     * MerchantIntegration.credentialId -> IntegrationCredential is onDelete:
+     * SetNull, so removing a credential clears the pointer rather than deleting
+     * the integration.
+     *
+     * IntegrationCredential.integrationId, by contrast, carries no @relation at
+     * all, so the database has no foreign key for it — confirmed against
+     * pg_constraint, which lists seven FKs on these tables and none from
+     * integration_credentials. A credential therefore OUTLIVES its integration
+     * as an orphan. That is recorded as behaviour rather than asserted as
+     * intent: it looks like an oversight, and it is flagged for MKT-INT-001
+     * rather than fixed here.
+     */
+    it('nulls the integration credential pointer when the credential is deleted (SetNull)', async () => {
       const merchantId = randomUUID();
+      const credential = await prisma.integrationCredential.create({
+        data: {
+          integrationId: randomUUID(),
+          credentialType: 'INCOMING_API_KEY',
+          credentialHash: 'set_null_probe',
+          scopes: [],
+        },
+      });
+
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
           integrationName: 'Test',
           posProvider: 'SQUARE',
           status: 'ACTIVE',
+          credentialId: credential.id,
         },
       });
 
-      // @ts-ignore Prisma mock typing in tests
+      await prisma.integrationCredential.delete({ where: { id: credential.id } });
+
+      const after = await prisma.merchantIntegration.findUnique({
+        where: { id: integration.id },
+      });
+      expect(after).not.toBeNull();
+      expect(after?.credentialId).toBeNull();
+
+      await prisma.merchantIntegration.delete({ where: { id: integration.id } });
+    });
+
+    it('leaves a credential orphaned when its integration is deleted — no FK exists', async () => {
+      const integration = await prisma.merchantIntegration.create({
+        data: {
+          merchantId: randomUUID(),
+          integrationName: 'Test',
+          posProvider: 'SQUARE',
+          status: 'ACTIVE',
+        },
+      });
       const credential = await prisma.integrationCredential.create({
         data: {
           integrationId: integration.id,
           credentialType: 'INCOMING_API_KEY',
-          credentialHash: 'will_be_deleted',
+          credentialHash: 'orphan_probe',
           scopes: [],
         },
       });
 
-      // Delete integration
       await prisma.merchantIntegration.delete({ where: { id: integration.id } });
 
-      // Credential should be gone
       const found = await prisma.integrationCredential.findUnique({
         where: { id: credential.id },
       });
+      expect(found).not.toBeNull();
+      expect(found?.integrationId).toBe(integration.id);
 
-      expect(found).toBeNull();
+      await prisma.integrationCredential.delete({ where: { id: credential.id } });
     });
   });
 
@@ -827,7 +873,18 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
   });
 
   describe('Cascading Delete Behavior', () => {
-    it('should cascade delete all child entities when integration is deleted', async () => {
+    /**
+     * Renamed from "should cascade delete all child entities". The schema
+     * declares onDelete: Restrict on all six child relations, so a cascade was
+     * never going to happen and this test could not pass as written.
+     *
+     * Restrict on an integration's log, conflict and sync history is a
+     * data-retention choice, not an oversight: deleting an integration must not
+     * quietly destroy the record of what it did. So the valuable assertion is
+     * the opposite of the original one — the delete is REFUSED, and every
+     * dependent row is still there afterwards.
+     */
+    it('refuses to delete an integration that still has dependents, and leaves them intact', async () => {
       const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
@@ -838,34 +895,12 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
         },
       });
 
-      // Create related entities
-      // @ts-ignore Prisma mock typing in tests
-      const cred = await prisma.integrationCredential.create({
-        data: {
-          integrationId: integration.id,
-          credentialType: 'INCOMING_SIGNATURE',
-          credentialHash: 'test',
-          scopes: [],
-        },
-      });
-
       const log = await prisma.integrationLog.create({
-        data: {
-          integrationId: integration.id,
-          endpoint: '/test',
-          method: 'GET',
-          responseStatus: 200,
-        },
+        data: { integrationId: integration.id, endpoint: '/test', method: 'GET', responseStatus: 200 },
       });
-
       const conflict = await prisma.integrationConflict.create({
-        data: {
-          integrationId: integration.id,
-          conflictType: 'TEST',
-          status: 'OPEN',
-        },
+        data: { integrationId: integration.id, conflictType: 'TEST', status: 'OPEN' },
       });
-
       const sync = await prisma.productSync.create({
         data: {
           integrationId: integration.id,
@@ -873,40 +908,31 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
           mappingStatus: 'ACTIVE',
         },
       });
-
       const job = await prisma.catalogSyncJob.create({
-        data: {
-          integrationId: integration.id,
-          jobStatus: 'PENDING',
-          syncDirection: 'FROM_EXTERNAL',
-        },
+        data: { integrationId: integration.id, jobStatus: 'PENDING', syncDirection: 'FROM_EXTERNAL' },
       });
 
-      // Delete integration
+      // The delete is rejected by the database, not by application code.
+      await expect(
+        prisma.merchantIntegration.delete({ where: { id: integration.id } }),
+      ).rejects.toThrow(/[Ff]oreign key constraint/);
+
+      // And nothing was partially removed on the way to that refusal.
+      expect(await prisma.merchantIntegration.findUnique({ where: { id: integration.id } })).not.toBeNull();
+      expect(await prisma.integrationLog.findUnique({ where: { id: log.id } })).not.toBeNull();
+      expect(await prisma.integrationConflict.findUnique({ where: { id: conflict.id } })).not.toBeNull();
+      expect(await prisma.productSync.findUnique({ where: { id: sync.id } })).not.toBeNull();
+      expect(await prisma.catalogSyncJob.findUnique({ where: { id: job.id } })).not.toBeNull();
+
+      // Once the dependents are gone the integration can be deleted, which
+      // shows the refusal above was Restrict doing its job rather than the row
+      // being undeletable.
+      await prisma.catalogSyncJob.delete({ where: { id: job.id } });
+      await prisma.productSync.delete({ where: { id: sync.id } });
+      await prisma.integrationConflict.delete({ where: { id: conflict.id } });
+      await prisma.integrationLog.delete({ where: { id: log.id } });
       await prisma.merchantIntegration.delete({ where: { id: integration.id } });
-
-      // All children should be cascaded
-      const credCheck = await prisma.integrationCredential.findUnique({
-        where: { id: cred.id },
-      });
-      const logCheck = await prisma.integrationLog.findUnique({
-        where: { id: log.id },
-      });
-      const conflictCheck = await prisma.integrationConflict.findUnique({
-        where: { id: conflict.id },
-      });
-      const syncCheck = await prisma.productSync.findUnique({
-        where: { id: sync.id },
-      });
-      const jobCheck = await prisma.catalogSyncJob.findUnique({
-        where: { id: job.id },
-      });
-
-      expect(credCheck).toBeNull();
-      expect(logCheck).toBeNull();
-      expect(conflictCheck).toBeNull();
-      expect(syncCheck).toBeNull();
-      expect(jobCheck).toBeNull();
+      expect(await prisma.merchantIntegration.findUnique({ where: { id: integration.id } })).toBeNull();
     });
   });
 
