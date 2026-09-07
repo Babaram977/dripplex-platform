@@ -26,6 +26,7 @@ import {
   ApiBody,
   ApiQuery,
 } from '@nestjs/swagger';
+import { Prisma } from '@prisma/client';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
@@ -41,6 +42,24 @@ import {
 } from '../dtos';
 import { CredentialsService } from '../services/credentials.service';
 import { IntegrationsService } from '../services/integrations.service';
+
+/**
+ * Prisma types a Json column as JsonValue, which admits strings, numbers,
+ * arrays and null as well as objects. The response DTO declares
+ * `Record<string, unknown> | null`, so the two have to be reconciled somewhere.
+ *
+ * This used to be `integration.metadata as any` under an eslint-disable, which
+ * reconciled nothing — it only stopped the compiler asking. Anything the column
+ * held was passed straight through as if it were an object. The guard narrows
+ * honestly instead: an object that is not an array becomes the record, and
+ * everything else becomes null.
+ */
+function toMetadataRecord(value: Prisma.JsonValue | null): Record<string, unknown> | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value;
+}
 
 /**
  * MKT-INT-001-C: Integration Management API
@@ -125,7 +144,7 @@ export class IntegrationsCController {
     // Generate plaintext key per C-PLAN line 844: dpx_integration_{uuid}_{base64hash}
     const keyUuid = randomUUID();
     const keyHash = createHash('sha256')
-      .update(`${integration.id}${keyUuid}${Date.now()}`)
+      .update(`${integration.id}${keyUuid}${String(Date.now())}`)
       .digest('base64')
       .substring(0, 12); // truncate for readability
     const plaintextKey = `dpx_integration_${keyUuid}_${keyHash}`;
@@ -176,9 +195,9 @@ export class IntegrationsCController {
     if (integration.metadata) {
       response.metadata = integration.metadata as Record<string, unknown>;
     }
-    if (integration.updatedAt) {
-      response.updatedAt = integration.updatedAt.toISOString();
-    }
+    // No truthiness guard: updatedAt is typed Date on this parameter, so the
+    // check could never be false and the type-aware rule rejects it.
+    response.updatedAt = integration.updatedAt.toISOString();
     if (integration.archivedAt) {
       response.archivedAt = integration.archivedAt.toISOString();
     } else {
@@ -366,12 +385,10 @@ export class IntegrationsCController {
       credentials = [];
     }
 
-    // Cast metadata to Record<string, unknown> for the DTO
-    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     return this.toResponseDtoWithCredentials(
       {
         ...integration,
-        metadata: integration.metadata as any,
+        metadata: toMetadataRecord(integration.metadata),
       },
       credentials,
     );

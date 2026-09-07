@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, MerchantIntegration } from '@prisma/client';
+import { MerchantIntegration, Prisma } from '@prisma/client';
 
 import { AuditService } from '../../audit/audit.service';
 import { ForbiddenDomainException } from '../../common/exceptions/domain.exception';
@@ -253,9 +253,15 @@ export class IntegrationsService {
    * Creates integration record with vendorName, vendorVersion, etc.
    * Does NOT create credentials (caller handles credential generation via CredentialsService).
    */
-  /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
-  public async createIntegrationC(merchantId: string, input: CreateIntegrationCDto): Promise<any> {
-    const createData: any = {
+  public async createIntegrationC(
+    merchantId: string,
+    input: CreateIntegrationCDto,
+  ): Promise<MerchantIntegration> {
+    // Typed from Prisma's generated client rather than `any`. The `any` here was
+    // the source of both lint errors in IntegrationsCController: it flowed into
+    // `integration.id` inside a template literal and into `integration.metadata`,
+    // which the controller then cast back with `as any`.
+    const createData: Prisma.MerchantIntegrationUncheckedCreateInput = {
       merchantId,
       vendorName: input.vendorName,
       // Legacy fields (will be deprecated)
@@ -276,7 +282,10 @@ export class IntegrationsService {
       createData.webhookUrl = input.webhookUrl;
     }
     if (input.metadata) {
-      createData.metadata = input.metadata;
+      // The DTO types metadata as Record<string, unknown>; Prisma's generated
+      // input type for a Json column is InputJsonValue. The old `createData: any`
+      // hid the mismatch rather than resolving it.
+      createData.metadata = input.metadata as Prisma.InputJsonValue;
     }
 
     const integration = await this.prisma.merchantIntegration.create({
@@ -298,7 +307,6 @@ export class IntegrationsService {
 
     return integration;
   }
-  /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment */
 
   /**
    * MKT-INT-001-C: Get integration with C API contract
