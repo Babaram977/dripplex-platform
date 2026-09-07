@@ -23,6 +23,7 @@ const defaults: Record<string, string> = {
   REDIS_URL: 'redis://localhost:6379',
   JWT_ACCESS_SECRET: 'test-access-secret-with-at-least-32-chars',
   JWT_REFRESH_SECRET: 'test-refresh-secret-with-at-least-32-chars',
+  INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: 'test-integration-credential-key-32-chars',
 };
 
 for (const [key, value] of Object.entries(defaults)) {

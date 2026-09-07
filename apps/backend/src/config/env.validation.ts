@@ -20,6 +20,14 @@ export const envSchema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:3001'),
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_REFRESH_SECRET: z.string().min(32),
+  /**
+   * MKT-INT-001 — the key that encrypts merchant integration credentials at
+   * rest. Deliberately has NO default: a missing value must stop the process at
+   * boot, exactly as the JWT secrets do. The previous implementation fell back
+   * to a literal committed to this repository, which meant every stored
+   * merchant credential was encrypted with a published value.
+   */
+  INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: z.string().min(32),
   JWT_ACCESS_TTL: durationSchema.default('15m'),
   JWT_REFRESH_TTL: durationSchema.default('7d'),
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),

@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
+import { randomUUID } from 'node:crypto';
+
 import { Test } from '@nestjs/testing';
 import { Logger } from 'nestjs-pino';
 
@@ -48,9 +50,13 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Merchant Isolation — Multi-Tenant Scoping', () => {
     it('should create merchant integrations scoped to different merchants', async () => {
-      const timestamp = String(Date.now());
-      const merchant1Id = `merchant-1-${timestamp}`;
-      const merchant2Id = `merchant-2-${timestamp}`;
+      // merchant_id is @db.Uuid. These were `merchant-1-${Date.now()}` string
+      // literals, which Postgres rejects outright ("Error creating UUID,
+      // invalid character") — so every test in this file failed the moment it
+      // met a real database. randomUUID() is what the column actually accepts,
+      // and it is unique per run, which is what the timestamp was reaching for.
+      const merchant1Id = randomUUID();
+      const merchant2Id = randomUUID();
 
       const integration1 = await prisma.merchantIntegration.create({
         data: {

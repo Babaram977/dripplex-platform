@@ -10,7 +10,7 @@ describe('EncryptionService', () => {
 
   beforeEach(async () => {
     appConfigService = {
-      appSecret: 'test-secret-key-for-encryption',
+      integrationCredentialEncryptionKey: 'test-integration-credential-key-32-chars',
     } as unknown as jest.Mocked<AppConfigService>;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -160,4 +160,58 @@ describe('EncryptionService', () => {
       expect(() => service2.decrypt(encrypted)).toThrow();
     });
   });
+
+  /**
+   * MKT-INT-001 remediation. The constructor used to read
+   * `(appConfig as any).appSecret ?? 'default-insecure-key'`. AppConfigService
+   * has no `appSecret`, so the key was always that literal — published in this
+   * repository, under a fixed salt, in every environment.
+   *
+   * These tests exist so that regression cannot return silently: the service
+   * must refuse to construct rather than encrypt with something weak.
+   */
+  describe('encryption key provenance', () => {
+    const build = async (config: unknown): Promise<EncryptionService> => {
+      const moduleRef = await Test.createTestingModule({
+        providers: [EncryptionService, { provide: AppConfigService, useValue: config }],
+      }).compile();
+      return moduleRef.get<EncryptionService>(EncryptionService);
+    };
+
+    it('refuses to construct when the key is absent', async () => {
+      await expect(build({})).rejects.toThrow(/INTEGRATION_CREDENTIAL_ENCRYPTION_KEY/);
+    });
+
+    it('refuses to construct when the key is an empty string', async () => {
+      await expect(build({ integrationCredentialEncryptionKey: '' })).rejects.toThrow(
+        /INTEGRATION_CREDENTIAL_ENCRYPTION_KEY/,
+      );
+    });
+
+    it('refuses a key shorter than the 32-character floor env validation enforces', async () => {
+      await expect(build({ integrationCredentialEncryptionKey: 'a'.repeat(31) })).rejects.toThrow(
+        /shorter than 32/,
+      );
+    });
+
+    it('never falls back to the old hardcoded literal', async () => {
+      await expect(build({ appSecret: 'default-insecure-key' })).rejects.toThrow(
+        /INTEGRATION_CREDENTIAL_ENCRYPTION_KEY/,
+      );
+    });
+
+    it('derives different ciphertext under different keys, so the key is load-bearing', async () => {
+      const a = await build({ integrationCredentialEncryptionKey: 'key-alpha-that-is-32-chars-long!!' });
+      const b = await build({ integrationCredentialEncryptionKey: 'key-bravo-that-is-32-chars-long!!' });
+      const plaintext = 'merchant-pos-api-token';
+      expect(a.decrypt(a.encrypt(plaintext))).toBe(plaintext);
+      expect(() => b.decrypt(a.encrypt(plaintext))).toThrow();
+    });
+
+    it('accepts a key of exactly the minimum length', async () => {
+      const svc = await build({ integrationCredentialEncryptionKey: 'x'.repeat(32) });
+      expect(svc.decrypt(svc.encrypt('token'))).toBe('token');
+    });
+  });
+
 });

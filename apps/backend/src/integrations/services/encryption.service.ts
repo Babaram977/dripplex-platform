@@ -17,17 +17,33 @@ import { AppConfigService } from '../../config/app-config.service';
  * Incoming credentials (webhooks, signatures) should use one-way hashing
  * (BCRYPT) and are NOT handled by this service.
  */
+/** Matches the `min(32)` floor enforced by env.validation.ts. */
+const MIN_KEY_LENGTH = 32;
+
 @Injectable()
 export class EncryptionService {
   private readonly encryptionKey: Buffer;
   private readonly algorithm = 'aes-256-gcm';
 
   constructor(private readonly appConfig: AppConfigService) {
-    // Derive a stable encryption key from app secret
-    // In production, consider using a dedicated key management service
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
-    const secret = (this.appConfig as any).appSecret ?? 'default-insecure-key';
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    // The key comes from configuration and nowhere else. There is deliberately
+    // no fallback: this used to read `(appConfig as any).appSecret`
+    // falling back to a literal, and AppConfigService has no `appSecret`, so the
+    // key was ALWAYS that literal — a value published in this repository, under
+    // a fixed salt, encrypting every merchant credential in every environment.
+    //
+    // INTEGRATION_CREDENTIAL_ENCRYPTION_KEY has no default in env.validation.ts,
+    // so a deployment without it fails at boot rather than silently encrypting
+    // with something an attacker can read. The guard below covers the case env
+    // validation cannot: a hand-built AppConfigService in a test or a script.
+    const secret = this.appConfig.integrationCredentialEncryptionKey;
+    if (typeof secret !== 'string' || secret.length < MIN_KEY_LENGTH) {
+      throw new Error(
+        'INTEGRATION_CREDENTIAL_ENCRYPTION_KEY is missing or shorter than ' +
+          `${String(MIN_KEY_LENGTH)} characters. Integration credentials cannot be encrypted ` +
+          'without it, and there is no fallback by design.',
+      );
+    }
     this.encryptionKey = scryptSync(secret, 'integration-credentials', 32);
   }
 

@@ -6,6 +6,7 @@ import { ForbiddenDomainException } from '../../common/exceptions/domain.excepti
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { IntegrationsService } from './integrations.service';
+import { SsrfProtectionService } from './ssrf-protection.service';
 
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
@@ -38,6 +39,12 @@ describe('IntegrationsService', () => {
         IntegrationsService,
         { provide: PrismaService, useValue: prisma },
         { provide: AuditService, useValue: audit },
+        // SsrfProtectionService became a constructor dependency of
+        // IntegrationsService when SSRF validation was added, and this module
+        // was never updated — so every test here failed at compile() with
+        // "Nest can't resolve dependencies". It is a real provider rather than
+        // a mock: it performs no I/O, it only validates URLs.
+        SsrfProtectionService,
       ],
     }).compile();
 
