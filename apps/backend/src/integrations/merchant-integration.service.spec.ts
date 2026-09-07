@@ -95,7 +95,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should index on merchant_id for efficient queries', async () => {
-      const merchantId = `merchant-isolation-${String(Date.now())}`;
+      const merchantId = randomUUID();
 
       // Create multiple integrations for the same merchant
       const integrations = await Promise.all([
@@ -133,7 +133,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Unique Constraints — Idempotency', () => {
     it('should enforce unique constraint on inventory_updates (integration_id, idempotency_key)', async () => {
-      const merchantId = `merchant-idempotency-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integrationId = (
         await prisma.merchantIntegration.create({
           data: {
@@ -198,7 +198,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should enforce unique constraint on order_status_updates (integration_id, idempotency_key)', async () => {
-      const merchantId = `merchant-order-idempotency-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integrationId = (
         await prisma.merchantIntegration.create({
           data: {
@@ -248,7 +248,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should enforce unique constraint on product_syncs (integration_id, external_sku)', async () => {
-      const merchantId = `merchant-product-sync-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integrationId = (
         await prisma.merchantIntegration.create({
           data: {
@@ -293,7 +293,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Integration Credentials — Scoped Access Control', () => {
     it('should create credentials linked to an integration', async () => {
-      const merchantId = `merchant-creds-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -322,7 +322,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should support credential expiration tracking', async () => {
-      const merchantId = `merchant-creds-expire-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -356,7 +356,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should track credential rotation history', async () => {
-      const merchantId = `merchant-creds-rotation-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -386,7 +386,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should cascade delete credentials when integration is deleted', async () => {
-      const merchantId = `merchant-creds-cascade-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -420,7 +420,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Soft-Delete Pattern — archivedAt Timestamps', () => {
     it('should support soft-delete of merchant integrations via archivedAt', async () => {
-      const merchantId = `merchant-soft-delete-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -461,7 +461,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should support soft-delete of credentials via archivedAt', async () => {
-      const merchantId = `merchant-cred-soft-delete-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -498,7 +498,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Integration Logs — Audit Trail', () => {
     it('should create append-only audit logs of API calls', async () => {
-      const merchantId = `merchant-logs-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -530,7 +530,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should capture request/response bodies and errors', async () => {
-      const merchantId = `merchant-logs-error-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -562,7 +562,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should create compound index on (integration_id, created_at) for efficient queries', async () => {
-      const merchantId = `merchant-logs-index-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -602,7 +602,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Reconciliation Conflicts — Data Mismatch Tracking', () => {
     it('should track conflicts between dripplex and external values', async () => {
-      const merchantId = `merchant-conflicts-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -644,7 +644,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should index on (integration_id, status) for conflict queries', async () => {
-      const merchantId = `merchant-conflicts-index-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -692,7 +692,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Catalog Sync Jobs — Batch Synchronization Tracking', () => {
     it('should track catalog sync job status and progress', async () => {
-      const merchantId = `merchant-sync-jobs-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -744,7 +744,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should track failed sync jobs with failure reason', async () => {
-      const merchantId = `merchant-sync-fail-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -773,7 +773,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
     });
 
     it('should index on (integration_id, job_status) for querying pending/in-progress jobs', async () => {
-      const merchantId = `merchant-sync-pending-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -828,7 +828,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Cascading Delete Behavior', () => {
     it('should cascade delete all child entities when integration is deleted', async () => {
-      const merchantId = `merchant-cascade-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
@@ -912,7 +912,7 @@ describe('Merchant Integration Models (MKT-INT-001)', () => {
 
   describe('Inventory Updates — Webhook/Poll Delivery Tracking', () => {
     it('should track delivery status and retry attempts', async () => {
-      const merchantId = `merchant-inv-delivery-${String(Date.now())}`;
+      const merchantId = randomUUID();
       const integration = await prisma.merchantIntegration.create({
         data: {
           merchantId,
