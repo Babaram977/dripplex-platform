@@ -137,7 +137,7 @@ describe('EncryptionService', () => {
 
       // Create new service instance with same config
       const appConfigService2 = {
-        appSecret: 'test-secret-key-for-encryption',
+        integrationCredentialEncryptionKey: 'test-integration-credential-key-32-chars',
       } as unknown as AppConfigService;
       const service2 = new EncryptionService(appConfigService2);
 
@@ -152,7 +152,7 @@ describe('EncryptionService', () => {
 
       // Create service with different secret
       const differentConfig = {
-        appSecret: 'different-secret-key',
+        integrationCredentialEncryptionKey: 'a-different-key-also-32-chars-long!!',
       } as unknown as AppConfigService;
       const service2 = new EncryptionService(differentConfig);
 

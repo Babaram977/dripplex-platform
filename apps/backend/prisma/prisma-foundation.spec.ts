@@ -110,7 +110,8 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // `admin:fleets:commission:manage` is separate again because editing the
     // volume bands changes what every fleet is charged, which is a different
     // level of authority from attaching one rider to one fleet.
-    expect(PERMISSION_SEEDS).toHaveLength(139);
+    // 139 -> 141: MKT-INT-001 adds integrations:read and integrations:write.
+      expect(PERMISSION_SEEDS).toHaveLength(141);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
