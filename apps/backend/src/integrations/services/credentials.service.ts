@@ -105,6 +105,12 @@ export class CredentialsService {
             expiresAt: input.expiresAt ?? null,
             rotatedAt: new Date(),
             archivedAt: null, // Un-archive if was archived
+            // This branch wrote no scopes at all, so a caller supplying new
+            // ones for an existing credential type got a silent no-op: the
+            // secret changed and the privileges did not. Falling back to the
+            // stored scopes leaves rotation — which passes the old ones back —
+            // behaving exactly as before.
+            scopes: input.scopes ?? existing.scopes,
           },
         })
       : await this.prisma.integrationCredential.create({
@@ -336,11 +342,17 @@ export class CredentialsService {
         integrationId,
         credentialType,
         archivedAt: null,
+        // An expired credential must not authenticate. expiresAt was stored,
+        // and listCredentials already reported such a credential as EXPIRED,
+        // but nothing enforced it here — so the console showed a credential as
+        // expired while the door it opens stayed open. Null means "never
+        // expires", which is the documented meaning of the column.
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
     });
 
     if (!credential) {
-      return false; // Credential not set up yet
+      return false; // Not set up, revoked, or expired.
     }
 
     // Verify hash (will throw if hash is malformed)

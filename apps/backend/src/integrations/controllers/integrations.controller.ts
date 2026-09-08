@@ -44,7 +44,13 @@ import { IntegrationsService } from '../services/integrations.service';
  */
 @ApiTags('Integrations')
 @ApiBearerAuth()
-@Controller('api/v1/integrations')
+// main.ts calls setGlobalPrefix('api/v1'), so the prefix must NOT be repeated
+// here. This read 'api/v1/integrations', which mounted every route below at
+// /api/v1/api/v1/integrations — including all four credential endpoints, the
+// only ones this controller uniquely provides. Confirmed live: that doubled
+// path answered 401 rather than 404. The C-phase contract amendment lists
+// "No duplicate /api/v1/api/v1/ prefix in actual routes" as an unchecked box.
+@Controller('integrations')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class IntegrationsController {
   constructor(
