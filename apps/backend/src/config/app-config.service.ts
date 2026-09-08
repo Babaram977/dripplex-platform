@@ -51,6 +51,12 @@ export class AppConfigService {
     return this.configService.get('JWT_REFRESH_SECRET', { infer: true });
   }
 
+  /** MKT-INT-001 — encrypts merchant integration credentials at rest. Required;
+   * env validation refuses to boot without it, so there is no fallback here. */
+  public get integrationCredentialEncryptionKey(): string {
+    return this.configService.get('INTEGRATION_CREDENTIAL_ENCRYPTION_KEY', { infer: true });
+  }
+
   public get jwtAccessTtl(): string {
     return this.configService.get('JWT_ACCESS_TTL', { infer: true });
   }

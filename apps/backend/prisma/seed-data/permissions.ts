@@ -49,6 +49,18 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:search:manage', description: 'Manage search documents and ranking' },
   { code: 'customer:reviews:manage', description: 'Create and manage own reviews' },
   { code: 'merchant:reviews:reply', description: 'Reply to merchant reviews' },
+  // MKT-INT-001 — the merchant integration platform (the bridge a merchant's
+  // POS uses to reach DrippleX). These two codes are what
+  // IntegrationsCController and IntegrationsController already require via
+  // @RequirePermissions; without them in the catalogue no role could hold
+  // them and every integration endpoint was unreachable.
+  //
+  // NOTE: every other code here is role-scoped (`merchant:orders:manage`).
+  // These are not, because the controllers were written that way. Renaming
+  // them to `merchant:integrations:*` is the consistent choice but changes
+  // the controllers, so it is raised as a decision rather than taken here.
+  { code: 'integrations:read', description: 'Read own merchant integrations and their credentials (masked)' },
+  { code: 'integrations:write', description: 'Create, update, archive and test own merchant integrations' },
   { code: 'merchant:reviews:manage', description: 'Submit rider reviews as a merchant' },
   { code: 'admin:reviews:moderate', description: 'Moderate customer reviews' },
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },

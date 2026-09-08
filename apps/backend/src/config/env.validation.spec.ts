@@ -7,6 +7,7 @@ describe('validateEnv', () => {
     REDIS_URL: 'redis://localhost:6379',
     JWT_ACCESS_SECRET: 'access-secret-with-at-least-32-chars!!',
     JWT_REFRESH_SECRET: 'refresh-secret-with-at-least-32-chars!',
+    INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: 'integration-credential-key-32-chars!!',
   };
 
   it('accepts a valid configuration and applies defaults', () => {
@@ -98,4 +99,27 @@ describe('validateEnv', () => {
       );
     });
   });
+
+  /**
+   * MKT-INT-001 remediation. This key encrypts merchant integration credentials
+   * at rest and deliberately has NO default: the previous implementation fell
+   * back to a literal committed to this repository. A deployment that forgets
+   * it must fail to boot, not encrypt with something an attacker can read.
+   */
+  it('requires INTEGRATION_CREDENTIAL_ENCRYPTION_KEY — there is no default', () => {
+    const { INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: _omitted, ...withoutKey } = base;
+    expect(() => validateEnv(withoutKey)).toThrow(/Invalid environment configuration/);
+  });
+
+  it('rejects an INTEGRATION_CREDENTIAL_ENCRYPTION_KEY below 32 characters', () => {
+    expect(() =>
+      validateEnv({ ...base, INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: 'a'.repeat(31) }),
+    ).toThrow(/Invalid environment configuration/);
+  });
+
+  it('accepts a 32-character INTEGRATION_CREDENTIAL_ENCRYPTION_KEY', () => {
+    const env = validateEnv({ ...base, INTEGRATION_CREDENTIAL_ENCRYPTION_KEY: 'b'.repeat(32) });
+    expect(env.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY).toBe('b'.repeat(32));
+  });
+
 });

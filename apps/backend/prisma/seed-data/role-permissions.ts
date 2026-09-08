@@ -33,6 +33,9 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'customer:bookings:book',
   ],
   merchant: [
+    // MKT-INT-001 — a merchant manages their own POS integrations.
+    'integrations:read',
+    'integrations:write',
     'profile:read',
     'profile:write',
     'auth:sessions:read',

@@ -99,6 +99,10 @@ const PERMISSION_SEEDS = [
   { code: 'admin:search:manage', description: 'Manage search documents and ranking' },
   { code: 'customer:reviews:manage', description: 'Create and manage own reviews' },
   { code: 'merchant:reviews:reply', description: 'Reply to merchant reviews' },
+  // MKT-INT-001 — merchant integration platform. Kept in step with
+  // seed-data/permissions.ts; rbac-seed-parity.spec.ts fails if they drift.
+  { code: 'integrations:read', description: 'Read own merchant integrations and their credentials (masked)' },
+  { code: 'integrations:write', description: 'Create, update, archive and test own merchant integrations' },
   { code: 'merchant:reviews:manage', description: 'Submit rider reviews as a merchant' },
   { code: 'admin:reviews:moderate', description: 'Moderate customer reviews' },
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
@@ -414,6 +418,8 @@ const ROLE_PERMISSION_GRANTS = {
     'merchant:kyc:manage',
     'merchant:bank:manage',
     'merchant:wallet:read',
+    'integrations:read',
+    'integrations:write',
     'merchant:commercial:read',
     'merchant:analytics:read',
     'merchant:reviews:reply',
