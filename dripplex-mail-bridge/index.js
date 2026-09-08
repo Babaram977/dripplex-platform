@@ -7,8 +7,7 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import * as z from 'zod/v4';
 
 const PORT = Number(process.env.PORT || 3000);
-const MCP_TOKEN = process.env.MCP_TOKEN;
-if (!MCP_TOKEN) throw new Error('MCP_TOKEN is required');
+const MCP_TOKEN = process.env.MCP_TOKEN || null;
 
 const ACCOUNTS = {
   admin: {
@@ -149,10 +148,15 @@ const nodeHandler = toNodeHandler(handler);
 const server = http.createServer((req, res) => {
   if (req.url === '/healthz') {
     res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, service: 'dripplex-mail-bridge' }));
+    res.end(JSON.stringify({ ok: true, service: 'dripplex-mail-bridge', mcpConfigured: Boolean(MCP_TOKEN) }));
     return;
   }
   if (req.url?.startsWith('/mcp')) {
+    if (!MCP_TOKEN) {
+      res.writeHead(503, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'MCP_TOKEN is not configured' }));
+      return;
+    }
     if (req.headers.authorization !== `Bearer ${MCP_TOKEN}`) {
       res.writeHead(401, { 'content-type': 'application/json', 'www-authenticate': 'Bearer' });
       res.end(JSON.stringify({ error: 'unauthorized' }));
