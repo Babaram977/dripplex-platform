@@ -379,4 +379,101 @@ describe('CredentialsService', () => {
       ).rejects.toThrow(ForbiddenDomainException);
     });
   });
+
+  /**
+   * Two correctness fixes authorized as Phase D prerequisites. Both were live
+   * on main before this: an expired credential still authenticated, and a
+   * caller supplying new scopes for an existing credential type got a silent
+   * no-op.
+   */
+  describe('credential expiry is enforced, not merely recorded', () => {
+    const findFirstArgs = (): { where: Record<string, unknown> } =>
+      (prisma.integrationCredential.findFirst as jest.Mock).mock.calls.at(-1)?.[0] as {
+        where: Record<string, unknown>;
+      };
+
+    it('excludes expired credentials in the query verifyIncomingCredential runs', async () => {
+      (prisma.merchantIntegration.findFirst as jest.Mock).mockResolvedValue({
+        id: 'int-1',
+        merchantId: 'm-1',
+      });
+      (prisma.integrationCredential.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await service.verifyIncomingCredential('m-1', 'int-1', 'INCOMING_API_KEY', 'secret');
+
+      const { where } = findFirstArgs();
+      expect(where['archivedAt']).toBeNull();
+      expect(where['OR']).toEqual([
+        { expiresAt: null },
+        { expiresAt: { gt: expect.any(Date) } },
+      ]);
+    });
+
+    it('returns false when the query matches nothing, which is how an expired credential now fails', async () => {
+      (prisma.merchantIntegration.findFirst as jest.Mock).mockResolvedValue({
+        id: 'int-1',
+        merchantId: 'm-1',
+      });
+      (prisma.integrationCredential.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        service.verifyIncomingCredential('m-1', 'int-1', 'INCOMING_API_KEY', 'secret'),
+      ).resolves.toBe(false);
+    });
+  });
+
+  describe('scopes on the existing-credential update path', () => {
+    const setup = (existingScopes: string[]): void => {
+      (prisma.merchantIntegration.findFirst as jest.Mock).mockResolvedValue({
+        id: 'int-1',
+        merchantId: 'm-1',
+      });
+      (prisma.integrationCredential.findFirst as jest.Mock).mockResolvedValue({
+        id: 'cred-1',
+        integrationId: 'int-1',
+        credentialType: 'INCOMING_API_KEY',
+        scopes: existingScopes,
+        expiresAt: null,
+      });
+      (prisma.integrationCredential.update as jest.Mock).mockResolvedValue({
+        id: 'cred-1',
+        integrationId: 'int-1',
+        credentialType: 'INCOMING_API_KEY',
+        scopes: existingScopes,
+        expiresAt: null,
+        rotatedAt: new Date(),
+        archivedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    };
+
+    it('writes the supplied scopes rather than silently ignoring them', async () => {
+      setup(['catalog:read']);
+      await service.createCredential('m-1', {
+        integrationId: 'int-1',
+        credentialType: 'INCOMING_API_KEY',
+        secret: 'new-secret',
+        scopes: ['catalog:read', 'orders:write'],
+      });
+      const call = (prisma.integrationCredential.update as jest.Mock).mock.calls.at(-1)?.[0] as {
+        data: Record<string, unknown>;
+      };
+      expect(call.data['scopes']).toEqual(['catalog:read', 'orders:write']);
+    });
+
+    it('keeps the stored scopes when none are supplied — the rotation path', async () => {
+      setup(['catalog:read', 'inventory:read']);
+      await service.createCredential('m-1', {
+        integrationId: 'int-1',
+        credentialType: 'INCOMING_API_KEY',
+        secret: 'rotated-secret',
+      });
+      const call = (prisma.integrationCredential.update as jest.Mock).mock.calls.at(-1)?.[0] as {
+        data: Record<string, unknown>;
+      };
+      expect(call.data['scopes']).toEqual(['catalog:read', 'inventory:read']);
+    });
+  });
+
 });
