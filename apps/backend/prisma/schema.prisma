@@ -1135,10 +1135,42 @@ model Category {
   parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
   children    Category[] @relation("CategoryHierarchy")
   products    Product[]
+  posMappings CategoryMapping[]
 
   @@index([parentId])
   @@index([isActive])
   @@map("categories")
+}
+
+/// Maps a category name as an external POS spells it to a DrippleX Category.
+///
+/// A POS must never create a Category. `Category.slug` is unique across the
+/// whole platform, so one merchant's POS naming a category "Drinks" would
+/// claim that slug for every merchant. Ingestion therefore resolves through
+/// this table and leaves `Product.categoryId` null when no mapping exists,
+/// raising a CATEGORY_UNMAPPED conflict rather than inventing a taxonomy.
+///
+/// Decision #6 of the Phase 1 Catalogue Ingestion Contract.
+model CategoryMapping {
+  id                   String   @id @default(uuid()) @db.Uuid
+  integrationId        String   @map("integration_id") @db.Uuid
+  /// The category name exactly as the POS sends it, before normalisation.
+  externalCategoryName String   @map("external_category_name") @db.VarChar(255)
+  categoryId           String   @map("category_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  /// RESTRICT delete: a mapping records how a catalogue was interpreted.
+  /// Disconnecting an integration must not erase it, consistent with every
+  /// other child of MerchantIntegration.
+  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  /// RESTRICT delete: removing a mapped Category would silently unmap a live
+  /// catalogue, so the mapping must be removed first.
+  category             Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([integrationId, externalCategoryName])
+  @@index([categoryId])
+  @@map("category_mappings")
 }
 
 model Brand {
@@ -4656,6 +4688,7 @@ model MerchantIntegration {
   productSyncs           ProductSync[]
   inventoryUpdates       InventoryUpdate[]
   orderStatusUpdates     OrderStatusUpdate[]
+  categoryMappings       CategoryMapping[]
 
   @@index([merchantId])
   @@index([status])
@@ -4732,7 +4765,9 @@ model IntegrationLog {
 model IntegrationConflict {
   id               String    @id @default(uuid()) @db.Uuid
   integrationId    String    @map("integration_id") @db.Uuid
-  /// Type of conflict: CATALOG_PRICE_DIFF, INVENTORY_MISMATCH, ORDER_STATE_MISMATCH, PRODUCT_ARCHIVED, etc.
+  /// Type of conflict: CATALOG_PRICE_DIFF, CATALOG_NAME_DIFF, INVENTORY_MISMATCH,
+  /// ORDER_STATE_MISMATCH, PRODUCT_ARCHIVED, PRODUCT_ABSENT, CATEGORY_UNMAPPED,
+  /// CATEGORY_INACTIVE, CURRENCY_UNSUPPORTED, NEGATIVE_QUANTITY, SKU_COLLISION.
   conflictType     String    @map("conflict_type") @db.VarChar(100)
   /// ID of the source item (product, order, etc.)
   sourceId         String?   @map("source_id") @db.Uuid
@@ -4766,10 +4801,18 @@ model IntegrationConflict {
 model CatalogSyncJob {
   id            String    @id @default(uuid()) @db.Uuid
   integrationId String    @map("integration_id") @db.Uuid
-  /// Job status: PENDING, IN_PROGRESS, COMPLETED, FAILED
+  /// Job status: PENDING, IN_PROGRESS, COMPLETED, PARTIAL, FAILED.
+  /// PARTIAL means the job ran to completion but some items were rejected —
+  /// per-item detail is in IntegrationLog, correlated by this job's id.
   jobStatus     String    @default("PENDING") @map("job_status") @db.VarChar(50)
   /// Direction: POS_TO_DRIPPLEX (import) or DRIPPLEX_TO_POS (export)
   syncDirection String    @map("sync_direction") @db.VarChar(50)
+  /// Idempotency key supplied by the external system. Replaying a batch with a
+  /// key already seen for this integration returns the original job instead of
+  /// re-running it. Nullable so the column is additive over existing rows, and
+  /// because a job DrippleX starts itself has no external key.
+  /// Mirrors InventoryUpdate.idempotencyKey. Decision #3 of the Phase 1 contract.
+  idempotencyKey String?  @map("idempotency_key") @db.VarChar(100)
   /// When the job started processing
   startedAt     DateTime? @map("started_at")
   /// When the job completed (null if still in progress)
@@ -4784,6 +4827,7 @@ model CatalogSyncJob {
   /// Disconnecting an integration must not erase this historical record.
   integration   MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
+  @@unique([integrationId, idempotencyKey])
   @@index([integrationId, jobStatus])
   @@index([jobStatus])
   @@index([completedAt])

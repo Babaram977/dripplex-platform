@@ -1,6 +1,11 @@
 # DPX-MKT-INT-001 Phase 1 — Catalogue Ingestion Implementation Plan
 
-**Status: PLAN FOR REVIEW. Implementation gate open; three findings need a ruling first.**
+**Status: RULED AND IMPLEMENTED. All three findings were ruled on 2026-09-08.**
+
+Finding 1 — approved: resolve `MerchantProfile` at ingestion; decorator fix deferred.
+Finding 2 — no ruling needed; the guard is required by approved decision #5 and is built.
+Finding 3 — approved: adopt the schema's existing vocabulary, add only `PARTIAL`, and
+record the change as Amendment 1 of the contract.
 
 Implements `docs/DPX-MKT-INT-001-P1-CATALOGUE-CONTRACT.md`, merged to `main` as `3b63c28`
 with all nine decisions approved.
@@ -227,12 +232,25 @@ Any pre-existing or unrelated failure is reported separately, never folded into 
 
 ---
 
-## Open before code is written
+## Rulings applied
 
-1. **Finding 1** — approve resolving `MerchantProfile` at ingestion (option A), with the
-   decorator fix recorded as a follow-up rather than done here.
-2. **Finding 3** — approve using the schema's existing vocabulary and updating the contract doc
-   to match, so only one set of literals exists.
+1. **Finding 1 — approved.** `CatalogueIngestionService.resolveMerchantProfileId` bridges
+   `MerchantIntegration.merchantId` (a User id) to `MerchantProfile.id` through the unique
+   `userId`. A batch whose integration has no merchant profile fails as a job rather than
+   reporting one rejection per item. The decorator correction is deferred as a follow-up.
+2. **Finding 3 — approved.** The literals live in
+   `apps/backend/src/integrations/catalogue-ingestion.constants.ts`, the schema doc comments
+   were updated in the same change, and the correction is recorded as Amendment 1 of the
+   contract.
+3. **Finding 2** needed no ruling. `IntegrationCredentialGuard` is the first caller
+   `verifyIncomingCredential` has ever had.
 
-Finding 2 needs no ruling — the guard is required by approved decision #5 — but it is listed so
-its presence in the diff is expected rather than a surprise.
+## Follow-ups recorded, not done here
+
+- `MerchantScoped` returns `user.id`; correcting it and backfilling
+  `merchant_integrations.merchant_id` would touch fourteen endpoints and migrate a deployed
+  table.
+- `ProductSync.productId` still has no foreign key to `Product`.
+- An interrupted batch can leave a `ProductSync` row whose `productId` is null. That is the
+  contract's remap-or-conflict case and the next run handles it, but the write ordering that
+  makes it safe is deliberate and should not be rearranged casually.
