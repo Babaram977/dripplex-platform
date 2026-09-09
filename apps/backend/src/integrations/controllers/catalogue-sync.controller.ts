@@ -15,7 +15,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
-import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { Public, RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
 import { IngestCatalogueDto } from '../dtos/ingest-catalogue.dto';
 import {
@@ -57,6 +57,14 @@ export class CatalogueSyncController {
    * is no scheduler and no outbound credential involved in catalogue sync.
    */
   @Post('sync')
+  // JwtAuthGuard is a global APP_GUARD (app.module.ts). A POS holds an
+  // integration credential, never a JWT, so without this the global guard
+  // refuses every push with "Authentication required" before
+  // IntegrationCredentialGuard is ever consulted — the endpoint is unreachable
+  // by the only caller it exists for. @Public() steps the JWT guard aside; it
+  // does NOT make the route unauthenticated, because IntegrationCredentialGuard
+  // below still has to pass.
+  @Public()
   @UseGuards(IntegrationCredentialGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ingest a catalogue batch from an external POS' })
