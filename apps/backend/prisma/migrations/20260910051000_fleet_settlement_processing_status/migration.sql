@@ -1,1 +1,12 @@
-ALTER TYPE "FleetSettlementRequestStatus" ADD VALUE 'PROCESSING';
+-- Add PROCESSING to the fleet settlement request status enum.
+--
+-- IF NOT EXISTS is load-bearing, not defensive style. The preceding migration
+-- 20260910050000_fleet_settlement_authorization creates
+-- FleetSettlementRequestStatus with 'PROCESSING' already in its label list, so
+-- a bare ADD VALUE fails with 42710 "enum label already exists" on every
+-- database that ran it -- including a completely empty one.
+--
+-- Verified by replaying the full migration history into a fresh database:
+-- without IF NOT EXISTS the chain fails here every time, which is why
+-- reconciling the failed migration record alone never unblocked the deploy.
+ALTER TYPE "FleetSettlementRequestStatus" ADD VALUE IF NOT EXISTS 'PROCESSING';
