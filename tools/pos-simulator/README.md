@@ -34,10 +34,24 @@ DPX_JWT="<merchant access token>" node tools/pos-simulator/pos-sim.mjs
 | Archive at source         | soft archive, never a hard delete                          |
 | Merchant sync history     | jobs visible to the owning merchant                        |
 
+## verify-category-mappings.mjs
+
+Second script, covering the category-mapping write path end to end:
+
+```bash
+node tools/pos-simulator/verify-category-mappings.mjs
+```
+
+It logs in as two different merchants and proves the loop that matters — an unmapped
+POS category raises `CATEGORY_UNMAPPED`, the merchant maps it through the API, the same
+payload then resolves, and deleting the mapping restores the original behaviour. It also
+proves the second merchant gets 403 on read, write and delete against the first
+merchant's integration, that mapping to a non-existent category is refused, and that
+`PUT` is idempotent.
+
 ## Not covered, because it does not exist
 
 `OrderStatusUpdate` has **no producers** — DrippleX → POS order and status
-transmission is unimplemented, and was out of scope for the Phase 1 contract. There is
-also **no write path for `CategoryMapping`**: `CategoryMappingService` exposes only
-`resolve()`, so mappings must be inserted out-of-band and every unmapped POS category
-ingests uncategorised with a `CATEGORY_UNMAPPED` conflict.
+transmission is unimplemented, and was out of scope for the Phase 1 contract. It needs
+its own contract first: outbound authentication and signing, retry semantics, and the
+delivery lifecycle are all undecided, and the database model existing is not a design.

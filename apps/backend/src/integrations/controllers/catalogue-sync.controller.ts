@@ -1,12 +1,15 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
+  Query,
   Req,
   UnauthorizedException,
   UseGuards,
@@ -17,12 +20,14 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Public, RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
+import { UpsertCategoryMappingDto } from '../dtos/category-mapping.dto';
 import { IngestCatalogueDto } from '../dtos/ingest-catalogue.dto';
 import {
   IntegrationCredentialGuard,
   type IntegrationAuthenticatedRequest,
 } from '../guards/integration-credential.guard';
 import { CatalogueIngestionService } from '../services/catalogue-ingestion.service';
+import { CategoryMappingService } from '../services/category-mapping.service';
 import { IntegrationsService } from '../services/integrations.service';
 
 import type { CatalogueSyncJobSummary } from '../services/catalogue-ingestion.service';
@@ -48,6 +53,7 @@ export class CatalogueSyncController {
   constructor(
     private readonly ingestion: CatalogueIngestionService,
     private readonly integrationsService: IntegrationsService,
+    private readonly categoryMappings: CategoryMappingService,
   ) {}
 
   /**
@@ -114,5 +120,92 @@ export class CatalogueSyncController {
     await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
     const data = await this.ingestion.listJobs(integrationId);
     return { success: true, data };
+  }
+
+  /**
+   * Category mappings for one integration.
+   *
+   * Until these three routes existed, `CategoryMappingService` exposed only
+   * `resolve()` and no controller referenced it, so there was no way for a
+   * merchant to create a mapping through any API at all. Every POS category
+   * therefore ingested unmapped and raised `CATEGORY_UNMAPPED` on every sync,
+   * forever. The engine worked; the data it reads had no author.
+   */
+  @Get('mappings/:integrationId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('integrations:read')
+  @ApiOperation({ summary: 'List category mappings for an integration' })
+  @ApiResponse({ status: 200, description: 'Mappings, by external category name' })
+  @ApiResponse({ status: 403, description: 'Integration belongs to another merchant' })
+  public async listMappings(
+    @MerchantScoped() merchantId: string,
+    @Param('integrationId', ParseUUIDPipe) integrationId: string,
+  ): Promise<{ success: true; data: unknown[] }> {
+    await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
+    const data = await this.categoryMappings.list(integrationId);
+    return { success: true, data };
+  }
+
+  /**
+   * Create or re-point one mapping. Idempotent by `(integration, name)`, so a
+   * retry is not an error and re-pointing is the same call as first mapping.
+   */
+  @Put('mappings/:integrationId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('integrations:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Create or replace a category mapping' })
+  @ApiResponse({ status: 200, description: 'Mapping stored' })
+  @ApiResponse({ status: 403, description: 'Integration belongs to another merchant' })
+  @ApiResponse({ status: 404, description: 'Category does not exist' })
+  public async upsertMapping(
+    @MerchantScoped() merchantId: string,
+    @Param('integrationId', ParseUUIDPipe) integrationId: string,
+    @Body() dto: UpsertCategoryMappingDto,
+  ): Promise<{ success: true; data: { externalCategoryName: string; categoryId: string } }> {
+    // Ownership first, before the body is acted on: without this a merchant
+    // could write mappings into another merchant's integration by supplying
+    // its id, which is the one thing a per-integration key must not allow.
+    await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
+    const mapping = await this.categoryMappings.upsert(
+      integrationId,
+      dto.externalCategoryName,
+      dto.categoryId,
+    );
+    return {
+      success: true,
+      data: {
+        externalCategoryName: mapping.externalCategoryName,
+        categoryId: mapping.categoryId,
+      },
+    };
+  }
+
+  /**
+   * Remove a mapping.
+   *
+   * The name travels as a query parameter rather than a path segment because a
+   * POS category is free text — "Drinks / Mixers" would otherwise split the
+   * route.
+   */
+  @Delete('mappings/:integrationId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('integrations:write')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a category mapping' })
+  @ApiResponse({ status: 200, description: 'Mapping removed' })
+  @ApiResponse({ status: 403, description: 'Integration belongs to another merchant' })
+  @ApiResponse({ status: 404, description: 'No such mapping' })
+  public async removeMapping(
+    @MerchantScoped() merchantId: string,
+    @Param('integrationId', ParseUUIDPipe) integrationId: string,
+    // Typed optional because that is the truth at runtime: a caller who omits
+    // the parameter gets undefined, and typing it `string` would have the
+    // compiler believe a guard here is dead code.
+    @Query('externalCategoryName') externalCategoryName: string | undefined,
+  ): Promise<{ success: true }> {
+    await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
+    await this.categoryMappings.remove(integrationId, externalCategoryName ?? '');
+    return { success: true };
   }
 }

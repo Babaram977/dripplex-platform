@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
+import { NotFoundDomainException } from '../../common/exceptions/domain.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CONFLICT_TYPE } from '../catalogue-ingestion.constants';
+
+import type { CategoryMapping } from '@prisma/client';
 
 /**
  * How an external category name resolved.
@@ -72,5 +75,98 @@ export class CategoryMappingService {
     }
 
     return RESOLVED(mapping.category.id);
+  }
+
+  /**
+   * A merchant's mappings for one integration, with the DrippleX category
+   * resolved so a console can render the pair without a second round trip.
+   *
+   * Ownership is the caller's job: every route reaching this has already run
+   * `verifyMerchantAccess`, so an integration id alone is a sufficient scope
+   * here and cannot be used to read another merchant's mappings.
+   */
+  public async list(integrationId: string): Promise<
+    {
+      externalCategoryName: string;
+      categoryId: string;
+      categoryName: string;
+      categoryIsActive: boolean;
+      updatedAt: Date;
+    }[]
+  > {
+    const rows = await this.prisma.categoryMapping.findMany({
+      where: { integrationId },
+      include: { category: { select: { id: true, name: true, isActive: true } } },
+      orderBy: { externalCategoryName: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      externalCategoryName: row.externalCategoryName,
+      categoryId: row.category.id,
+      categoryName: row.category.name,
+      categoryIsActive: row.category.isActive,
+      updatedAt: row.updatedAt,
+    }));
+  }
+
+  /**
+   * Point one external category name at a DrippleX category.
+   *
+   * The category must already exist. That is the whole point of the model: a
+   * POS may never create a DrippleX category, and neither may this endpoint on
+   * its behalf — `Category.slug` is globally unique with no `merchantId`, so
+   * one merchant naming a category would claim that slug platform-wide.
+   *
+   * An inactive category is accepted deliberately rather than refused. A
+   * merchant mapping ahead of a category being switched back on is legitimate,
+   * and `resolve()` already reports that case as `CATEGORY_INACTIVE` at
+   * ingestion time, which is where the merchant can act on it.
+   */
+  public async upsert(
+    integrationId: string,
+    externalCategoryName: string,
+    categoryId: string,
+  ): Promise<CategoryMapping> {
+    const name = externalCategoryName.trim();
+    if (name === '') {
+      throw new NotFoundDomainException('External category name is required');
+    }
+
+    const category = await this.prisma.category.findUnique({
+      where: { id: categoryId },
+      select: { id: true },
+    });
+    if (!category) {
+      throw new NotFoundDomainException('Category not found');
+    }
+
+    return await this.prisma.categoryMapping.upsert({
+      where: {
+        integrationId_externalCategoryName: { integrationId, externalCategoryName: name },
+      },
+      create: { integrationId, externalCategoryName: name, categoryId },
+      update: { categoryId },
+    });
+  }
+
+  /**
+   * Remove a mapping. Products already categorised by it keep their category —
+   * this stops future syncs resolving that name, it does not retroactively
+   * uncategorise a catalogue.
+   */
+  public async remove(integrationId: string, externalCategoryName: string): Promise<void> {
+    const name = externalCategoryName.trim();
+    const existing = await this.prisma.categoryMapping.findUnique({
+      where: {
+        integrationId_externalCategoryName: { integrationId, externalCategoryName: name },
+      },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundDomainException('Category mapping not found');
+    }
+
+    await this.prisma.categoryMapping.delete({ where: { id: existing.id } });
   }
 }

@@ -1,6 +1,6 @@
 import { CONTROLLER_WATERMARK, GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 
-import { IS_PUBLIC_KEY } from '../../common/decorators/permissions.decorator';
+import { IS_PUBLIC_KEY, PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
 import { IntegrationCredentialGuard } from '../guards/integration-credential.guard';
 
 import { CatalogueSyncController } from './catalogue-sync.controller';
@@ -55,5 +55,38 @@ describe('catalogue sync controller route prefix', () => {
     const handler = CatalogueSyncController.prototype.sync;
     const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
     expect(guards).toContain(IntegrationCredentialGuard);
+  });
+
+  /**
+   * The mapping routes are the mirror image of `sync`, and the pairing is the
+   * point. `sync` is public to the JWT guard because a POS holds no JWT; these
+   * are merchant-facing, so making them public too would hand one merchant's
+   * category mappings to anyone who could guess an integration id.
+   */
+  describe('category mapping routes', () => {
+    // Typed `object` rather than a call signature: these are only ever passed
+    // to Reflect.getMetadata, never invoked, and pinning a signature here made
+    // the three different handler shapes unassignable to one tuple type.
+    const routes: readonly (readonly [handler: object, name: string, permission: string])[] = [
+      [CatalogueSyncController.prototype.listMappings, 'listMappings', 'integrations:read'],
+      [CatalogueSyncController.prototype.upsertMapping, 'upsertMapping', 'integrations:write'],
+      [CatalogueSyncController.prototype.removeMapping, 'removeMapping', 'integrations:write'],
+    ];
+
+    it.each(routes)('%p (%s) is not public', (handler) => {
+      expect(Reflect.getMetadata(IS_PUBLIC_KEY, handler)).toBeUndefined();
+    });
+
+    it.each(routes)('%p (%s) requires %s', (handler, _name, permission) => {
+      const required = (Reflect.getMetadata(PERMISSIONS_KEY, handler) ?? []) as string[];
+      expect(required).toContain(permission);
+    });
+
+    it('does not attach the integration credential guard to merchant routes', () => {
+      for (const [handler] of routes) {
+        const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
+        expect(guards).not.toContain(IntegrationCredentialGuard);
+      }
+    });
   });
 });
