@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminFleetsController } from './controllers/admin-fleets.controller';
+import { AdminFleetSettlementController } from './controllers/admin-fleet-settlement.controller';
 import { FleetFinancialController } from './controllers/fleet-financial.controller';
 import { FleetOwnerController } from './controllers/fleet-owner.controller';
 import { FleetSelfServiceController } from './controllers/fleet-self-service.controller';
@@ -18,7 +19,7 @@ import { FleetsService } from './fleets.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, CommercialModule, EventsModule, WalletModule],
-  controllers: [FleetSelfServiceController, FleetOwnerController, FleetFinancialController, AdminFleetsController],
+  controllers: [FleetSelfServiceController, FleetOwnerController, FleetFinancialController, AdminFleetsController, AdminFleetSettlementController],
   providers: [FleetsService, FleetOverviewService, FleetCommissionService, FleetJobSubscriber, FleetFinancialService],
   exports: [FleetsService, FleetOverviewService, FleetCommissionService, FleetFinancialService],
 })
