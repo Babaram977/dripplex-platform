@@ -37,4 +37,34 @@ export class FleetFinancialController {
     const fleet = await this.fleets.requireFleetOwnedBy(user.id);
     return { success: true, data: await this.financial.setDefaultBankAccount(fleet.id, id) };
   }
+
+  @Get('receivables')
+  @RequirePermissions(FLEET_PERMISSIONS.OWN_READ)
+  public async listReceivables(@CurrentUser() user: AuthenticatedUser): Promise<ApiSuccessResponse<unknown[]>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    return { success: true, data: await this.financial.listReceivables(fleet.id) };
+  }
+
+  @Get('settlement-requests')
+  @RequirePermissions(FLEET_PERMISSIONS.OWN_READ)
+  public async listSettlementRequests(@CurrentUser() user: AuthenticatedUser): Promise<ApiSuccessResponse<unknown[]>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    return { success: true, data: await this.financial.listSettlementRequests(fleet.id) };
+  }
+
+  @Post('settlement-requests')
+  @RequirePermissions(FLEET_PERMISSIONS.OWN_MANAGE)
+  public async requestSettlement(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { receivableId: string; amount: number },
+  ): Promise<ApiSuccessResponse<unknown>> {
+    const fleet = await this.fleets.requireFleetOwnedBy(user.id);
+    const data = await this.financial.requestSettlement({
+      fleetId: fleet.id,
+      requestedBy: user.id,
+      receivableId: body.receivableId,
+      amount: Number(body.amount),
+    });
+    return { success: true, data };
+  }
 }
