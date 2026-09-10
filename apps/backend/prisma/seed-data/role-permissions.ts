@@ -65,6 +65,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'rider:delivery:manage',
     'rider:wallet:read',
     'rider:wallet:withdraw',
+    'rider:referrals:use',
     'messaging:use',
     'calls:use',
     'customer:notifications:read',

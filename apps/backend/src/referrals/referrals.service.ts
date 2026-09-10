@@ -209,14 +209,16 @@ export class ReferralsService {
     }
 
     const referrerId = redemption.referral.userId;
-    // A driver who markets DrippleX is paid into their DRIVER wallet — the
-    // balance their app shows and the one they can withdraw. Read off the
-    // referral rather than from the referrer's profiles, so a customer who
-    // later starts driving does not have old rewards re-filed.
-    const referrerWallet =
-      redemption.referral.ownerType === ReferralOwnerType.DRIVER
-        ? WalletOwnerType.DRIVER
-        : WalletOwnerType.CUSTOMER;
+    // A partner who markets DrippleX is paid into the wallet their own app
+    // shows and can withdraw from. Read off the referral rather than from the
+    // referrer's profiles, so a customer who later starts driving or riding
+    // does not have old rewards re-filed under the new persona.
+    const REFERRER_WALLETS = {
+      [ReferralOwnerType.DRIVER]: WalletOwnerType.DRIVER,
+      [ReferralOwnerType.RIDER]: WalletOwnerType.RIDER,
+      [ReferralOwnerType.CUSTOMER]: WalletOwnerType.CUSTOMER,
+    } as const;
+    const referrerWallet = REFERRER_WALLETS[redemption.referral.ownerType];
 
     await this.walletService.credit({
       ownerType: referrerWallet,

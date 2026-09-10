@@ -325,6 +325,35 @@ describe('ReferralsService', () => {
       );
     });
 
+    it('pays a RIDER referrer into their rider wallet, not a customer one', async () => {
+      // Riders meet customers on every delivery. Same scheme, same rule, and
+      // the same requirement that it land in the wallet their own app shows:
+      // a customer-wallet credit is money they can neither see nor withdraw.
+      prisma.referralRedemption.findUnique.mockResolvedValue({
+        id: 'redemption-6',
+        status: ReferralRedemptionStatus.PENDING,
+        referral: { userId: 'rider-1', ownerType: ReferralOwnerType.RIDER },
+      });
+      prisma.ride.count.mockResolvedValue(1);
+
+      await service.handleRefereeRideCompleted('customer-6');
+
+      expect(walletService.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerType: WalletOwnerType.RIDER,
+          ownerId: 'rider-1',
+          amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
+        }),
+      );
+      expect(walletService.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerType: WalletOwnerType.CUSTOMER,
+          ownerId: 'customer-6',
+          amount: REFERRAL_REWARD_AMOUNTS.REFEREE,
+        }),
+      );
+    });
+
     it('pays a driver nothing until the customer they referred actually rides', async () => {
       // Registration alone must never pay: a driver could otherwise sign up
       // accounts from their own phone and collect ₦350 each.

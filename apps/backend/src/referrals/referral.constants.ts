@@ -11,6 +11,11 @@ export const REFERRAL_PERMISSIONS = {
    *  customer's — `Referral.ownerType` is fixed at creation and decides which
    *  wallet the ₦350 lands in. */
   DRIVER_USE: 'driver:referrals:use',
+  /** A rider's own referral code. Separate from the driver and customer
+   *  permissions for the same reason those are separate from each other:
+   *  `Referral.ownerType` is fixed at creation and decides which wallet the
+   *  ₦350 is paid into. */
+  RIDER_USE: 'rider:referrals:use',
   ADMIN_MANAGE: 'admin:referrals:manage',
 } as const;
 

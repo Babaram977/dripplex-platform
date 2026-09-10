@@ -115,6 +115,7 @@ const PERMISSION_SEEDS = [
   { code: 'customer:promotions:use', description: 'Use platform promotions' },
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'driver:referrals:use', description: "A driver's own referral code" },
+  { code: 'rider:referrals:use', description: "A rider's own referral code" },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {
@@ -447,6 +448,7 @@ const ROLE_PERMISSION_GRANTS = {
     'calls:use',
     'rider:wallet:read',
     'rider:wallet:withdraw',
+    'rider:referrals:use',
     'customer:notifications:read',
     'customer:notifications:manage',
   ],

@@ -3701,6 +3701,7 @@ enum ReferralRedemptionStatus {
 enum ReferralOwnerType {
   CUSTOMER
   DRIVER
+  RIDER
 }
 
 /// One row per user who has generated a referral code (lazily created on

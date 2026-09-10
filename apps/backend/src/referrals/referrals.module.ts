@@ -15,12 +15,14 @@ import { DriverCampaignService } from './driver-campaign.service';
 import { DriverReferralsController } from './driver-referrals.controller';
 import { ReferralRewardSubscriber } from './referral-reward.subscriber';
 import { ReferralsService } from './referrals.service';
+import { RiderReferralsController } from './rider-referrals.controller';
 
 @Module({
   imports: [PrismaModule, AuditModule, EventsModule, WalletModule],
   controllers: [
     CustomerReferralsController,
     DriverReferralsController,
+    RiderReferralsController,
     AdminReferralsController,
     DriverCampaignController,
     AdminDriverCampaignController,

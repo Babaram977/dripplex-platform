@@ -111,7 +111,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // volume bands changes what every fleet is charged, which is a different
     // level of authority from attaching one rider to one fleet.
     // 139 -> 141: MKT-INT-001 adds integrations:read and integrations:write.
-    expect(PERMISSION_SEEDS).toHaveLength(141);
+    // 141 -> 142: `rider:referrals:use`, a rider's own standing referral code.
+    // Riders were the one earning persona without one. Its own permission
+    // rather than the driver's for the reason that split already exists:
+    // `Referral.ownerType` is fixed at creation and decides which wallet the
+    // reward is paid into, so a rider issued a code under the driver
+    // permission would have their reward filed as a driver's.
+    expect(PERMISSION_SEEDS).toHaveLength(142);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

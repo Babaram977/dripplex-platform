@@ -59,14 +59,21 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   // These are not, because the controllers were written that way. Renaming
   // them to `merchant:integrations:*` is the consistent choice but changes
   // the controllers, so it is raised as a decision rather than taken here.
-  { code: 'integrations:read', description: 'Read own merchant integrations and their credentials (masked)' },
-  { code: 'integrations:write', description: 'Create, update, archive and test own merchant integrations' },
+  {
+    code: 'integrations:read',
+    description: 'Read own merchant integrations and their credentials (masked)',
+  },
+  {
+    code: 'integrations:write',
+    description: 'Create, update, archive and test own merchant integrations',
+  },
   { code: 'merchant:reviews:manage', description: 'Submit rider reviews as a merchant' },
   { code: 'admin:reviews:moderate', description: 'Moderate customer reviews' },
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
   { code: 'customer:promotions:use', description: 'Use platform promotions' },
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'driver:referrals:use', description: "A driver's own referral code" },
+  { code: 'rider:referrals:use', description: "A rider's own referral code" },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {

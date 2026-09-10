@@ -4314,6 +4314,16 @@ export const api = {
     stats: () => dx<ReferralStatsDto>('GET', '/driver/referrals/stats'),
   },
 
+  /**
+   * The rider's standing referral scheme — identical to the driver's, paid
+   * into the RIDER wallet. Riders were the one earning persona without a code
+   * of their own while meeting customers on every delivery.
+   */
+  riderReferrals: {
+    me: () => dx<ReferralDto>('GET', '/rider/referrals/me'),
+    stats: () => dx<ReferralStatsDto>('GET', '/rider/referrals/stats'),
+  },
+
   driverCampaign: {
     /** Never 404s when no campaign is running — returns nulls instead. Read
      *  this first; `code` throws in that state. */

@@ -4,6 +4,7 @@ import { AccountPageHost, AccountRows, type AccountPage } from './accountPages';
 import { playNotificationSound } from '../lib/sound';
 import { SoundSettings } from './soundSettings';
 import { PayoutPanel } from './payoutPanel';
+import { StandingReferralCard } from './standingReferralCard';
 import { auth, endSession } from '../lib/auth';
 import { signOutRequest } from '../lib/push';
 import { useLocationHeartbeat } from '../lib/locationHeartbeat';
@@ -1446,6 +1447,12 @@ export function RiderEarningsScreen({ onBack }: { onBack: () => void }) {
                   .catch(() => {});
               }}
             />
+
+            {/* Riders were the one earning persona with no referral code of
+                their own, while meeting customers on every delivery. Same
+                scheme drivers and customers already had, paid into the RIDER
+                wallet — the balance shown above and the one they withdraw. */}
+            <StandingReferralCard loadStats={api.riderReferrals.stats} />
 
             <RiderSection title="RECENT TRANSACTIONS">
               {txs.length === 0 ? (
