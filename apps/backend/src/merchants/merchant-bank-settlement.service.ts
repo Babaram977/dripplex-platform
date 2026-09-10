@@ -22,36 +22,22 @@ export class MerchantBankSettlementService {
     return this.resolver.listBanks();
   }
 
-  public async create(
-    merchantUserId: string,
-    dto: CreateBankAccountDto,
-    context: AuditContext,
-  ): Promise<BankAccount> {
-    if (!this.resolver.configured) {
-      throw new ValidationDomainException('Bank verification is not configured');
-    }
-
+  public async create(merchantUserId: string, dto: CreateBankAccountDto, context: AuditContext): Promise<BankAccount> {
+    if (!this.resolver.configured) throw new ValidationDomainException('Bank verification is not configured');
     const accountNumber = dto.accountNumber.trim();
-    if (!/^\d{10}$/.test(accountNumber)) {
-      throw new ValidationDomainException('Nigerian bank account number must contain 10 digits');
-    }
+    if (!/^\d{10}$/.test(accountNumber)) throw new ValidationDomainException('Nigerian bank account number must contain 10 digits');
 
-    const existing = await this.prisma.bankAccount.findFirst({
-      where: { merchantId: merchantUserId, accountNumber },
-    });
+    const existing = await this.prisma.bankAccount.findFirst({ where: { merchantId: merchantUserId, accountNumber } });
     if (existing) throw new ConflictDomainException('Bank account number already exists for this merchant');
 
     const requested = dto.bankName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     const banks = await this.resolver.listBanks();
-    const bank = banks.find((item) => item.code === dto.bankCode?.trim() || item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === requested);
+    const bank = banks.find((item) => item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === requested);
     if (!bank) throw new ValidationDomainException('Choose a valid Nigerian bank so we can verify the settlement account');
 
     const resolved = await this.resolver.resolveAccountName({ accountNumber, bankCode: bank.code });
-
     const account = await this.prisma.$transaction(async (tx) => {
-      if (dto.isDefault) {
-        await tx.bankAccount.updateMany({ where: { merchantId: merchantUserId }, data: { isDefault: false } });
-      }
+      if (dto.isDefault) await tx.bankAccount.updateMany({ where: { merchantId: merchantUserId }, data: { isDefault: false } });
       const hasDefault = await tx.bankAccount.count({ where: { merchantId: merchantUserId, isDefault: true } });
       return tx.bankAccount.create({
         data: {
@@ -66,16 +52,9 @@ export class MerchantBankSettlementService {
       });
     });
 
-    await this.auditService.record(
-      MERCHANT_AUDIT_ACTIONS.BANK_CREATED,
-      { ...context, userId: merchantUserId },
-      {
-        resource: 'bank_account',
-        resourceId: account.id,
-        metadata: { bankName: account.bankName, verified: true },
-      },
-    );
-
+    await this.auditService.record(MERCHANT_AUDIT_ACTIONS.BANK_CREATED, { ...context, userId: merchantUserId }, {
+      resource: 'bank_account', resourceId: account.id, metadata: { bankName: account.bankName, verified: true },
+    });
     return account;
   }
 }
