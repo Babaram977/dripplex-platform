@@ -40,7 +40,6 @@ import {
   type MerchantsRepository,
 } from './repositories/merchants.repository';
 
-import type { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import type { CreateBusinessDto } from './dto/create-business.dto';
 import type { ListMerchantsQueryDto } from './dto/list-merchants-query.dto';
 import type { SubmitKycDto } from './dto/submit-kyc.dto';
@@ -506,43 +505,6 @@ export class MerchantsService {
     };
   }
 
-  public async createBankAccount(
-    merchantUserId: string,
-    dto: CreateBankAccountDto,
-    context: AuditContext,
-  ): Promise<BankAccountDto> {
-    await this.requireMerchantProfile(merchantUserId);
-
-    const duplicate = await this.merchantsRepository.findBankAccountByNumber(
-      merchantUserId,
-      dto.accountNumber,
-    );
-    if (duplicate) {
-      throw new ConflictDomainException('Bank account number already exists for this merchant');
-    }
-
-    const account = await this.merchantsRepository.createBankAccount({
-      merchantId: merchantUserId,
-      bankName: dto.bankName.trim(),
-      accountName: dto.accountName.trim(),
-      accountNumber: dto.accountNumber,
-      currency: (dto.currency ?? 'NGN').toUpperCase(),
-      isDefault: dto.isDefault ?? false,
-    });
-
-    await this.auditService.record(
-      MERCHANT_AUDIT_ACTIONS.BANK_CREATED,
-      { ...context, userId: merchantUserId },
-      {
-        resource: 'bank_account',
-        resourceId: account.id,
-        metadata: { bankName: account.bankName },
-      },
-    );
-
-    return toBankAccountDto(account);
-  }
-
   public async listBankAccounts(merchantUserId: string): Promise<BankAccountDto[]> {
     await this.requireMerchantProfile(merchantUserId);
     const accounts = await this.merchantsRepository.listBankAccounts(merchantUserId);
@@ -558,6 +520,17 @@ export class MerchantsService {
     const account = await this.merchantsRepository.findBankAccountById(accountId);
     if (account?.merchantId !== merchantUserId) {
       throw new NotFoundDomainException('Bank account not found');
+    }
+
+    // The same rule fleet settlement already enforces. Without it a merchant
+    // could point settlement at an account the bank never confirmed — rows
+    // predating verification still exist — and the settlement path would then
+    // skip every payout to them silently rather than failing here, where the
+    // merchant can see it and fix it.
+    if (!account.verifiedAt) {
+      throw new ConflictDomainException(
+        'Only a bank-verified account can be the default settlement account',
+      );
     }
 
     const updated = await this.merchantsRepository.setDefaultBankAccount(merchantUserId, accountId);

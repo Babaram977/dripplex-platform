@@ -67,6 +67,9 @@ export class MerchantBankSettlementService {
         data: {
           merchantId: merchantUserId,
           bankName: bank.name,
+          // Captured here so the settlement path never has to re-derive it
+          // from the display name at the moment it moves money.
+          bankCode: bank.code,
           accountName: resolved.accountName,
           accountNumber,
           currency: (dto.currency ?? 'NGN').toUpperCase(),

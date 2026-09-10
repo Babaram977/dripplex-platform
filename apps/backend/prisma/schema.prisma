@@ -868,6 +868,10 @@ model BankAccount {
   id            String    @id @default(uuid()) @db.Uuid
   merchantId    String    @map("merchant_id") @db.Uuid
   bankName      String    @map("bank_name") @db.VarChar(150)
+  /// Provider bank code, captured at link time. Nullable only because rows
+  /// predating the bank picker have none; the settlement path falls back to
+  /// resolving the name for those. New rows always carry it.
+  bankCode      String?   @map("bank_code") @db.VarChar(10)
   accountName   String    @map("account_name") @db.VarChar(150)
   accountNumber String    @map("account_number") @db.VarChar(20)
   currency      String    @default("NGN") @db.VarChar(3)

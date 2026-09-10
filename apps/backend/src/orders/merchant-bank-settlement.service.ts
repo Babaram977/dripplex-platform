@@ -63,11 +63,13 @@ export class MerchantBankSettlementService implements OnModuleInit {
     });
     if (!bank?.verifiedAt) return true;
 
-    // Merchant bank rows store a name, not a code, so the code has to be
-    // re-derived here at payout time. Rows written before the bank picker
-    // existed hold free text like "UBA", which only matches through the shared
-    // alias table — without it the settlement below is silently skipped.
-    const bankOption = findBank(await this.resolver.listBanks(), { bankName: bank.bankName });
+    // Accounts linked since the bank picker landed carry the code they were
+    // verified against, so nothing has to be re-derived at the moment money
+    // moves. Rows written before it hold only a name — often free text like
+    // "UBA" — and are resolved through the shared alias table instead.
+    const bankOption = bank.bankCode
+      ? { name: bank.bankName, code: bank.bankCode }
+      : findBank(await this.resolver.listBanks(), { bankName: bank.bankName });
     if (!bankOption) return true;
 
     const existing = await this.prisma.$queryRaw<{ id: string; status: string }[]>`

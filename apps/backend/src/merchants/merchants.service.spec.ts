@@ -162,7 +162,6 @@ describe('MerchantsService', () => {
     listKycByMerchantId: jest.fn(),
     verifyKyc: jest.fn(),
     rejectKyc: jest.fn(),
-    createBankAccount: jest.fn(),
     findBankAccountById: jest.fn(),
     findBankAccountByNumber: jest.fn(),
     listBankAccounts: jest.fn(),
@@ -613,43 +612,6 @@ describe('MerchantsService', () => {
   });
 
   describe('bank accounts', () => {
-    it('creates a bank account', async () => {
-      repository.findBankAccountByNumber.mockResolvedValue(null);
-      repository.createBankAccount.mockResolvedValue(bankAccount);
-
-      const result = await service.createBankAccount(
-        merchantId,
-        {
-          bankName: 'Access Bank',
-          accountName: 'Ada Foods',
-          accountNumber: '0123456789',
-        },
-        context,
-      );
-
-      expect(result.accountNumber).toBe('0123456789');
-      expect(auditService.record).toHaveBeenCalledWith(
-        MERCHANT_AUDIT_ACTIONS.BANK_CREATED,
-        expect.any(Object),
-        expect.any(Object),
-      );
-    });
-
-    it('rejects duplicate account number', async () => {
-      repository.findBankAccountByNumber.mockResolvedValue(bankAccount);
-      await expect(
-        service.createBankAccount(
-          merchantId,
-          {
-            bankName: 'Access Bank',
-            accountName: 'Ada Foods',
-            accountNumber: '0123456789',
-          },
-          context,
-        ),
-      ).rejects.toBeInstanceOf(ConflictDomainException);
-    });
-
     it('lists bank accounts', async () => {
       repository.listBankAccounts.mockResolvedValue([bankAccount] as never);
       const result = await service.listBankAccounts(merchantId);
@@ -657,7 +619,7 @@ describe('MerchantsService', () => {
     });
 
     it('sets default bank account', async () => {
-      repository.findBankAccountById.mockResolvedValue(bankAccount);
+      repository.findBankAccountById.mockResolvedValue({ ...bankAccount, verifiedAt: new Date() });
       repository.setDefaultBankAccount.mockResolvedValue(bankAccount);
 
       const result = await service.setDefaultBankAccount(merchantId, bankId, context);
@@ -667,6 +629,18 @@ describe('MerchantsService', () => {
         expect.any(Object),
         expect.any(Object),
       );
+    });
+
+    it('refuses to make an unverified account the default settlement destination', async () => {
+      // Settlement skips an unverified default silently, so the merchant would
+      // simply stop being paid with nothing to see. Refuse here instead.
+      repository.findBankAccountById.mockResolvedValue({ ...bankAccount, verifiedAt: null });
+
+      await expect(
+        service.setDefaultBankAccount(merchantId, bankId, context),
+      ).rejects.toBeInstanceOf(ConflictDomainException);
+
+      expect(repository.setDefaultBankAccount).not.toHaveBeenCalled();
     });
   });
 

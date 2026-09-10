@@ -12,7 +12,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 import type {
   AuditSummaryItem,
-  CreateBankAccountInput,
   CreateBusinessInput,
   CreateKycInput,
   ListMerchantsFilter,
@@ -230,32 +229,6 @@ export class PrismaMerchantsRepository implements MerchantsRepository {
         reviewedAt: new Date(),
         remarks,
       },
-    });
-  }
-
-  public async createBankAccount(input: CreateBankAccountInput): Promise<BankAccount> {
-    return await this.prisma.$transaction(async (tx) => {
-      if (input.isDefault) {
-        await tx.bankAccount.updateMany({
-          where: { merchantId: input.merchantId, isDefault: true },
-          data: { isDefault: false },
-        });
-      }
-
-      const existingCount = await tx.bankAccount.count({
-        where: { merchantId: input.merchantId },
-      });
-
-      return await tx.bankAccount.create({
-        data: {
-          merchantId: input.merchantId,
-          bankName: input.bankName,
-          accountName: input.accountName,
-          accountNumber: input.accountNumber,
-          currency: input.currency,
-          isDefault: input.isDefault || existingCount === 0,
-        },
-      });
     });
   }
 

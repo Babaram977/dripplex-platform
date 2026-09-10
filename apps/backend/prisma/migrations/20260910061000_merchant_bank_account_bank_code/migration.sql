@@ -1,0 +1,12 @@
+-- Store the provider bank code on a merchant bank account.
+--
+-- Merchant rows recorded only a bank name, so the settlement path had to
+-- re-derive the code from that name every time it paid a merchant. When the
+-- lookup failed the transfer was skipped and treated as handled, which is a
+-- merchant silently not being paid. Capturing the code once, at the point the
+-- account is verified, removes the re-derivation from the money path.
+--
+-- Nullable on purpose: rows written before the bank picker existed have no
+-- code, and back-filling them would mean guessing. The settlement path keeps
+-- the name-resolution fallback for exactly those rows.
+ALTER TABLE "bank_accounts" ADD COLUMN IF NOT EXISTS "bank_code" VARCHAR(10);

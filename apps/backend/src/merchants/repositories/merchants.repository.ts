@@ -139,7 +139,6 @@ export interface MerchantsRepository {
   listKycByMerchantId(merchantId: string): Promise<MerchantKyc[]>;
   verifyKyc(id: string, reviewedBy: string, remarks?: string): Promise<MerchantKyc>;
   rejectKyc(id: string, reviewedBy: string, remarks: string): Promise<MerchantKyc>;
-  createBankAccount(input: CreateBankAccountInput): Promise<BankAccount>;
   findBankAccountById(id: string): Promise<BankAccount | null>;
   findBankAccountByNumber(merchantId: string, accountNumber: string): Promise<BankAccount | null>;
   listBankAccounts(merchantId: string): Promise<BankAccount[]>;
