@@ -4,9 +4,10 @@ import { WithdrawalRequestStatus } from '@prisma/client';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../../events/domain-events';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PAYOUT_PROVIDERS, type PayoutProvider } from './payout-provider.adapter';
 import { WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE } from '../wallet.constants';
 import { WalletService } from '../wallet.service';
+
+import { PAYOUT_PROVIDERS, type PayoutProvider } from './payout-provider.adapter';
 
 @Injectable()
 export class PayoutFulfillmentService implements OnModuleInit {
@@ -28,14 +29,23 @@ export class PayoutFulfillmentService implements OnModuleInit {
 
   public async initiate(id: string): Promise<void> {
     const row = await this.prisma.withdrawalRequest.findUnique({ where: { id } });
-    if (!row || row.status !== WithdrawalRequestStatus.PENDING) return;
-    const account = await this.prisma.customerBankAccount.findUnique({ where: { id: row.bankAccountId } });
-    if (!account || account.deletedAt !== null || !account.accountNameVerifiedAt || !account.bankCode) {
+    if (row?.status !== WithdrawalRequestStatus.PENDING) return;
+    const account = await this.prisma.customerBankAccount.findUnique({
+      where: { id: row.bankAccountId },
+    });
+    if (
+      account?.deletedAt !== null ||
+      account.accountNameVerifiedAt === null ||
+      account.bankCode === null
+    ) {
       await this.fail(id, 'Verified payout destination is no longer available');
       return;
     }
-    const provider = this.providers.find((item) => String(item.provider) === 'PAYSTACK');
-    if (!provider) { await this.fail(id, 'Paystack payout provider is not configured'); return; }
+    const provider = this.providers.find((item) => item.provider === 'PAYSTACK');
+    if (!provider) {
+      await this.fail(id, 'Paystack payout provider is not configured');
+      return;
+    }
 
     try {
       const result = await provider.initiatePayout({
@@ -47,21 +57,31 @@ export class PayoutFulfillmentService implements OnModuleInit {
         accountName: account.accountName,
         narration: 'DrippleX wallet payout',
       });
-      if (result.status === 'SUCCESS') await this.succeed(id, result.providerTransferId ?? result.reference);
+      if (result.status === 'SUCCESS')
+        await this.succeed(id, result.providerTransferId ?? result.reference);
       if (result.status === 'FAILED') await this.fail(id, 'Provider rejected the transfer');
     } catch (error) {
       await this.fail(id, error instanceof Error ? error.message : 'Payout provider error');
     }
   }
 
-  public async processProviderResult(reference: string, status: 'SUCCESS' | 'FAILED', providerReference?: string | null, reason?: string): Promise<void> {
+  public async processProviderResult(
+    reference: string,
+    status: 'SUCCESS' | 'FAILED',
+    providerReference?: string | null,
+    reason?: string,
+  ): Promise<void> {
     const row = await this.prisma.withdrawalRequest.findUnique({ where: { id: reference } });
     if (!row) return;
     if (status === 'SUCCESS') {
-      if (row.status === WithdrawalRequestStatus.PENDING) await this.succeed(reference, providerReference ?? reference);
+      if (row.status === WithdrawalRequestStatus.PENDING)
+        await this.succeed(reference, providerReference ?? reference);
       return;
     }
-    if (row.status === WithdrawalRequestStatus.COMPLETED || row.status === WithdrawalRequestStatus.PENDING) {
+    if (
+      row.status === WithdrawalRequestStatus.COMPLETED ||
+      row.status === WithdrawalRequestStatus.PENDING
+    ) {
       await this.fail(reference, reason ?? 'Provider transfer failed or was reversed');
     }
   }
@@ -69,16 +89,29 @@ export class PayoutFulfillmentService implements OnModuleInit {
   private async succeed(id: string, providerReference: string): Promise<void> {
     await this.prisma.withdrawalRequest.updateMany({
       where: { id, status: WithdrawalRequestStatus.PENDING },
-      data: { status: WithdrawalRequestStatus.COMPLETED, adminNote: `Provider transfer ${providerReference}`, processedAt: new Date() },
+      data: {
+        status: WithdrawalRequestStatus.COMPLETED,
+        adminNote: `Provider transfer ${providerReference}`,
+        processedAt: new Date(),
+      },
     });
   }
 
   private async fail(id: string, reason: string): Promise<void> {
     const row = await this.prisma.withdrawalRequest.findUnique({ where: { id } });
-    if (!row || (row.status !== WithdrawalRequestStatus.PENDING && row.status !== WithdrawalRequestStatus.COMPLETED)) return;
+    if (
+      !row ||
+      (row.status !== WithdrawalRequestStatus.PENDING &&
+        row.status !== WithdrawalRequestStatus.COMPLETED)
+    )
+      return;
     const changed = await this.prisma.withdrawalRequest.updateMany({
       where: { id, status: row.status },
-      data: { status: WithdrawalRequestStatus.FAILED, failureReason: reason.slice(0, 500), processedAt: new Date() },
+      data: {
+        status: WithdrawalRequestStatus.FAILED,
+        failureReason: reason.slice(0, 500),
+        processedAt: new Date(),
+      },
     });
     if (changed.count === 0) return;
     const wallet = await this.prisma.wallet.findUnique({ where: { id: row.walletId } });

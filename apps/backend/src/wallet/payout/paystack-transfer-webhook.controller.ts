@@ -33,8 +33,16 @@ export class PaystackTransferWebhookController {
     if (!this.isTransferEvent(payload)) return { success: true };
     const reference = payload.data.reference;
     const terminal = payload.event === 'transfer.success' ? 'SUCCESS' : 'FAILED';
-    const providerReference = payload.data.transfer_code ?? (payload.data.id !== undefined ? String(payload.data.id) : null);
-    const reason = payload.data.failures ? String(payload.data.failures) : payload.event;
+    const providerReference =
+      payload.data.transfer_code ??
+      (payload.data.id !== undefined ? String(payload.data.id) : null);
+    // `failures` is an object. String()-ing it recorded the literal text
+    // "[object Object]" as the reason a partner's payout failed, which is the
+    // one field anyone reads when money does not arrive.
+    const reason =
+      payload.data.failures === undefined || payload.data.failures === null
+        ? payload.event
+        : JSON.stringify(payload.data.failures);
 
     // Shared customer/rider/driver wallet payout reconciliation.
     await this.fulfillment.processProviderResult(reference, terminal, providerReference, reason);
@@ -44,9 +52,22 @@ export class PaystackTransferWebhookController {
     return { success: true };
   }
 
-  private async processFleetTransfer(reference: string, status: 'SUCCESS' | 'FAILED', providerReference: string | null, reason: string): Promise<void> {
+  private async processFleetTransfer(
+    reference: string,
+    status: 'SUCCESS' | 'FAILED',
+    providerReference: string | null,
+    reason: string,
+  ): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ id: string; request_id: string | null; amount: number; transfer_status: string; receivable_id: string | null }>>`
+      const rows = await tx.$queryRaw<
+        {
+          id: string;
+          request_id: string | null;
+          amount: number;
+          transfer_status: string;
+          receivable_id: string | null;
+        }[]
+      >`
         SELECT t.id, t.settlement_request_id AS request_id, t.amount::float8 AS amount,
                t.status::text AS transfer_status, r.receivable_id
         FROM fleet_settlement_transfers t
@@ -55,7 +76,7 @@ export class PaystackTransferWebhookController {
         LIMIT 1
         FOR UPDATE`;
       const transfer = rows[0];
-      if (!transfer || transfer.transfer_status !== 'PENDING') return;
+      if (transfer?.transfer_status !== 'PENDING') return;
 
       if (status === 'SUCCESS') {
         await tx.$executeRaw`
@@ -90,14 +111,22 @@ export class PaystackTransferWebhookController {
 
   private isTransferEvent(value: unknown): value is {
     event: 'transfer.success' | 'transfer.failed' | 'transfer.reversed';
-    data: { reference: string; transfer_code?: string | null; id?: number | string; failures?: unknown };
+    data: {
+      reference: string;
+      transfer_code?: string | null;
+      id?: number | string;
+      failures?: unknown;
+    };
   } {
     if (typeof value !== 'object' || value === null) return false;
     const event = (value as { event?: unknown }).event;
     const data = (value as { data?: unknown }).data;
     return (
-      (event === 'transfer.success' || event === 'transfer.failed' || event === 'transfer.reversed') &&
-      typeof data === 'object' && data !== null &&
+      (event === 'transfer.success' ||
+        event === 'transfer.failed' ||
+        event === 'transfer.reversed') &&
+      typeof data === 'object' &&
+      data !== null &&
       typeof (data as { reference?: unknown }).reference === 'string'
     );
   }

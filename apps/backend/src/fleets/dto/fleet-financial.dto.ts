@@ -57,3 +57,56 @@ export class CreateFleetSettlementRequestDto {
   @Min(0.01)
   public amount!: number;
 }
+
+/**
+ * Operations-side fleet settlement bodies. Same reasoning as the owner-side
+ * DTOs above: these decide what a fleet is owed and what leaves DrippleX, and
+ * were previously inline types with no validation at all.
+ */
+export class ApproveFleetReceivableDto {
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber()
+  @Min(0.01)
+  public amount!: number;
+
+  @IsString()
+  @MaxLength(80)
+  public referenceType!: string;
+
+  @IsString()
+  @MaxLength(160)
+  public referenceId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  public description?: string;
+}
+
+export class ApproveFleetSettlementRequestDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber()
+  @Min(0.01)
+  public approvedAmount?: number;
+}
+
+export class RejectFleetSettlementRequestDto {
+  @IsString()
+  @MaxLength(500)
+  public reason!: string;
+}
+
+export class ExecuteFleetSettlementDto {
+  @IsUUID()
+  public fleetId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  public narration?: string;
+}

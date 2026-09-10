@@ -31,7 +31,11 @@ interface RecipientData {
 
 interface TransferData {
   id?: number | string;
-  reference: string;
+  /** Optional because Paystack does not always echo it, which is exactly why
+   *  the caller falls back to the reference it sent. Declaring it required made
+   *  that fallback look dead when it is the thing keeping a transfer
+   *  reconcilable. */
+  reference?: string;
   status: string;
   transfer_code?: string | null;
   amount?: number;
@@ -85,7 +89,9 @@ export class PaystackTransferProvider implements PayoutProviderInterface {
 
     const recipientCode = recipient.data?.recipient_code;
     if (!recipient.status || !recipientCode) {
-      throw new ValidationDomainException(recipient.message || 'Paystack recipient creation failed');
+      throw new ValidationDomainException(
+        recipient.message || 'Paystack recipient creation failed',
+      );
     }
 
     const response = await this.request<PaystackResponse<TransferData>>('/transfer', {
@@ -102,13 +108,15 @@ export class PaystackTransferProvider implements PayoutProviderInterface {
 
     const data = response.data;
     if (!response.status || !data?.reference) {
-      throw new ValidationDomainException(response.message || 'Paystack transfer failed to initiate');
+      throw new ValidationDomainException(
+        response.message || 'Paystack transfer failed to initiate',
+      );
     }
 
     return {
       provider: this.provider,
       reference: data.reference,
-      providerTransferId: data.id !== undefined ? String(data.id) : data.transfer_code ?? null,
+      providerTransferId: data.id !== undefined ? String(data.id) : (data.transfer_code ?? null),
       status: this.mapStatus(data.status),
       raw: response,
     };
@@ -126,7 +134,7 @@ export class PaystackTransferProvider implements PayoutProviderInterface {
 
     return {
       reference: data.reference ?? input.reference,
-      providerTransferId: data.id !== undefined ? String(data.id) : data.transfer_code ?? null,
+      providerTransferId: data.id !== undefined ? String(data.id) : (data.transfer_code ?? null),
       status: this.mapStatus(data.status),
       raw: response,
     };
@@ -146,7 +154,9 @@ export class PaystackTransferProvider implements PayoutProviderInterface {
 
   private normalizeReference(reference: string): string {
     const normalized = reference.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
-    return normalized.length >= 16 ? normalized.slice(0, 50) : `dpx-${normalized}`.padEnd(16, '0').slice(0, 50);
+    return normalized.length >= 16
+      ? normalized.slice(0, 50)
+      : `dpx-${normalized}`.padEnd(16, '0').slice(0, 50);
   }
 
   private async request<T>(
@@ -177,10 +187,13 @@ export class PaystackTransferProvider implements PayoutProviderInterface {
     }
 
     if (!response.ok) {
-      const message =
+      // Only use it when it really is a string. Coercing an unknown here is how
+      // "[object Object]" ends up as the error a caller is shown.
+      const raw =
         typeof payload === 'object' && payload !== null && 'message' in payload
-          ? String((payload as { message?: unknown }).message ?? '')
-          : '';
+          ? (payload as { message?: unknown }).message
+          : undefined;
+      const message = typeof raw === 'string' ? raw : '';
       throw new ValidationDomainException(
         `Paystack request failed (${String(response.status)}): ${message.slice(0, 200)}`,
       );
