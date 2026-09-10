@@ -111,7 +111,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // volume bands changes what every fleet is charged, which is a different
     // level of authority from attaching one rider to one fleet.
     // 139 -> 141: MKT-INT-001 adds integrations:read and integrations:write.
-      expect(PERMISSION_SEEDS).toHaveLength(141);
+    expect(PERMISSION_SEEDS).toHaveLength(141);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
@@ -152,5 +152,66 @@ describe('Production deploy path seeds RBAC (P0-1)', () => {
     // The RBAC bootstrap runs migrate deploy internally; the deploy script must
     // not invoke `prisma migrate deploy` directly as its DB bring-up command.
     expect(deployScript).not.toMatch(/(npx|pnpm exec) prisma migrate deploy/);
+  });
+});
+
+// seed-rbac.cjs reconciles a migration that an earlier deploy left failed, by
+// marking it rolled back so `migrate deploy` re-runs it. That is only sound
+// while every statement in the named migrations is guarded — an unguarded
+// CREATE/ALTER would fail a second time on a database that already has the
+// object, and the deploy would be stuck again with no way forward. These
+// checks are the standing proof of that precondition: adding a name to the
+// allowlist without making its SQL replay-safe fails here rather than in
+// production's pre-deploy step.
+describe('seed-rbac.cjs failed-migration reconciliation', () => {
+  const bootstrap = readFileSync(path.resolve(backendRoot, 'prisma/seed-rbac.cjs'), 'utf8');
+
+  const allowlist = (() => {
+    const block = /REPLAY_SAFE_FAILED_MIGRATIONS = new Set\(\[([\s\S]*?)\]\)/.exec(bootstrap);
+    if (!block?.[1]) {
+      throw new Error('seed-rbac.cjs no longer declares REPLAY_SAFE_FAILED_MIGRATIONS');
+    }
+    return [...block[1].matchAll(/'([^']+)'/g)].flatMap((match) => match[1] ?? []);
+  })();
+
+  it('reconciles only against an explicit allowlist, never "whatever is failed"', () => {
+    expect(allowlist.length).toBeGreaterThan(0);
+    // The unknown-migration branch is what makes this fail closed.
+    expect(bootstrap).toContain('Refusing to reconcile unrecognised failed migration');
+  });
+
+  it('marks migrations rolled back (re-run), never applied (skip)', () => {
+    // --applied would tell Prisma the migration succeeded and move on, which
+    // assumes production's schema already matches. --rolled-back re-executes
+    // it, so no assumption about the live schema is needed.
+    expect(bootstrap).toContain("'--rolled-back'");
+    expect(bootstrap).not.toContain("'--applied'");
+  });
+
+  it.each(allowlist)('%s exists and every statement in it is replay-safe', (name) => {
+    const sql = readFileSync(
+      path.resolve(backendRoot, 'prisma/migrations', name, 'migration.sql'),
+      'utf8',
+    );
+
+    const statements = sql
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('--'))
+      .join('\n')
+      // DO $$ ... END $$ blocks carry their own existence checks (pg_constraint
+      // lookups, exception handlers), so they are excluded from the line scan.
+      .replace(/DO \$\$[\s\S]*?END \$\$;/g, '');
+
+    const unguarded = statements
+      .split(';')
+      .map((statement) => statement.trim().replace(/\s+/g, ' '))
+      .filter(
+        (statement) =>
+          /^(CREATE (TABLE|INDEX|UNIQUE INDEX|TYPE)|ALTER TABLE \S+ ADD COLUMN|ALTER TYPE)/i.test(
+            statement,
+          ) && !/IF NOT EXISTS/i.test(statement),
+      );
+
+    expect(unguarded).toEqual([]);
   });
 });

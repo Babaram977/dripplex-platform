@@ -101,8 +101,14 @@ const PERMISSION_SEEDS = [
   { code: 'merchant:reviews:reply', description: 'Reply to merchant reviews' },
   // MKT-INT-001 — merchant integration platform. Kept in step with
   // seed-data/permissions.ts; rbac-seed-parity.spec.ts fails if they drift.
-  { code: 'integrations:read', description: 'Read own merchant integrations and their credentials (masked)' },
-  { code: 'integrations:write', description: 'Create, update, archive and test own merchant integrations' },
+  {
+    code: 'integrations:read',
+    description: 'Read own merchant integrations and their credentials (masked)',
+  },
+  {
+    code: 'integrations:write',
+    description: 'Create, update, archive and test own merchant integrations',
+  },
   { code: 'merchant:reviews:manage', description: 'Submit rider reviews as a merchant' },
   { code: 'admin:reviews:moderate', description: 'Moderate customer reviews' },
   { code: 'customer:wishlist:manage', description: 'Manage own wishlists' },
@@ -792,11 +798,74 @@ async function seedRolePermissions(roleIds, permissionIds) {
   }
 }
 
+// Migrations an earlier deploy left half-applied. Prisma refuses to apply
+// anything at all while a failed row sits in _prisma_migrations (P3009), so a
+// stuck chain has to be reconciled before `migrate deploy` will move again —
+// no amount of fixing the migration SQL helps on its own.
+//
+// Every name here has been read statement by statement and is replay-safe:
+// each CREATE/ALTER in them is guarded (IF NOT EXISTS, IF EXISTS, or a
+// pg_constraint lookup inside DO $$), so re-running one against a database
+// that already has the objects is a no-op. That is precisely what makes
+// `--rolled-back` (re-run the migration) the right instrument here instead of
+// `--applied` (skip it, and trust that production's schema already matches).
+// With --rolled-back nothing has to be assumed about the real schema state:
+// the migration executes again and converges whichever way production sits.
+//
+// This is deliberately an allowlist, not "clear whatever is failed". An
+// unrecognised failed migration stops the deploy so a human looks at it,
+// rather than being silently cleared to turn a deploy green.
+const REPLAY_SAFE_FAILED_MIGRATIONS = new Set([
+  '20260910043000_fleet_settlement_receivables',
+  '20260910050000_fleet_settlement_authorization',
+  '20260910051000_fleet_settlement_processing_status',
+]);
+
+async function reconcileFailedMigrations() {
+  // A fresh database has no _prisma_migrations table yet; there is nothing to
+  // reconcile and querying it would throw before the first migration runs.
+  const [{ present }] = await prisma.$queryRaw`
+    SELECT to_regclass('public._prisma_migrations') IS NOT NULL AS present
+  `;
+  if (!present) {
+    return;
+  }
+
+  // Prisma records a failed migration by leaving finished_at NULL without
+  // setting rolled_back_at. Nothing else runs during pre-deploy, so there is
+  // no in-progress migration for this to race against.
+  const failed = await prisma.$queryRaw`
+    SELECT migration_name
+    FROM "_prisma_migrations"
+    WHERE finished_at IS NULL AND rolled_back_at IS NULL
+    ORDER BY started_at
+  `;
+
+  const unknown = failed
+    .map((row) => row.migration_name)
+    .filter((name) => !REPLAY_SAFE_FAILED_MIGRATIONS.has(name));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Refusing to reconcile unrecognised failed migration(s): ${unknown.join(', ')}. ` +
+        'Check the migration by hand and add it to REPLAY_SAFE_FAILED_MIGRATIONS ' +
+        'only once every statement in it is verified replay-safe.',
+    );
+  }
+
+  for (const { migration_name: name } of failed) {
+    process.stdout.write(`Reconciling failed migration ${name} as rolled back so it re-runs.\n`);
+    execFileSync('node_modules/.bin/prisma', ['migrate', 'resolve', '--rolled-back', name], {
+      stdio: 'inherit',
+    });
+  }
+}
+
 function runMigrations() {
   execFileSync('node_modules/.bin/prisma', ['migrate', 'deploy'], { stdio: 'inherit' });
 }
 
 async function main() {
+  await reconcileFailedMigrations();
   runMigrations();
   const permissionIds = await seedPermissions();
   const roleIds = await seedRoles();
