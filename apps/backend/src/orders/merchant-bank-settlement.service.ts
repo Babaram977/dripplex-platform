@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
+
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
-import { WalletOwnerType, OrderPaymentMethod } from '@prisma/client';
+import { WalletOwnerType, OrderPaymentMethod, type Prisma } from '@prisma/client';
 
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 import { PAYOUT_PROVIDERS, type PayoutProvider } from '../wallet/payout/payout-provider.adapter';
-import { BANK_ACCOUNT_RESOLVER, type BankAccountResolver } from '../wallet/verification/bank-account-resolver.port';
+import {
+  BANK_ACCOUNT_RESOLVER,
+  type BankAccountResolver,
+} from '../wallet/verification/bank-account-resolver.port';
+import { findBank } from '../wallet/verification/bank-directory';
 import { WalletService } from '../wallet/wallet.service';
 
 const MERCHANT_BANK_SETTLEMENT_REFERENCE = 'MERCHANT_BANK_SETTLEMENT';
@@ -22,7 +27,9 @@ export class MerchantBankSettlementService implements OnModuleInit {
     @Inject(BANK_ACCOUNT_RESOLVER) private readonly resolver: BankAccountResolver,
   ) {}
 
-  public onModuleInit(): void { this.eventBus.on(DOMAIN_EVENTS.ORDER_COMPLETED, (event) => this.handleCompleted(event)); }
+  public onModuleInit(): void {
+    this.eventBus.on(DOMAIN_EVENTS.ORDER_COMPLETED, (event) => this.handleCompleted(event));
+  }
 
   private async handleCompleted(event: DomainEvent): Promise<void> {
     const orderId = this.stringField(event, 'orderId');
@@ -35,21 +42,35 @@ export class MerchantBankSettlementService implements OnModuleInit {
 
   public async settleOrder(orderId: string): Promise<boolean> {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
-    if (!order || order.paymentMethod === OrderPaymentMethod.MERCHANT_DIRECT || order.paymentMethod === OrderPaymentMethod.CASH) return true;
+    if (
+      !order ||
+      order.paymentMethod === OrderPaymentMethod.MERCHANT_DIRECT ||
+      order.paymentMethod === OrderPaymentMethod.CASH
+    )
+      return true;
     const settlement = await this.prisma.orderSettlement.findUnique({ where: { orderId } });
     if (!settlement) return false;
     if (settlement.status !== 'COMPLETED') return false;
 
-    const profile = await this.prisma.merchantProfile.findUnique({ where: { id: settlement.merchantId }, select: { userId: true } });
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { id: settlement.merchantId },
+      select: { userId: true },
+    });
     if (!profile) return true;
-    const bank = await this.prisma.bankAccount.findFirst({ where: { merchantId: profile.userId, isDefault: true }, orderBy: { verifiedAt: 'desc' } });
-    if (!bank || !bank.verifiedAt) return true;
+    const bank = await this.prisma.bankAccount.findFirst({
+      where: { merchantId: profile.userId, isDefault: true },
+      orderBy: { verifiedAt: 'desc' },
+    });
+    if (!bank?.verifiedAt) return true;
 
-    const bankName = bank.bankName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const bankOption = (await this.resolver.listBanks()).find((item) => item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === bankName);
+    // Merchant bank rows store a name, not a code, so the code has to be
+    // re-derived here at payout time. Rows written before the bank picker
+    // existed hold free text like "UBA", which only matches through the shared
+    // alias table — without it the settlement below is silently skipped.
+    const bankOption = findBank(await this.resolver.listBanks(), { bankName: bank.bankName });
     if (!bankOption) return true;
 
-    const existing = await this.prisma.$queryRaw<Array<{ id: string; status: string }>>`
+    const existing = await this.prisma.$queryRaw<{ id: string; status: string }[]>`
       SELECT id, status FROM merchant_settlement_transfers WHERE settlement_id = ${settlement.id}::uuid LIMIT 1
     `;
     if (existing[0]?.status === 'SUCCESS') return true;
@@ -66,8 +87,11 @@ export class MerchantBankSettlementService implements OnModuleInit {
       `;
     }
 
-    const provider = this.providers.find((item) => String(item.provider) === 'PAYSTACK');
-    if (!provider) { await this.markFailed(transferId, 'Paystack payout provider is not configured'); return true; }
+    const provider = this.providers.find((item) => item.provider === 'PAYSTACK');
+    if (!provider) {
+      await this.markFailed(transferId, 'Paystack payout provider is not configured');
+      return true;
+    }
 
     try {
       await this.walletService.withdrawal({
@@ -89,17 +113,34 @@ export class MerchantBankSettlementService implements OnModuleInit {
         accountName: bank.accountName,
         narration: `DrippleX merchant settlement ${order.orderNumber}`,
       });
-      if (result.status === 'SUCCESS') await this.markSuccess(transferId, result.providerTransferId ?? result.reference);
-      if (result.status === 'FAILED') await this.markFailed(transferId, 'Provider rejected merchant settlement');
+      if (result.status === 'SUCCESS')
+        await this.markSuccess(transferId, result.providerTransferId ?? result.reference);
+      if (result.status === 'FAILED')
+        await this.markFailed(transferId, 'Provider rejected merchant settlement');
       return true;
     } catch (error) {
-      await this.markFailed(transferId, error instanceof Error ? error.message : 'Merchant bank settlement failed');
+      await this.markFailed(
+        transferId,
+        error instanceof Error ? error.message : 'Merchant bank settlement failed',
+      );
       return true;
     }
   }
 
-  public async processProviderResult(reference: string, status: TransferStatus, reason?: string): Promise<void> {
-    const rows = await this.prisma.$queryRaw<Array<{ id: string; merchant_id: string; amount: number; currency: string; status: string }>>`
+  public async processProviderResult(
+    reference: string,
+    status: TransferStatus,
+    reason?: string,
+  ): Promise<void> {
+    const rows = await this.prisma.$queryRaw<
+      {
+        id: string;
+        merchant_id: string;
+        amount: Prisma.Decimal;
+        currency: string;
+        status: string;
+      }[]
+    >`
       SELECT id, merchant_id, amount, currency, status FROM merchant_settlement_transfers WHERE id = ${reference}::uuid LIMIT 1
     `;
     const row = rows[0];
@@ -144,7 +185,9 @@ export class MerchantBankSettlementService implements OnModuleInit {
       WHERE id = ${id}::uuid AND status = 'PENDING'
     `;
     if (changed === 0) return;
-    const row = await this.prisma.$queryRaw<Array<{ merchant_id: string; amount: number; currency: string }>>`
+    const row = await this.prisma.$queryRaw<
+      { merchant_id: string; amount: Prisma.Decimal; currency: string }[]
+    >`
       SELECT merchant_id, amount, currency FROM merchant_settlement_transfers WHERE id = ${id}::uuid LIMIT 1
     `;
     if (!row[0]) return;

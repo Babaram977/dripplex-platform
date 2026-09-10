@@ -13,6 +13,7 @@ import {
   type BankAccountResolver,
   type BankOption,
 } from './verification/bank-account-resolver.port';
+import { requireBank } from './verification/bank-directory';
 import { WALLET_AUDIT_ACTIONS } from './wallet.constants';
 
 import type { CustomerBankAccount } from '@prisma/client';
@@ -55,43 +56,6 @@ function toDto(row: CustomerBankAccount): CustomerBankAccountDto {
  * account. This preserves the verification guarantee instead of falling back
  * to an unverified account.
  */
-function normalizeBankName(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/&/g, 'and')
-    .replace(/[^a-z0-9]/g, '');
-}
-
-function bankAliases(value: string): string[] {
-  const normalized = normalizeBankName(value);
-  const aliases: Record<string, string[]> = {
-    gtbank: ['guarantytrustbank'],
-    gtbanknigeria: ['guarantytrustbank'],
-    uba: ['unitedbankforafrica', 'unitedbankforafricaplc'],
-    fcmb: ['firstcitymonumentbank'],
-    firstbank: ['firstbankofnigeria'],
-    access: ['accessbank'],
-    ecobank: ['ecobanknigeria'],
-    fidelity: ['fidelitybank'],
-    stanbic: ['stanbicibtc', 'stanbicibtcbank'],
-    sterling: ['sterlingbank'],
-    polaris: ['polarisbank'],
-    union: ['unionbankofnigeria'],
-    unity: ['unitybank'],
-    wema: ['wemabank'],
-    zenith: ['zenithbank'],
-    keystone: ['keystonebank'],
-    providus: ['providusbank'],
-    jaiz: ['jaizbank'],
-    titan: ['titanbank', 'titantrustbank'],
-    kuda: ['kudabank'],
-    moniepoint: ['moniepoint'],
-    palmpay: ['palmpay'],
-    opay: ['opay'],
-  };
-  return aliases[normalized] ?? [];
-}
-
 /**
  * Customer-owned withdrawal destinations.
  *
@@ -203,20 +167,7 @@ export class BankAccountsService {
     let bankName = input.bankName.trim();
 
     if (!bankCode) {
-      const banks = await this.resolver.listBanks();
-      const requested = normalizeBankName(bankName);
-      const aliases = bankAliases(bankName);
-      const match = banks.find((bank) => {
-        const canonical = normalizeBankName(bank.name);
-        return canonical === requested || aliases.includes(canonical);
-      });
-
-      if (!match) {
-        throw new ValidationDomainException(
-          'Choose a valid Nigerian bank so we can confirm the account name',
-        );
-      }
-
+      const match = requireBank(await this.resolver.listBanks(), { bankName });
       bankCode = match.code;
       bankName = match.name;
     }
