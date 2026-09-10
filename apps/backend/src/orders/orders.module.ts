@@ -19,6 +19,8 @@ import { CustomerOrdersController } from './customer-orders.controller';
 import { CatalogCheckoutInventoryValidator } from './inventory/catalog-checkout-inventory.validator';
 import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
 import { InventoryReservationService } from './inventory/inventory-reservation.service';
+import { MerchantBankSettlementWebhookController } from './merchant-bank-settlement-webhook.controller';
+import { MerchantBankSettlementService } from './merchant-bank-settlement.service';
 import { MerchantCommissionSettingsService } from './merchant-commission-settings.service';
 import { MerchantOrdersController } from './merchant-orders.controller';
 import { MerchantOrdersService } from './merchant-orders.service';
@@ -32,51 +34,15 @@ import { PrismaOrdersRepository } from './repositories/prisma-orders.repository'
 import { ReservationCleanupService } from './reservation-cleanup.service';
 
 @Module({
-  imports: [
-    PrismaModule,
-    AuditModule,
-    NotificationsModule,
-    CartModule,
-    AddressesModule,
-    ProductsModule,
-    WalletModule,
-    PricingModule,
-    CommercialModule,
-    UploadsModule,
-  ],
-  controllers: [
-    CustomerOrdersController,
-    AdminOrdersController,
-    MerchantOrdersController,
-    AdminMerchantCommissionSettingsController,
-    MerchantSettlementsController,
-  ],
+  imports: [PrismaModule, AuditModule, NotificationsModule, CartModule, AddressesModule, ProductsModule, WalletModule, PricingModule, CommercialModule, UploadsModule],
+  controllers: [CustomerOrdersController, AdminOrdersController, MerchantOrdersController, AdminMerchantCommissionSettingsController, MerchantSettlementsController, MerchantBankSettlementWebhookController],
   providers: [
-    CheckoutService,
-    MerchantOrdersService,
-    InventoryReservationService,
-    ReservationCleanupService,
-    OrderCompletionSweepService,
-    MerchantCommissionSettingsService,
-    MerchantSettlementService,
-    OrderPaymentProofService,
+    CheckoutService, MerchantOrdersService, InventoryReservationService, ReservationCleanupService, OrderCompletionSweepService,
+    MerchantCommissionSettingsService, MerchantSettlementService, MerchantBankSettlementService, OrderPaymentProofService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
-    {
-      provide: CHECKOUT_INVENTORY_VALIDATOR,
-      useClass: CatalogCheckoutInventoryValidator,
-    },
+    { provide: CHECKOUT_INVENTORY_VALIDATOR, useClass: CatalogCheckoutInventoryValidator },
   ],
-  exports: [
-    CheckoutService,
-    InventoryReservationService,
-    ORDERS_REPOSITORY,
-    // Hotel bookings take the same Ops-adjustable merchant commission rate
-    // (DPX-HOTEL-001 founder decision 4: "the existing commission config, no
-    // new mechanism"). Exported rather than re-provided in BookingsModule, so
-    // there is one singleton reading one settings row and the two rates cannot
-    // drift apart.
-    MerchantCommissionSettingsService,
-  ],
+  exports: [CheckoutService, InventoryReservationService, ORDERS_REPOSITORY, MerchantCommissionSettingsService],
 })
 export class OrdersModule {}
