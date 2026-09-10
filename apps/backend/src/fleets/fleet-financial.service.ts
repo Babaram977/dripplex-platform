@@ -10,8 +10,14 @@ interface FleetBankRow {
   provider_recipient_code: string | null; provider: string; created_at: Date;
 }
 
+interface FleetSettlementReceivableRow {
+  id: string; fleet_id: string; amount: number; remaining_amount: number; currency: string;
+  status: string; reference_type: string; reference_id: string; description: string | null;
+  approved_by: string; approved_at: Date; created_at: Date;
+}
+
 interface FleetSettlementRequestRow {
-  id: string; fleet_id: string; amount: number; currency: string; status: string;
+  id: string; fleet_id: string; receivable_id: string; amount: number; currency: string; status: string;
   requested_by: string; requested_at: Date; approved_by: string | null; approved_at: Date | null;
   rejection_reason: string | null; transfer_id: string | null; created_at: Date; updated_at: Date;
 }
@@ -71,41 +77,93 @@ export class FleetFinancialService {
     return updated;
   }
 
+  public async listReceivables(fleetId: string): Promise<FleetSettlementReceivableRow[]> {
+    return await this.prisma.$queryRaw<FleetSettlementReceivableRow[]>`
+      SELECT id, fleet_id, amount::float8 AS amount, remaining_amount::float8 AS remaining_amount, currency,
+             status, reference_type, reference_id, description, approved_by, approved_at, created_at
+      FROM fleet_settlement_receivables WHERE fleet_id = ${fleetId}::uuid
+      ORDER BY approved_at DESC, created_at DESC`;
+  }
+
+  /** Operations creates an independently approved payable. It is the only source from which a fleet can request settlement. */
+  public async approveReceivable(input: { fleetId: string; amount: number; referenceType: string; referenceId: string; description?: string; adminUserId: string }): Promise<FleetSettlementReceivableRow> {
+    if (!Number.isFinite(input.amount) || input.amount <= 0) throw new ValidationDomainException('Receivable amount must be greater than zero');
+    if (!input.referenceType.trim() || !input.referenceId.trim()) throw new ValidationDomainException('A receivable reference type and reference are required');
+    const id = crypto.randomUUID();
+    try {
+      await this.prisma.$executeRaw`
+        INSERT INTO fleet_settlement_receivables
+          (id, fleet_id, amount, remaining_amount, currency, status, reference_type, reference_id, description, approved_by, approved_at, created_at, updated_at)
+        VALUES
+          (${id}::uuid, ${input.fleetId}::uuid, ${input.amount}, ${input.amount}, 'NGN', 'APPROVED', ${input.referenceType.trim()}, ${input.referenceId.trim()}, ${input.description?.trim().slice(0, 500) ?? null}, ${input.adminUserId}::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
+    } catch (error) {
+      if (String(error).includes('fleet_settlement_receivables_reference_unique')) {
+        throw new ConflictDomainException('That receivable reference has already been approved');
+      }
+      throw error;
+    }
+    const rows = await this.prisma.$queryRaw<FleetSettlementReceivableRow[]>`
+      SELECT id, fleet_id, amount::float8 AS amount, remaining_amount::float8 AS remaining_amount, currency, status,
+             reference_type, reference_id, description, approved_by, approved_at, created_at
+      FROM fleet_settlement_receivables WHERE id = ${id}::uuid`;
+    if (!rows[0]) throw new NotFoundDomainException('Fleet receivable was not created');
+    return rows[0];
+  }
+
   public async listSettlementRequests(fleetId: string): Promise<FleetSettlementRequestRow[]> {
     return await this.prisma.$queryRaw<FleetSettlementRequestRow[]>`
-      SELECT id, fleet_id, amount::float8 AS amount, currency, status::text AS status, requested_by, requested_at,
+      SELECT id, fleet_id, receivable_id, amount::float8 AS amount, currency, status, requested_by, requested_at,
              approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
       FROM fleet_settlement_requests WHERE fleet_id = ${fleetId}::uuid
       ORDER BY requested_at DESC`;
   }
 
-  /** Creates a request only. It does not move money and cannot trigger a provider transfer. */
-  public async requestSettlement(input: { fleetId: string; requestedBy: string; amount: number }): Promise<FleetSettlementRequestRow> {
+  /** Reserves only an independently approved receivable. This prevents a fleet owner from manufacturing a payable by requesting arbitrary funds. */
+  public async requestSettlement(input: { fleetId: string; requestedBy: string; receivableId: string; amount: number }): Promise<FleetSettlementRequestRow> {
     if (!Number.isFinite(input.amount) || input.amount <= 0) throw new ValidationDomainException('Fleet settlement amount must be greater than zero');
     if (input.amount > 100000000) throw new ValidationDomainException('Fleet settlement amount exceeds the permitted request ceiling');
     const id = crypto.randomUUID();
-    await this.prisma.$executeRaw`
-      INSERT INTO fleet_settlement_requests (id, fleet_id, amount, currency, status, requested_by, requested_at, created_at, updated_at)
-      VALUES (${id}::uuid, ${input.fleetId}::uuid, ${input.amount}, 'NGN', 'PENDING', ${input.requestedBy}::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
-    const rows = await this.prisma.$queryRaw<FleetSettlementRequestRow[]>`
-      SELECT id, fleet_id, amount::float8 AS amount, currency, status::text AS status, requested_by, requested_at, approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
-      FROM fleet_settlement_requests WHERE id = ${id}::uuid`;
-    if (!rows[0]) throw new NotFoundDomainException('Fleet settlement request was not created');
-    return rows[0];
+    await this.prisma.$transaction(async (tx) => {
+      const receivables = await tx.$queryRaw<Array<{ id: string; remaining_amount: number; status: string }>>`
+        SELECT id, remaining_amount::float8 AS remaining_amount, status
+        FROM fleet_settlement_receivables WHERE id = ${input.receivableId}::uuid AND fleet_id = ${input.fleetId}::uuid FOR UPDATE`;
+      const receivable = receivables[0];
+      if (!receivable) throw new NotFoundDomainException('Approved fleet receivable not found');
+      if (receivable.status !== 'APPROVED') throw new ConflictDomainException('That receivable is no longer available for settlement');
+      if (receivable.remaining_amount < input.amount) throw new ValidationDomainException('Settlement exceeds the remaining approved fleet receivable');
+      await tx.$executeRaw`
+        UPDATE fleet_settlement_receivables
+        SET remaining_amount = remaining_amount - ${input.amount},
+            status = CASE WHEN remaining_amount - ${input.amount} <= 0 THEN 'CONSUMED' ELSE 'APPROVED' END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${input.receivableId}::uuid`;
+      await tx.$executeRaw`
+        INSERT INTO fleet_settlement_requests (id, fleet_id, receivable_id, amount, currency, status, requested_by, requested_at, created_at, updated_at)
+        VALUES (${id}::uuid, ${input.fleetId}::uuid, ${input.receivableId}::uuid, ${input.amount}, 'NGN', 'PENDING', ${input.requestedBy}::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
+    });
+    return await this.getSettlementRequest(id);
   }
 
-  /** Operations approves the exact payable amount. This is the authorization boundary. */
+  /** Operations approval is the authorization boundary; the payable itself was already independently approved above. */
   public async approveSettlementRequest(input: { requestId: string; adminUserId: string; approvedAmount?: number }): Promise<FleetSettlementRequestRow> {
     const rows = await this.prisma.$queryRaw<FleetSettlementRequestRow[]>`
-      SELECT id, fleet_id, amount::float8 AS amount, currency, status::text AS status, requested_by, requested_at, approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
+      SELECT id, fleet_id, receivable_id, amount::float8 AS amount, currency, status, requested_by, requested_at,
+             approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
       FROM fleet_settlement_requests WHERE id = ${input.requestId}::uuid FOR UPDATE`;
     const request = rows[0];
     if (!request) throw new NotFoundDomainException('Fleet settlement request not found');
     if (request.status !== 'PENDING') throw new ConflictDomainException(`Settlement request is ${request.status.toLowerCase()}`);
     const amount = input.approvedAmount ?? request.amount;
     if (!Number.isFinite(amount) || amount <= 0 || amount > request.amount) throw new ValidationDomainException('Approved amount must be positive and cannot exceed the requested amount');
-    await this.prisma.$executeRaw`
-      UPDATE fleet_settlement_requests SET amount = ${amount}, status = 'APPROVED', approved_by = ${input.adminUserId}::uuid, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ${input.requestId}::uuid AND status = 'PENDING'`;
+    await this.prisma.$transaction(async (tx) => {
+      const release = request.amount - amount;
+      if (release > 0) {
+        await tx.$executeRaw`UPDATE fleet_settlement_receivables SET remaining_amount = remaining_amount + ${release}, status = 'APPROVED', updated_at = CURRENT_TIMESTAMP WHERE id = ${request.receivable_id}::uuid`;
+      }
+      await tx.$executeRaw`
+        UPDATE fleet_settlement_requests SET amount = ${amount}, status = 'APPROVED', approved_by = ${input.adminUserId}::uuid, approved_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${input.requestId}::uuid AND status = 'PENDING'`;
+    });
     return await this.getSettlementRequest(input.requestId);
   }
 
@@ -113,17 +171,22 @@ export class FleetFinancialService {
     const reason = input.reason.trim();
     if (!reason) throw new ValidationDomainException('A rejection reason is required');
     const rows = await this.prisma.$queryRaw<FleetSettlementRequestRow[]>`
-      SELECT id, fleet_id, amount::float8 AS amount, currency, status::text AS status, requested_by, requested_at, approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
+      SELECT id, fleet_id, receivable_id, amount::float8 AS amount, currency, status, requested_by, requested_at,
+             approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
       FROM fleet_settlement_requests WHERE id = ${input.requestId}::uuid FOR UPDATE`;
     if (!rows[0]) throw new NotFoundDomainException('Fleet settlement request not found');
     if (rows[0].status !== 'PENDING') throw new ConflictDomainException(`Settlement request is ${rows[0].status.toLowerCase()}`);
-    await this.prisma.$executeRaw`UPDATE fleet_settlement_requests SET status = 'REJECTED', approved_by = ${input.adminUserId}::uuid, approved_at = CURRENT_TIMESTAMP, rejection_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${input.requestId}::uuid AND status = 'PENDING'`;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`UPDATE fleet_settlement_receivables SET remaining_amount = remaining_amount + ${rows[0].amount}, status = 'APPROVED', updated_at = CURRENT_TIMESTAMP WHERE id = ${rows[0].receivable_id}::uuid`;
+      await tx.$executeRaw`UPDATE fleet_settlement_requests SET status = 'REJECTED', approved_by = ${input.adminUserId}::uuid, approved_at = CURRENT_TIMESTAMP, rejection_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${input.requestId}::uuid AND status = 'PENDING'`;
+    });
     return await this.getSettlementRequest(input.requestId);
   }
 
   public async getSettlementRequest(requestId: string): Promise<FleetSettlementRequestRow> {
     const rows = await this.prisma.$queryRaw<FleetSettlementRequestRow[]>`
-      SELECT id, fleet_id, amount::float8 AS amount, currency, status::text AS status, requested_by, requested_at, approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
+      SELECT id, fleet_id, receivable_id, amount::float8 AS amount, currency, status, requested_by, requested_at,
+             approved_by, approved_at, rejection_reason, transfer_id, created_at, updated_at
       FROM fleet_settlement_requests WHERE id = ${requestId}::uuid`;
     if (!rows[0]) throw new NotFoundDomainException('Fleet settlement request not found');
     return rows[0];
@@ -175,7 +238,7 @@ export class FleetFinancialService {
 
   public async processProviderResult(reference: string, status: 'SUCCESS' | 'FAILED', providerReference?: string | null, reason?: string): Promise<void> {
     const rows = await this.prisma.$queryRaw<Array<{ id: string; request_id: string | null; status: string }>>`
-      SELECT id, settlement_request_id AS request_id, status::text AS status FROM fleet_settlement_transfers WHERE id = ${reference}::uuid LIMIT 1`;
+      SELECT id, settlement_request_id AS request_id, status FROM fleet_settlement_transfers WHERE id = ${reference}::uuid LIMIT 1`;
     if (!rows[0]) return;
     if (status === 'SUCCESS') {
       if (rows[0].status === 'PENDING') await this.completeSettlement(reference, providerReference ?? reference);
@@ -195,10 +258,13 @@ export class FleetFinancialService {
 
   private async failSettlement(id: string, reason: string) {
     await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<Array<{ request_id: string | null }>>`SELECT settlement_request_id AS request_id FROM fleet_settlement_transfers WHERE id = ${id}::uuid AND status = 'PENDING' FOR UPDATE`;
+      const rows = await tx.$queryRaw<Array<{ request_id: string | null; amount: number }>>`SELECT settlement_request_id AS request_id, amount::float8 AS amount FROM fleet_settlement_transfers WHERE id = ${id}::uuid AND status = 'PENDING' FOR UPDATE`;
       if (!rows[0]) return;
       await tx.$executeRaw`UPDATE fleet_settlement_transfers SET status = 'FAILED', failure_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP WHERE id = ${id}::uuid AND status = 'PENDING'`;
-      if (rows[0].request_id) await tx.$executeRaw`UPDATE fleet_settlement_requests SET status = 'APPROVED', transfer_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ${rows[0].request_id}::uuid AND status = 'PROCESSING'`;
+      if (rows[0].request_id) {
+        await tx.$executeRaw`UPDATE fleet_settlement_requests SET status = 'APPROVED', transfer_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ${rows[0].request_id}::uuid AND status = 'PROCESSING'`;
+        await tx.$executeRaw`UPDATE fleet_settlement_receivables SET remaining_amount = remaining_amount + ${rows[0].amount}, status = 'APPROVED', updated_at = CURRENT_TIMESTAMP WHERE id = (SELECT receivable_id FROM fleet_settlement_requests WHERE id = ${rows[0].request_id}::uuid)`;
+      }
     });
   }
 }
