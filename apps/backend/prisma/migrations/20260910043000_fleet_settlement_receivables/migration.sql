@@ -4,6 +4,8 @@
 -- This migration is intentionally reconciliation-safe because an earlier fleet
 -- settlement authorization migration may already have created
 -- fleet_settlement_requests in production.
+-- Railway recovery: the failed production migration is resolved as rolled back
+-- before deploy, then this migration is retried safely.
 
 CREATE TABLE IF NOT EXISTS "fleet_settlement_receivables" (
   "id" UUID NOT NULL,
@@ -61,8 +63,6 @@ CREATE TABLE IF NOT EXISTS "fleet_settlement_requests" (
 ALTER TABLE "fleet_settlement_requests"
   ADD COLUMN IF NOT EXISTS "receivable_id" UUID;
 
--- The earlier authorization migration used a PostgreSQL enum for status.
--- Keep that existing type compatible with the newer PROCESSING state.
 DO $$
 DECLARE
   status_type TEXT;
