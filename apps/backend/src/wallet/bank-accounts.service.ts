@@ -48,6 +48,51 @@ function toDto(row: CustomerBankAccount): CustomerBankAccountDto {
 }
 
 /**
+ * Keep the partner payout flow compatible with the existing app while the
+ * bank picker is being rolled out. Drivers and riders currently send a bank
+ * name, not a bank code. When verification is configured, translate that
+ * name to the canonical Paystack bank option server-side before resolving the
+ * account. This preserves the verification guarantee instead of falling back
+ * to an unverified account.
+ */
+function normalizeBankName(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function bankAliases(value: string): string[] {
+  const normalized = normalizeBankName(value);
+  const aliases: Record<string, string[]> = {
+    gtbank: ['guarantytrustbank'],
+    gtbanknigeria: ['guarantytrustbank'],
+    uba: ['unitedbankforafrica', 'unitedbankforafricaplc'],
+    fcmb: ['firstcitymonumentbank'],
+    firstbank: ['firstbankofnigeria'],
+    access: ['accessbank'],
+    ecobank: ['ecobanknigeria'],
+    fidelity: ['fidelitybank'],
+    stanbic: ['stanbicibtc', 'stanbicibtcbank'],
+    sterling: ['sterlingbank'],
+    polaris: ['polarisbank'],
+    union: ['unionbankofnigeria'],
+    unity: ['unitybank'],
+    wema: ['wemabank'],
+    zenith: ['zenithbank'],
+    keystone: ['keystonebank'],
+    providus: ['providusbank'],
+    jaiz: ['jaizbank'],
+    titan: ['titanbank', 'titantrustbank'],
+    kuda: ['kudabank'],
+    moniepoint: ['moniepoint'],
+    palmpay: ['palmpay'],
+    opay: ['opay'],
+  };
+  return aliases[normalized] ?? [];
+}
+
+/**
  * Customer-owned withdrawal destinations.
  *
  * These were self-attested until DPX-WALLET-001 Phase 0: the customer typed a
@@ -108,8 +153,10 @@ export class BankAccountsService {
     const created = await this.prisma.customerBankAccount.create({
       data: {
         userId,
-        bankName: input.bankName,
-        bankCode: input.bankCode ?? null,
+        // Store the canonical bank name when we resolved a free-text partner
+        // submission. This keeps Operations' payout queue consistent.
+        bankName: verified?.bankName ?? input.bankName,
+        bankCode: verified?.bankCode ?? input.bankCode ?? null,
         // The bank's answer wins. Storing the customer's own spelling next to
         // a number the bank says belongs to someone else is the failure this
         // whole phase exists to prevent.
@@ -137,30 +184,49 @@ export class BankAccountsService {
    * Ask the bank who owns this number. Null means nobody asked — not that the
    * answer was no.
    *
-   * A `bankCode` is required to ask at all: the same ten digits exist at every
-   * Nigerian bank, so resolving without one is meaningless. When the resolver
-   * is live but the client sent no code, that is a client that has not adopted
-   * the bank picker yet, and it is refused rather than quietly saved
-   * unverified — silently downgrading the guarantee is how this protection
-   * would rot.
+   * When the resolver is live, older partner clients may still send only the
+   * bank name. We resolve that name against the provider's canonical bank list
+   * here, then always perform the same account-name enquiry. No verified
+   * account can bypass the resolver merely because the UI has not yet shipped
+   * the bank-code picker.
    */
   private async verifyAccountName(input: {
+    bankName: string;
     bankCode?: string;
     accountNumber: string;
-  }): Promise<{ accountName: string } | null> {
+  }): Promise<{ accountName: string; bankCode: string; bankName: string } | null> {
     if (!this.resolver.configured) {
       return null;
     }
-    const bankCode = input.bankCode?.trim();
-    if (bankCode === undefined || bankCode === '') {
-      throw new ValidationDomainException(
-        'Choose your bank from the list so we can confirm the account name',
-      );
+
+    let bankCode = input.bankCode?.trim();
+    let bankName = input.bankName.trim();
+
+    if (!bankCode) {
+      const banks = await this.resolver.listBanks();
+      const requested = normalizeBankName(bankName);
+      const aliases = bankAliases(bankName);
+      const match = banks.find((bank) => {
+        const canonical = normalizeBankName(bank.name);
+        return canonical === requested || aliases.includes(canonical);
+      });
+
+      if (!match) {
+        throw new ValidationDomainException(
+          'Choose a valid Nigerian bank so we can confirm the account name',
+        );
+      }
+
+      bankCode = match.code;
+      bankName = match.name;
     }
-    return await this.resolver.resolveAccountName({
+
+    const resolved = await this.resolver.resolveAccountName({
       accountNumber: input.accountNumber,
       bankCode,
     });
+
+    return { ...resolved, bankCode, bankName };
   }
 
   public async setDefault(userId: string, bankAccountId: string): Promise<CustomerBankAccountDto> {
