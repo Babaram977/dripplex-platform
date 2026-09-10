@@ -155,6 +155,27 @@ function auditContext(
 
 @Controller('rider/wallet')
 export class RiderPayoutController extends PartnerPayoutController {
+  // Nest resolves constructor dependencies from `design:paramtypes`, and
+  // TypeScript only emits that metadata for a class that declares its own
+  // constructor. A subclass that just inherits the base constructor carries no
+  // metadata at all, so Nest builds it with zero arguments: the app boots,
+  // every route maps, and then each handler throws on the first `this.<service>`
+  // because all three are undefined. It surfaces as a 500 on every endpoint of
+  // this controller while the rest of the app is fine. Hence the explicit
+  // pass-through — it exists for the metadata, not for the code.
+  //
+  // It reads as a useless constructor and the linter says so. Deleting it
+  // removes the metadata and breaks every route here at runtime, so the rule is
+  // silenced deliberately. See partner-payout-di.spec.ts.
+  // eslint-disable-next-line @typescript-eslint/no-useless-constructor
+  constructor(
+    bankAccountsService: BankAccountsService,
+    withdrawalService: WithdrawalService,
+    walletPinService: WalletPinService,
+  ) {
+    super(bankAccountsService, withdrawalService, walletPinService);
+  }
+
   protected override ownerType(): WalletOwnerType {
     return WalletOwnerType.RIDER;
   }
@@ -242,6 +263,27 @@ export class RiderPayoutController extends PartnerPayoutController {
 
 @Controller('driver/wallet')
 export class DriverPayoutController extends PartnerPayoutController {
+  // Nest resolves constructor dependencies from `design:paramtypes`, and
+  // TypeScript only emits that metadata for a class that declares its own
+  // constructor. A subclass that just inherits the base constructor carries no
+  // metadata at all, so Nest builds it with zero arguments: the app boots,
+  // every route maps, and then each handler throws on the first `this.<service>`
+  // because all three are undefined. It surfaces as a 500 on every endpoint of
+  // this controller while the rest of the app is fine. Hence the explicit
+  // pass-through — it exists for the metadata, not for the code.
+  //
+  // It reads as a useless constructor and the linter says so. Deleting it
+  // removes the metadata and breaks every route here at runtime, so the rule is
+  // silenced deliberately. See partner-payout-di.spec.ts.
+  // eslint-disable-next-line @typescript-eslint/no-useless-constructor
+  constructor(
+    bankAccountsService: BankAccountsService,
+    withdrawalService: WithdrawalService,
+    walletPinService: WalletPinService,
+  ) {
+    super(bankAccountsService, withdrawalService, walletPinService);
+  }
+
   protected override ownerType(): WalletOwnerType {
     return WalletOwnerType.DRIVER;
   }
