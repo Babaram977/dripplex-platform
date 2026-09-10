@@ -122,14 +122,47 @@ describe('BankAccountsService', () => {
       expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
     });
 
-    it('refuses to save unverified when a resolver is live but no bank was chosen', async () => {
+    // A partner client that predates the bank picker sends a free-text bank
+    // name and no code. That must not become a way to save an account the bank
+    // never confirmed, so the name is resolved against the provider's list and
+    // the same enquiry runs. The guarantee is "no account is stored unless the
+    // bank confirmed it", not "the caller must know the code".
+    it('resolves a free-text bank name to a code and still runs the enquiry', async () => {
       resolver.configured = true;
+      resolver.listBanks.mockResolvedValue([{ name: 'Guaranty Trust Bank', code: '058' }]);
+      resolver.resolveAccountName.mockResolvedValue({ accountName: 'IBRAHIM SAEED ABDULLAHI' });
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+      prisma.customerBankAccount.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => account(data),
+      );
+
+      const result = await service.add(userId, {
+        bankName: 'GTBank',
+        accountName: 'Stab Tester',
+        accountNumber: '0123456789',
+      });
+
+      // "GTBank" is an alias, not the canonical name Paystack returns.
+      expect(resolver.resolveAccountName).toHaveBeenCalledWith({
+        accountNumber: '0123456789',
+        bankCode: '058',
+      });
+      // The canonical name and code are what get stored, not the alias.
+      expect(result.bankName).toBe('Guaranty Trust Bank');
+      expect(result.accountName).toBe('IBRAHIM SAEED ABDULLAHI');
+      expect(result.accountNameVerified).toBe(true);
+    });
+
+    it('refuses a bank name that resolves to no bank, without asking the bank', async () => {
+      resolver.configured = true;
+      resolver.listBanks.mockResolvedValue([{ name: 'Guaranty Trust Bank', code: '058' }]);
       prisma.customerBankAccount.findFirst.mockResolvedValue(null);
       prisma.customerBankAccount.count.mockResolvedValue(0);
 
       await expect(
         service.add(userId, {
-          bankName: 'GTBank',
+          bankName: 'Not A Real Bank',
           accountName: 'Stab Tester',
           accountNumber: '0123456789',
         }),
