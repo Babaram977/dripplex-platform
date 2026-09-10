@@ -15,7 +15,9 @@ import { CustomerWalletController } from './customer-wallet.controller';
 import { DriverWalletController } from './driver-wallet.controller';
 import { MerchantWalletController } from './merchant-wallet.controller';
 import { PAYOUT_PROVIDERS } from './payout/payout-provider.adapter';
+import { PayoutFulfillmentService } from './payout/payout-fulfillment.service';
 import { PaystackTransferProvider } from './payout/paystack-transfer.provider';
+import { PaystackTransferWebhookController } from './payout/paystack-transfer-webhook.controller';
 import { RiderWalletController } from './rider-wallet.controller';
 import { SettlementReportService } from './settlement-report.service';
 import { BANK_ACCOUNT_RESOLVER } from './verification/bank-account-resolver.port';
@@ -28,10 +30,10 @@ import { WithdrawalService } from './withdrawal.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, CommercialModule],
-  controllers: [CustomerWalletController, CustomerBankAccountsController, CustomerWalletPinController, CustomerWithdrawalController, MerchantWalletController, RiderWalletController, DriverWalletController, AdminWalletController, AdminWithdrawalController, RiderPayoutController, DriverPayoutController],
+  controllers: [CustomerWalletController, CustomerBankAccountsController, CustomerWalletPinController, CustomerWithdrawalController, MerchantWalletController, RiderWalletController, DriverWalletController, AdminWalletController, AdminWithdrawalController, RiderPayoutController, DriverPayoutController, PaystackTransferWebhookController],
   providers: [
     WalletService, WalletEventsSubscriber, WalletRecipientsService, BankAccountsService, SettlementReportService, WalletPinService,
-    WithdrawalService, PaystackTransferProvider, PaystackBankAccountResolver,
+    WithdrawalService, PaystackTransferProvider, PaystackBankAccountResolver, PayoutFulfillmentService,
     { provide: BANK_ACCOUNT_RESOLVER, useExisting: PaystackBankAccountResolver },
     { provide: PAYOUT_PROVIDERS, useFactory: (paystack: PaystackTransferProvider) => [paystack], inject: [PaystackTransferProvider] },
   ],
