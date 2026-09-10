@@ -132,13 +132,42 @@ export function findBank(banks: BankOption[], selection: BankSelection): BankOpt
     return null;
   }
 
-  const aliases = bankAliases(name);
-  return (
-    banks.find((bank) => {
-      const canonical = normalizeBankName(bank.name);
-      return canonical === requested || aliases.includes(canonical);
-    }) ?? null
-  );
+  // What the caller typed, plus any known shorthand for it. Both are matched
+  // the same way, so an alias benefits from the relaxed passes below too.
+  const terms = [requested, ...bankAliases(name)];
+  const canonical = (bank: BankOption): string => normalizeBankName(bank.name);
+
+  const exact = banks.find((bank) => terms.includes(canonical(bank)));
+  if (exact) {
+    return exact;
+  }
+
+  // Providers pad canonical names in ways nobody types: "OPay Digital Services
+  // Limited (OPay)", "Sparkle Microfinance Bank", "Moniepoint MFB". Enumerating
+  // every such spelling by hand is a losing game, so fall back to matching a
+  // typed term against the start of a canonical name, and then anywhere in it.
+  //
+  // Each pass only answers when it lands on exactly ONE bank. Two candidates
+  // means the term is ambiguous ("first" is both First Bank and First City
+  // Monument) and the caller is told to choose rather than being sent to
+  // whichever happened to sort first. Sending money to the wrong institution is
+  // far worse than asking again.
+  //
+  // Short terms are excluded: two or three characters match too much to be
+  // evidence of anything, and the alias table already covers the real ones.
+  const usable = terms.filter((term) => term.length >= 4);
+
+  for (const match of [
+    (bank: BankOption, term: string): boolean => canonical(bank).startsWith(term),
+    (bank: BankOption, term: string): boolean => canonical(bank).includes(term),
+  ]) {
+    const hits = banks.filter((bank) => usable.some((term) => match(bank, term)));
+    if (hits.length === 1) {
+      return hits[0] ?? null;
+    }
+  }
+
+  return null;
 }
 
 /**

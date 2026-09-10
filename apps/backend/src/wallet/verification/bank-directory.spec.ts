@@ -23,6 +23,12 @@ const BANKS: BankOption[] = [
   { name: 'Moniepoint MFB', code: '50515' },
   { name: 'Stanbic IBTC Bank', code: '221' },
   { name: 'Union Bank of Nigeria', code: '032' },
+  // The padded forms. Nobody types these, and they are why exact matching on a
+  // normalised name is not enough on its own.
+  { name: 'OPay Digital Services Limited (OPay)', code: '999992' },
+  { name: 'PalmPay', code: '999991' },
+  { name: 'Sparkle Microfinance Bank', code: '51310' },
+  { name: 'VFD Microfinance Bank', code: '566' },
 ];
 
 describe('bank directory', () => {
@@ -62,6 +68,13 @@ describe('bank directory', () => {
       ['Moniepoint', '50515'],
       ['Stanbic', '221'],
       ['Union Bank', '032'],
+      // The driver payout screen sent exactly this and it did not resolve.
+      ['Opay', '999992'],
+      ['opay', '999992'],
+      ['OPay', '999992'],
+      ['PalmPay', '999991'],
+      ['Sparkle', '51310'],
+      ['VFD', '566'],
     ])('resolves the everyday shorthand %s', (typed, code) => {
       expect(findBank(BANKS, { bankName: typed })?.code).toBe(code);
     });
@@ -82,6 +95,21 @@ describe('bank directory', () => {
 
     it('returns null for a bank nobody offers', () => {
       expect(findBank(BANKS, { bankName: 'Not A Real Bank' })).toBeNull();
+    });
+
+    it('refuses an ambiguous term rather than guessing between two banks', () => {
+      // "first" fits both First Bank of Nigeria and First City Monument Bank.
+      // Picking whichever sorts first would send money to the wrong bank, so
+      // the caller is asked to choose instead.
+      expect(findBank(BANKS, { bankName: 'first' })).toBeNull();
+    });
+
+    it('does not let a very short term match on padding alone', () => {
+      // Three characters are not evidence. Real shorthand that short (UBA,
+      // GTB, FBN, VFD) is covered by the alias table and still resolves.
+      expect(findBank(BANKS, { bankName: 'ban' })).toBeNull();
+      expect(findBank(BANKS, { bankName: 'UBA' })?.code).toBe('033');
+      expect(findBank(BANKS, { bankName: 'VFD' })?.code).toBe('566');
     });
 
     it.each([
