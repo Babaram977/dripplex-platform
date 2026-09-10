@@ -251,6 +251,13 @@ export interface BankOptionDto {
   code: string;
 }
 
+/** What the bank says about an account number, before anything is stored. */
+export interface ResolvedBankAccountDto {
+  accountName: string;
+  bankName: string;
+  bankCode: string;
+}
+
 export interface ListMerchantsQuery {
   page?: number;
   limit?: number;

@@ -13,6 +13,7 @@ export {
   useBankAccounts,
   useAddBankAccount,
   useBanks,
+  useResolveBankAccount,
   useSetDefaultBankAccount,
   useRemoveBankAccount,
 } from './use-bank-accounts';

@@ -131,6 +131,7 @@ export type {
   OperatingHoursDto,
   PaginatedMerchantsResult,
   PauseStoreRequest,
+  ResolvedBankAccountDto,
   SubmitKycRequest,
   UpdateBusinessRequest,
 } from './merchant/index.js';

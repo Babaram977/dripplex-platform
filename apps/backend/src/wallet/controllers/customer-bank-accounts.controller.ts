@@ -7,13 +7,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
 import { BankAccountsService, type CustomerBankAccountDto } from '../bank-accounts.service';
-import { AddBankAccountDto } from '../dto/withdrawal.dto';
+import { AddBankAccountDto, ResolveBankAccountQueryDto } from '../dto/withdrawal.dto';
 import { WALLET_PERMISSIONS } from '../wallet.constants';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
@@ -42,6 +44,24 @@ export class CustomerBankAccountsController {
   @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
   public async banks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
     const data = await this.bankAccountsService.listBanks();
+    return { success: true, data };
+  }
+
+  /**
+   * Name enquiry for the form, before anything is saved.
+   *
+   * Throttled hard: each call is a live request to the payment provider, and
+   * an unthrottled "who owns this number" endpoint is an account-name
+   * enumeration surface. A person filling in one form needs a handful of
+   * attempts, not hundreds.
+   */
+  @Get('resolve')
+  @RequirePermissions(WALLET_PERMISSIONS.CUSTOMER_READ)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  public async resolve(
+    @Query() query: ResolveBankAccountQueryDto,
+  ): Promise<ApiSuccessResponse<{ accountName: string; bankName: string; bankCode: string }>> {
+    const data = await this.bankAccountsService.resolveAccount(query);
     return { success: true, data };
   }
 

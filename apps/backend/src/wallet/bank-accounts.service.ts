@@ -97,6 +97,38 @@ export class BankAccountsService {
     return rows.map(toDto);
   }
 
+  /**
+   * Name enquiry on its own, with nothing stored.
+   *
+   * `add` already refuses to save an account the bank will not confirm, but by
+   * then the person has committed. Exposing the same enquiry lets the form show
+   * the bank's answer while they are still looking at it, so the account name
+   * stops being something anyone types.
+   *
+   * Returns the canonical bank alongside the name, because the caller needs to
+   * send back exactly what was verified rather than what it displayed.
+   */
+  public async resolveAccount(input: {
+    bankName?: string;
+    bankCode?: string;
+    accountNumber: string;
+  }): Promise<{ accountName: string; bankName: string; bankCode: string }> {
+    if (!this.resolver.configured) {
+      throw new ValidationDomainException('Bank verification is not configured');
+    }
+
+    const bank = requireBank(await this.resolver.listBanks(), {
+      bankName: input.bankName,
+      bankCode: input.bankCode,
+    });
+    const resolved = await this.resolver.resolveAccountName({
+      accountNumber: input.accountNumber,
+      bankCode: bank.code,
+    });
+
+    return { accountName: resolved.accountName, bankName: bank.name, bankCode: bank.code };
+  }
+
   public async add(
     userId: string,
     input: { bankName: string; bankCode?: string; accountName: string; accountNumber: string },

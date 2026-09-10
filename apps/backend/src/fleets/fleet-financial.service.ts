@@ -79,14 +79,36 @@ export class FleetFinancialService {
     >`SELECT id, fleet_id, bank_name, bank_code, account_name, account_number, currency, is_default, verified_at, provider_recipient_code, provider, created_at FROM fleet_bank_accounts WHERE fleet_id = ${fleetId}::uuid ORDER BY is_default DESC, verified_at DESC NULLS LAST, created_at DESC`;
   }
 
+  /** Name enquiry for the form, storing nothing — same rule as every other
+   * persona: the account name comes from the bank, never from typing. */
+  public async resolveAccount(input: {
+    bankName?: string;
+    bankCode?: string;
+    accountNumber: string;
+  }): Promise<{ accountName: string; bankName: string; bankCode: string }> {
+    if (!this.resolver.configured)
+      throw new ValidationDomainException('Bank verification is not configured');
+    const accountNumber = input.accountNumber.trim();
+    if (!/^\d{10}$/.test(accountNumber))
+      throw new ValidationDomainException('A Nigerian bank account number must contain 10 digits');
+    const bank = requireBank(await this.resolver.listBanks(), {
+      bankName: input.bankName,
+      bankCode: input.bankCode,
+    });
+    const resolved = await this.resolver.resolveAccountName({ accountNumber, bankCode: bank.code });
+    return { accountName: resolved.accountName, bankName: bank.name, bankCode: bank.code };
+  }
+
   public async addBankAccount(input: {
     fleetId: string;
     bankName: string;
-    bankCode: string;
+    /** Optional so a client that has not shipped the picker still works; the
+     * name is resolved for those, and the code wins whenever it is present. */
+    bankCode?: string | undefined;
     accountName: string;
     accountNumber: string;
-    currency?: string;
-    isDefault?: boolean;
+    currency?: string | undefined;
+    isDefault?: boolean | undefined;
   }): Promise<FleetBankRow> {
     if (!this.resolver.configured)
       throw new ValidationDomainException('Bank verification is not configured');

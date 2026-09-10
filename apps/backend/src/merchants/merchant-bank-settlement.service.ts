@@ -30,6 +30,27 @@ export class MerchantBankSettlementService {
     return await this.resolver.listBanks();
   }
 
+  /** Name enquiry for the form, storing nothing. The settlement account name
+   * is the bank's answer, so the merchant should see it before saving. */
+  public async resolveAccount(input: {
+    bankName?: string;
+    bankCode?: string;
+    accountNumber: string;
+  }): Promise<{ accountName: string; bankName: string; bankCode: string }> {
+    if (!this.resolver.configured)
+      throw new ValidationDomainException('Bank verification is not configured');
+    const accountNumber = input.accountNumber.trim();
+    if (!/^\d{10}$/.test(accountNumber))
+      throw new ValidationDomainException('Nigerian bank account number must contain 10 digits');
+    const bank = requireBank(
+      await this.resolver.listBanks(),
+      { bankName: input.bankName, bankCode: input.bankCode },
+      'Choose a valid Nigerian bank so we can verify the settlement account',
+    );
+    const resolved = await this.resolver.resolveAccountName({ accountNumber, bankCode: bank.code });
+    return { accountName: resolved.accountName, bankName: bank.name, bankCode: bank.code };
+  }
+
   public async create(
     merchantUserId: string,
     dto: CreateBankAccountDto,
@@ -49,7 +70,7 @@ export class MerchantBankSettlementService {
 
     const bank = requireBank(
       await this.resolver.listBanks(),
-      { bankName: dto.bankName },
+      { bankName: dto.bankName, bankCode: dto.bankCode },
       'Choose a valid Nigerian bank so we can verify the settlement account',
     );
 

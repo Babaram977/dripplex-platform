@@ -12,6 +12,13 @@ export class CreateBankAccountDto {
   @MaxLength(150)
   public bankName!: string;
 
+  /** Sent by any client showing the bank picker. Without it the backend has to
+   * resolve the display name, which is guessing at a payout destination. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  public bankCode?: string;
+
   @IsString()
   @MinLength(2)
   @MaxLength(150)

@@ -100,9 +100,9 @@ export function bankAliases(value: string): string[] {
 
 export interface BankSelection {
   /** What the caller supplied, free text. Optional so a code alone is enough. */
-  bankName?: string | null;
+  bankName?: string | null | undefined;
   /** A provider bank code, when the client already used a bank picker. */
-  bankCode?: string | null;
+  bankCode?: string | null | undefined;
 }
 
 /**

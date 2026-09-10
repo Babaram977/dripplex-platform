@@ -5,6 +5,7 @@ import type {
   PartnerBankAccountDto,
   PayoutRequestDto,
   PayoutResultDto,
+  ResolvedBankAccountDto,
 } from '../lib/api';
 
 const IT = "'Inter',sans-serif";
@@ -26,6 +27,7 @@ const naira = (n: number): string => `₦${Math.round(n).toLocaleString()}`;
 export interface PayoutClient {
   listBankAccounts: () => Promise<PartnerBankAccountDto[]>;
   listBanks: () => Promise<BankOptionDto[]>;
+  resolveBankAccount: (bankCode: string, accountNumber: string) => Promise<ResolvedBankAccountDto>;
   addBankAccount: (body: {
     bankName: string;
     accountName: string;
@@ -71,8 +73,12 @@ export function PayoutPanel({
   const [form, setForm] = useState<'none' | 'bank' | 'pin' | 'payout'>('none');
   const [banks, setBanks] = useState<BankOptionDto[]>([]);
   const [bankCode, setBankCode] = useState('');
-  const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
+  // The bank's answer. Null until it has answered, which is what gates saving:
+  // an account nobody confirmed never reaches the backend.
+  const [resolved, setResolved] = useState<ResolvedBankAccountDto | null>(null);
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
   const [pin, setPin] = useState('');
   const [amount, setAmount] = useState('');
 
@@ -107,11 +113,54 @@ export function PayoutPanel({
   }, [client]);
   useEffect(() => load(), [load]);
 
+  /**
+   * Ask the bank as soon as there is something to ask about: a chosen bank and
+   * ten digits. The answer replaces the account-name field entirely — a
+   * transposed digit is a valid-looking number belonging to a stranger, and the
+   * only way to catch that is to show whose name actually comes back.
+   */
+  useEffect(() => {
+    setResolved(null);
+    setResolveError(null);
+    if (bankCode === '' || accountNumber.trim().length !== 10) {
+      return;
+    }
+
+    let abandoned = false;
+    setResolving(true);
+    client
+      .resolveBankAccount(bankCode, accountNumber.trim())
+      .then((r) => {
+        if (!abandoned) {
+          setResolved(r);
+        }
+      })
+      .catch((e: unknown) => {
+        if (!abandoned) {
+          setResolveError(
+            (e as { message?: string }).message ?? 'That account could not be confirmed.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!abandoned) {
+          setResolving(false);
+        }
+      });
+
+    // The person is still typing; a stale answer must never win a race and
+    // present the wrong name as confirmed.
+    return () => {
+      abandoned = true;
+    };
+  }, [client, bankCode, accountNumber]);
+
   const reset = () => {
     setForm('none');
     setBankCode('');
-    setAccountName('');
     setAccountNumber('');
+    setResolved(null);
+    setResolveError(null);
     setPin('');
     setAmount('');
   };
@@ -301,37 +350,59 @@ export function PayoutPanel({
               </option>
             ))}
           </select>
-          {label('Account name')}
-          {input(accountName, setAccountName, 'Name on the account', {
-            ariaLabel: 'Account name',
-          })}
           {label('Account number')}
           {input(accountNumber, setAccountNumber, '10 digits', {
             numeric: true,
             maxLength: 10,
             ariaLabel: 'Account number',
           })}
+          {/*
+            The account name is shown, not typed. It is whatever the bank
+            returns for this number, so the person confirms a real account
+            holder instead of asserting one.
+          */}
+          {(resolving || resolved !== null || resolveError !== null) && (
+            <div
+              className="mb-2 rounded-xl px-3 py-2 text-[13px]"
+              style={{
+                background: 'rgba(255,255,255,.04)',
+                border: `1px solid ${resolveError !== null ? ERROR : BORDER}`,
+                color: resolveError !== null ? ERROR : '#fff',
+                fontFamily: IT,
+              }}
+            >
+              {resolving ? (
+                <span style={{ color: MUTED }}>Checking with the bank…</span>
+              ) : resolveError !== null ? (
+                resolveError
+              ) : (
+                <span>
+                  <span style={{ color: G3 }}>✓ </span>
+                  {resolved?.accountName}
+                </span>
+              )}
+            </div>
+          )}
           {button(
             busy ? 'Saving…' : 'Save bank account',
             () =>
               void run(
                 () =>
                   client.addBankAccount({
-                    // Both come from the chosen option, so the name is the
-                    // provider's own spelling rather than anyone's typing.
-                    bankName: banks.find((b) => b.code === bankCode)?.name ?? '',
+                    // Everything sent here was confirmed by the bank: the
+                    // canonical bank from the picker, and the account name the
+                    // bank itself returned.
+                    bankName: resolved?.bankName ?? '',
                     bankCode,
-                    accountName: accountName.trim(),
+                    accountName: resolved?.accountName ?? '',
                     accountNumber: accountNumber.trim(),
                   }),
                 'Bank account linked.',
               ),
             {
               primary: true,
-              disabled:
-                bankCode === '' ||
-                accountName.trim().length < 2 ||
-                accountNumber.trim().length !== 10,
+              // No confirmed account, no save.
+              disabled: resolved === null || resolving,
             },
           )}
         </div>

@@ -10,6 +10,7 @@ import {
   Query,
   Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -17,6 +18,7 @@ import { RequirePermissions } from '../../common/decorators/permissions.decorato
 import { BankAccountsService, type CustomerBankAccountDto } from '../bank-accounts.service';
 import {
   AddBankAccountDto,
+  ResolveBankAccountQueryDto,
   CreateWithdrawalRequestDto,
   SetWalletPinDto,
   WithdrawalHistoryQueryDto,
@@ -73,6 +75,13 @@ abstract class PartnerPayoutController {
 
   public async listBanks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
     const data = await this.bankAccountsService.listBanks();
+    return { success: true, data };
+  }
+
+  public async resolveBankAccount(
+    query: ResolveBankAccountQueryDto,
+  ): Promise<ApiSuccessResponse<{ accountName: string; bankName: string; bankCode: string }>> {
+    const data = await this.bankAccountsService.resolveAccount(query);
     return { success: true, data };
   }
 
@@ -194,6 +203,23 @@ export class RiderPayoutController extends PartnerPayoutController {
     return await super.listBanks();
   }
 
+  /**
+   * Name enquiry for the form, before anything is saved.
+   *
+   * Throttled hard: each call is a live request to the payment provider, and
+   * an unthrottled "who owns this number" endpoint is an account-name
+   * enumeration surface. A person filling in one form needs a handful of
+   * attempts, not hundreds.
+   */
+  @Get('bank-accounts/resolve')
+  @RequirePermissions(WALLET_PERMISSIONS.RIDER_READ)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  public override async resolveBankAccount(
+    @Query() query: ResolveBankAccountQueryDto,
+  ): Promise<ApiSuccessResponse<{ accountName: string; bankName: string; bankCode: string }>> {
+    return await super.resolveBankAccount(query);
+  }
+
   @Post('bank-accounts')
   @RequirePermissions(WALLET_PERMISSIONS.RIDER_WITHDRAW)
   public override async addBankAccount(
@@ -300,6 +326,23 @@ export class DriverPayoutController extends PartnerPayoutController {
   @RequirePermissions(WALLET_PERMISSIONS.DRIVER_READ)
   public override async listBanks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
     return await super.listBanks();
+  }
+
+  /**
+   * Name enquiry for the form, before anything is saved.
+   *
+   * Throttled hard: each call is a live request to the payment provider, and
+   * an unthrottled "who owns this number" endpoint is an account-name
+   * enumeration surface. A person filling in one form needs a handful of
+   * attempts, not hundreds.
+   */
+  @Get('bank-accounts/resolve')
+  @RequirePermissions(WALLET_PERMISSIONS.DRIVER_READ)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  public override async resolveBankAccount(
+    @Query() query: ResolveBankAccountQueryDto,
+  ): Promise<ApiSuccessResponse<{ accountName: string; bankName: string; bankCode: string }>> {
+    return await super.resolveBankAccount(query);
   }
 
   @Post('bank-accounts')

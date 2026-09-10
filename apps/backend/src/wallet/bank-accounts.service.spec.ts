@@ -173,6 +173,69 @@ describe('BankAccountsService', () => {
       expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
     });
 
+    // The form calls this while the person is still filling it in, so the
+    // account name they see is the bank's answer rather than their own typing.
+    describe('resolveAccount (preview, stores nothing)', () => {
+      it('returns the name the bank gives, with the canonical bank', async () => {
+        resolver.configured = true;
+        resolver.listBanks.mockResolvedValue([{ name: 'Guaranty Trust Bank', code: '058' }]);
+        resolver.resolveAccountName.mockResolvedValue({ accountName: 'AL AMIN TIJJANI UMAR' });
+
+        const result = await service.resolveAccount({
+          bankName: 'GTBank',
+          accountNumber: '0123456789',
+        });
+
+        expect(result).toEqual({
+          accountName: 'AL AMIN TIJJANI UMAR',
+          bankName: 'Guaranty Trust Bank',
+          bankCode: '058',
+        });
+        // Nothing is written: this runs before the person has committed.
+        expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
+      });
+
+      it('prefers a chosen bank code over the display name', async () => {
+        resolver.configured = true;
+        resolver.listBanks.mockResolvedValue([
+          { name: 'Guaranty Trust Bank', code: '058' },
+          { name: 'OPay Digital Services Limited (OPay)', code: '999992' },
+        ]);
+        resolver.resolveAccountName.mockResolvedValue({ accountName: 'SAMEER MOHSEEN' });
+
+        const result = await service.resolveAccount({
+          bankName: 'anything at all',
+          bankCode: '999992',
+          accountNumber: '8039739700',
+        });
+
+        expect(resolver.resolveAccountName).toHaveBeenCalledWith({
+          accountNumber: '8039739700',
+          bankCode: '999992',
+        });
+        expect(result.bankName).toBe('OPay Digital Services Limited (OPay)');
+        expect(result.accountName).toBe('SAMEER MOHSEEN');
+      });
+
+      it('refuses when the bank cannot be identified, without asking the bank', async () => {
+        resolver.configured = true;
+        resolver.listBanks.mockResolvedValue([{ name: 'Guaranty Trust Bank', code: '058' }]);
+
+        await expect(
+          service.resolveAccount({ bankName: 'Not A Bank', accountNumber: '0123456789' }),
+        ).rejects.toBeInstanceOf(ValidationDomainException);
+        expect(resolver.resolveAccountName).not.toHaveBeenCalled();
+      });
+
+      it('refuses when no resolver is configured rather than inventing a name', async () => {
+        resolver.configured = false;
+
+        await expect(
+          service.resolveAccount({ bankCode: '058', accountNumber: '0123456789' }),
+        ).rejects.toBeInstanceOf(ValidationDomainException);
+      });
+    });
+
     it('still saves self-attested when no resolver is configured', async () => {
       prisma.customerBankAccount.findFirst.mockResolvedValue(null);
       prisma.customerBankAccount.count.mockResolvedValue(0);

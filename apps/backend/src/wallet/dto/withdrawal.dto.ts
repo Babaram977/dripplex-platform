@@ -36,6 +36,28 @@ export class AddBankAccountDto {
   public accountNumber!: string;
 }
 
+/**
+ * Asking the bank who owns an account number, before anything is saved.
+ *
+ * The account name is the bank's answer, never the person's typing — so the
+ * form needs to show it for confirmation while they are still filling it in.
+ */
+export class ResolveBankAccountQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  public bankName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  public bankCode?: string;
+
+  @IsString()
+  @Matches(/^[0-9]{6,20}$/, { message: 'accountNumber must be 6-20 digits' })
+  public accountNumber!: string;
+}
+
 export class SetWalletPinDto {
   @IsString()
   @Matches(/^[0-9]{4}$/, { message: 'pin must be exactly 4 digits' })

@@ -6,7 +6,12 @@ import { sdk } from '../../lib/sdk';
 
 import { walletQueryKeys } from './query-keys';
 
-import type { AddBankAccountRequest, BankOptionDto, CustomerBankAccountDto } from '@dripplex/types';
+import type {
+  AddBankAccountRequest,
+  BankOptionDto,
+  CustomerBankAccountDto,
+  ResolvedBankAccountDto,
+} from '@dripplex/types';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 
 export function useBankAccounts(): UseQueryResult<CustomerBankAccountDto[]> {
@@ -23,6 +28,25 @@ export function useBanks(): UseQueryResult<BankOptionDto[]> {
     queryKey: walletQueryKeys.banks,
     queryFn: () => sdk.wallet.listBanks(),
     staleTime: 60 * 60 * 1000,
+  });
+}
+
+/**
+ * Name enquiry while the form is still open.
+ *
+ * Disabled until there is something to ask about, so no request goes out on
+ * every keystroke, and never retried: a bank saying it cannot find an account
+ * is an answer, not a transient failure.
+ */
+export function useResolveBankAccount(
+  bankCode: string,
+  accountNumber: string,
+): UseQueryResult<ResolvedBankAccountDto> {
+  return useQuery({
+    queryKey: [...walletQueryKeys.banks, 'resolve', bankCode, accountNumber] as const,
+    queryFn: () => sdk.wallet.resolveBankAccount(bankCode, accountNumber),
+    enabled: bankCode !== '' && /^[0-9]{10}$/.test(accountNumber),
+    retry: false,
   });
 }
 

@@ -17,6 +17,7 @@ import * as React from 'react';
 import type {
   BankAccountDto,
   BankOptionDto,
+  ResolvedBankAccountDto,
   CommissionAccountDto,
   CommissionLedgerEntryDto,
   OrderSettlementDto,
@@ -746,8 +747,10 @@ function AddBankAccountForm({
 }): React.JSX.Element {
   const [banks, setBanks] = React.useState<BankOptionDto[]>([]);
   const [bankCode, setBankCode] = React.useState('');
-  const [accountName, setAccountName] = React.useState('');
   const [accountNumber, setAccountNumber] = React.useState('');
+  // The bank's answer. Nothing is saved until it has one.
+  const [resolved, setResolved] = React.useState<ResolvedBankAccountDto | null>(null);
+  const [resolving, setResolving] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -764,6 +767,43 @@ function AddBankAccountForm({
       });
   }, []);
 
+  /**
+   * Ask the bank once there is a bank and ten digits. The settlement account
+   * name is whatever it returns, shown for confirmation rather than typed —
+   * a transposed digit is a valid-looking number belonging to somebody else.
+   */
+  React.useEffect(() => {
+    setResolved(null);
+    if (bankCode === '' || !/^[0-9]{10}$/.test(accountNumber)) {
+      return;
+    }
+
+    let abandoned = false;
+    setResolving(true);
+    void sdk.merchant
+      .resolveBankAccount(bankCode, accountNumber)
+      .then((r) => {
+        if (!abandoned) {
+          setResolved(r);
+        }
+      })
+      .catch((resolveError: unknown) => {
+        if (!abandoned) {
+          setError(describeSdkError(resolveError).description);
+        }
+      })
+      .finally(() => {
+        if (!abandoned) {
+          setResolving(false);
+        }
+      });
+
+    // Still typing: a stale answer must not present the wrong name as confirmed.
+    return () => {
+      abandoned = true;
+    };
+  }, [bankCode, accountNumber]);
+
   const onSubmit: React.SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
     if (saving) {
@@ -776,9 +816,10 @@ function AddBankAccountForm({
         const account = await sdk.merchant.createBankAccount({
           // Both taken from the chosen option, so the name is the provider's
           // spelling rather than anyone's typing.
-          bankName: banks.find((bank) => bank.code === bankCode)?.name ?? '',
+          // All of it confirmed by the bank, none of it typed.
+          bankName: resolved?.bankName ?? '',
           bankCode,
-          accountName: accountName.trim(),
+          accountName: resolved?.accountName ?? '',
           accountNumber: accountNumber.trim(),
         });
         onCreated(account);
@@ -817,15 +858,16 @@ function AddBankAccountForm({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="accountName">Account name</Label>
+          {/* Read-only on purpose: this is the bank's answer, not an input. */}
           <Input
             id="accountName"
-            required
-            minLength={2}
-            maxLength={100}
-            value={accountName}
-            onChange={(event) => {
-              setAccountName(event.target.value);
-            }}
+            readOnly
+            value={
+              resolving
+                ? 'Checking with the bank…'
+                : (resolved?.accountName ?? 'Choose a bank and enter the account number')
+            }
+            className={resolved === null ? 'text-muted-foreground' : undefined}
           />
         </div>
         <div className="flex flex-col gap-1.5">

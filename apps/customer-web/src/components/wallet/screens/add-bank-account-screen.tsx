@@ -9,7 +9,7 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import { useAddBankAccount, useBanks } from '@/hooks/wallet';
+import { useAddBankAccount, useBanks, useResolveBankAccount } from '@/hooks/wallet';
 
 /**
  * DPX-100 Wallet Slice 4. Self-attested bank details — no bank-account-
@@ -27,15 +27,16 @@ export function AddBankAccountScreen({
 }): React.JSX.Element {
   const [bankCode, setBankCode] = React.useState('');
   const [accountNumber, setAccountNumber] = React.useState('');
-  const [accountName, setAccountName] = React.useState('');
   const addBankAccount = useAddBankAccount();
   const banksQuery = useBanks();
+  // The account name is the bank's answer, so it is fetched rather than typed.
+  const resolveQuery = useResolveBankAccount(bankCode, accountNumber);
   const { body } = useSuperAppFonts();
 
   const banks = banksQuery.data ?? [];
-  const chosenBank = banks.find((bank) => bank.code === bankCode);
-  const validAccountNumber = /^[0-9]{6,20}$/.test(accountNumber);
-  const canSubmit = chosenBank !== undefined && validAccountNumber && accountName.trim().length > 0;
+  const resolved = resolveQuery.data;
+  // Nothing is submitted until a real account holder has come back.
+  const canSubmit = resolved !== undefined;
 
   return (
     <div
@@ -93,19 +94,35 @@ export function AddBankAccountScreen({
           />
         </div>
 
-        <div className="pb-4">
-          <SuperAppWalletSectionLabel>Account name</SuperAppWalletSectionLabel>
-          <input
-            value={accountName}
-            onChange={(event) => {
-              setAccountName(event.target.value);
-            }}
-            placeholder="Name on the account"
-            maxLength={150}
-            className={`mt-2.5 h-[48px] w-full rounded-xl px-4 text-[14px] text-white outline-none ${body}`}
-            style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-          />
-        </div>
+        {/*
+          Shown, never typed. A transposed digit is a valid-looking number
+          belonging to a stranger, and the only way to catch that before money
+          moves is to show whose name the bank actually returns.
+        */}
+        {(resolveQuery.isFetching || resolved !== undefined || resolveQuery.isError) && (
+          <div className="pb-4">
+            <SuperAppWalletSectionLabel>Account name</SuperAppWalletSectionLabel>
+            <div
+              className={`mt-2.5 flex h-[48px] w-full items-center rounded-xl px-4 text-[14px] ${body}`}
+              style={{
+                background: '#112238',
+                border: `1px solid ${resolveQuery.isError ? '#F87171' : 'rgba(255,255,255,.08)'}`,
+                color: resolveQuery.isError ? '#F87171' : '#fff',
+              }}
+            >
+              {resolveQuery.isFetching ? (
+                <span style={{ color: 'rgba(255,255,255,.5)' }}>Checking with the bank…</span>
+              ) : resolveQuery.isError ? (
+                'That account could not be confirmed.'
+              ) : (
+                <span>
+                  <span style={{ color: '#47CF72' }}>✓ </span>
+                  {resolved?.accountName}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {addBankAccount.isError ? (
           <p className={`text-[13px] ${body}`} style={{ color: '#EF4444' }}>
@@ -121,10 +138,11 @@ export function AddBankAccountScreen({
           onClick={() => {
             addBankAccount.mutate(
               {
-                bankName: chosenBank?.name ?? '',
+                // Everything here was confirmed by the bank.
+                bankName: resolved?.bankName ?? '',
                 bankCode,
                 accountNumber,
-                accountName: accountName.trim(),
+                accountName: resolved?.accountName ?? '',
               },
               { onSuccess: onAdded },
             );

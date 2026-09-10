@@ -6,6 +6,7 @@ import type {
   BusinessDto,
   BankOptionDto,
   CreateBankAccountRequest,
+  ResolvedBankAccountDto,
   CreateBusinessRequest,
   CreateProductRequest,
   CreateProductVariantRequest,
@@ -102,6 +103,19 @@ export class MerchantApi {
    * a bank name by hand is how a settlement destination ends up unlinkable. */
   public listBanks(): Promise<BankOptionDto[]> {
     return this.http.request<BankOptionDto[]>('/merchant/bank-account/banks', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /** Name enquiry for the form. The settlement account name is the bank's
+   * answer, so a merchant confirms a real account holder instead of typing one. */
+  public resolveBankAccount(
+    bankCode: string,
+    accountNumber: string,
+  ): Promise<ResolvedBankAccountDto> {
+    const query = new URLSearchParams({ bankCode, accountNumber }).toString();
+    return this.http.request<ResolvedBankAccountDto>(`/merchant/bank-account/resolve?${query}`, {
       method: 'GET',
       auth: true,
     });

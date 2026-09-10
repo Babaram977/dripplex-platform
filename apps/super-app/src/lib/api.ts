@@ -2429,6 +2429,13 @@ export interface BankOptionDto {
   code: string;
 }
 
+/** What the bank says about an account number, before anything is stored. */
+export interface ResolvedBankAccountDto {
+  accountName: string;
+  bankName: string;
+  bankCode: string;
+}
+
 // ─── API Namespaces ───────────────────────────────────────────────────────────
 
 /**
@@ -2442,6 +2449,13 @@ const partnerPayouts = (prefix: 'rider' | 'driver') => ({
    * Typing a bank name by hand is how an account ends up unlinkable: the
    * provider spells OPay "OPay Digital Services Limited (OPay)". */
   listBanks: () => dx<BankOptionDto[]>('GET', `/${prefix}/wallet/bank-accounts/banks`),
+  /** Ask the bank who owns a number, before anything is saved. The account name
+   * is the bank's answer, so nobody has to type it. */
+  resolveBankAccount: (bankCode: string, accountNumber: string) =>
+    dx<ResolvedBankAccountDto>(
+      'GET',
+      `/${prefix}/wallet/bank-accounts/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
+    ),
   addBankAccount: (body: {
     bankName: string;
     accountName: string;
@@ -2697,6 +2711,11 @@ export const api = {
       dx<{ valid: boolean }>('POST', '/customer/wallet/pin/verify', body),
     getBankAccounts: () => dx<CustomerBankAccountDto[]>('GET', '/customer/wallet/bank-accounts'),
     listBanks: () => dx<BankOptionDto[]>('GET', '/customer/wallet/bank-accounts/banks'),
+    resolveBankAccount: (bankCode: string, accountNumber: string) =>
+      dx<ResolvedBankAccountDto>(
+        'GET',
+        `/customer/wallet/bank-accounts/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
+      ),
     addBankAccount: (body: {
       bankCode: string;
       accountNumber: string;
