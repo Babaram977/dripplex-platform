@@ -71,6 +71,11 @@ abstract class PartnerPayoutController {
     return { success: true, data };
   }
 
+  public async listBanks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
+    const data = await this.bankAccountsService.listBanks();
+    return { success: true, data };
+  }
+
   public async addBankAccount(
     user: AuthenticatedUser,
     dto: AddBankAccountDto,
@@ -162,6 +167,12 @@ export class RiderPayoutController extends PartnerPayoutController {
     return await super.listBankAccounts(user);
   }
 
+  @Get('bank-accounts/banks')
+  @RequirePermissions(WALLET_PERMISSIONS.RIDER_READ)
+  public override async listBanks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
+    return await super.listBanks();
+  }
+
   @Post('bank-accounts')
   @RequirePermissions(WALLET_PERMISSIONS.RIDER_WITHDRAW)
   public override async addBankAccount(
@@ -241,6 +252,12 @@ export class DriverPayoutController extends PartnerPayoutController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<ApiSuccessResponse<CustomerBankAccountDto[]>> {
     return await super.listBankAccounts(user);
+  }
+
+  @Get('bank-accounts/banks')
+  @RequirePermissions(WALLET_PERMISSIONS.DRIVER_READ)
+  public override async listBanks(): Promise<ApiSuccessResponse<{ name: string; code: string }[]>> {
+    return await super.listBanks();
   }
 
   @Post('bank-accounts')
