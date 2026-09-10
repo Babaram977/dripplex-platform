@@ -10,10 +10,7 @@ import { AdminWithdrawalController } from './controllers/admin-withdrawal.contro
 import { CustomerBankAccountsController } from './controllers/customer-bank-accounts.controller';
 import { CustomerWalletPinController } from './controllers/customer-wallet-pin.controller';
 import { CustomerWithdrawalController } from './controllers/customer-withdrawal.controller';
-import {
-  DriverPayoutController,
-  RiderPayoutController,
-} from './controllers/partner-payout.controller';
+import { DriverPayoutController, RiderPayoutController } from './controllers/partner-payout.controller';
 import { CustomerWalletController } from './customer-wallet.controller';
 import { DriverWalletController } from './driver-wallet.controller';
 import { MerchantWalletController } from './merchant-wallet.controller';
@@ -31,41 +28,13 @@ import { WithdrawalService } from './withdrawal.service';
 
 @Module({
   imports: [PrismaModule, AuditModule, CommercialModule],
-  controllers: [
-    CustomerWalletController,
-    CustomerBankAccountsController,
-    CustomerWalletPinController,
-    CustomerWithdrawalController,
-    MerchantWalletController,
-    RiderWalletController,
-    DriverWalletController,
-    AdminWalletController,
-    AdminWithdrawalController,
-    RiderPayoutController,
-    DriverPayoutController,
-  ],
+  controllers: [CustomerWalletController, CustomerBankAccountsController, CustomerWalletPinController, CustomerWithdrawalController, MerchantWalletController, RiderWalletController, DriverWalletController, AdminWalletController, AdminWithdrawalController, RiderPayoutController, DriverPayoutController],
   providers: [
-    WalletService,
-    WalletEventsSubscriber,
-    WalletRecipientsService,
-    BankAccountsService,
-    SettlementReportService,
-    WalletPinService,
-    WithdrawalService,
-    PaystackTransferProvider,
-    PaystackBankAccountResolver,
-    {
-      // One resolver, not a list: name enquiry has a single right answer and
-      // asking a second provider for it would only invite disagreement.
-      provide: BANK_ACCOUNT_RESOLVER,
-      useExisting: PaystackBankAccountResolver,
-    },
-    {
-      provide: PAYOUT_PROVIDERS,
-      useFactory: (paystack: PaystackTransferProvider) => [paystack],
-      inject: [PaystackTransferProvider],
-    },
+    WalletService, WalletEventsSubscriber, WalletRecipientsService, BankAccountsService, SettlementReportService, WalletPinService,
+    WithdrawalService, PaystackTransferProvider, PaystackBankAccountResolver,
+    { provide: BANK_ACCOUNT_RESOLVER, useExisting: PaystackBankAccountResolver },
+    { provide: PAYOUT_PROVIDERS, useFactory: (paystack: PaystackTransferProvider) => [paystack], inject: [PaystackTransferProvider] },
   ],
-  exports: [WalletService, PAYOUT_PROVIDERS],
+  exports: [WalletService, PAYOUT_PROVIDERS, BANK_ACCOUNT_RESOLVER],
 })
 export class WalletModule {}
