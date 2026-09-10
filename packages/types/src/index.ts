@@ -104,6 +104,7 @@ export { PRODUCT_AUDIT_ACTIONS } from './product/index.js';
 
 export type {
   BankAccountDto,
+  BankOptionDto,
   BrowseMerchantsQuery,
   BusinessDto,
   BusinessStatus,

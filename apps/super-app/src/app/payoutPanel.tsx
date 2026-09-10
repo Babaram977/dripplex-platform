@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { PartnerBankAccountDto, PayoutRequestDto, PayoutResultDto } from '../lib/api';
+import type {
+  BankOptionDto,
+  PartnerBankAccountDto,
+  PayoutRequestDto,
+  PayoutResultDto,
+} from '../lib/api';
 
 const IT = "'Inter',sans-serif";
 const PP = "'Poppins',sans-serif";
@@ -20,6 +25,7 @@ const naira = (n: number): string => `₦${Math.round(n).toLocaleString()}`;
  */
 export interface PayoutClient {
   listBankAccounts: () => Promise<PartnerBankAccountDto[]>;
+  listBanks: () => Promise<BankOptionDto[]>;
   addBankAccount: (body: {
     bankName: string;
     accountName: string;
@@ -63,7 +69,8 @@ export function PayoutPanel({
   const [busy, setBusy] = useState(false);
 
   const [form, setForm] = useState<'none' | 'bank' | 'pin' | 'payout'>('none');
-  const [bankName, setBankName] = useState('');
+  const [banks, setBanks] = useState<BankOptionDto[]>([]);
+  const [bankCode, setBankCode] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [pin, setPin] = useState('');
@@ -77,6 +84,14 @@ export function PayoutPanel({
         .then(setAccounts)
         .catch(() => {
           /* An empty list is the honest fallback — never a fake account. */
+        }),
+      client
+        .listBanks()
+        .then(setBanks)
+        .catch(() => {
+          /* Leave the picker empty rather than offering a guessed list. The
+             form below refuses to submit without a chosen bank, so a failed
+             load blocks linking instead of letting a free-text name through. */
         }),
       client
         .hasPin()
@@ -94,7 +109,7 @@ export function PayoutPanel({
 
   const reset = () => {
     setForm('none');
-    setBankName('');
+    setBankCode('');
     setAccountName('');
     setAccountNumber('');
     setPin('');
@@ -255,8 +270,37 @@ export function PayoutPanel({
           className="mb-3 rounded-2xl p-4"
           style={{ background: SURFACE, border: `1px solid ${BORDER}` }}
         >
-          {label('Bank name')}
-          {input(bankName, setBankName, 'e.g. GTBank', { ariaLabel: 'Bank name' })}
+          {label('Bank')}
+          {/*
+            A picker, not a text box. What someone types never matches what the
+            provider calls a bank — OPay is "OPay Digital Services Limited
+            (OPay)" — and a name that fails to match is an account that cannot
+            be linked. Choosing from the list means the bank code travels with
+            the request and nothing has to be guessed from a display name.
+            Rendered as a native select so it opens as the platform's own
+            picker on a phone.
+          */}
+          <select
+            value={bankCode}
+            onChange={(e) => setBankCode(e.target.value)}
+            aria-label="Bank"
+            className="mb-2 h-11 w-full rounded-xl px-3 text-[13px]"
+            style={{
+              background: 'rgba(255,255,255,.04)',
+              border: `1px solid ${BORDER}`,
+              color: bankCode === '' ? MUTED : '#fff',
+              fontFamily: IT,
+            }}
+          >
+            <option value="" style={{ color: '#000' }}>
+              {banks.length === 0 ? 'Loading banks…' : 'Choose your bank'}
+            </option>
+            {banks.map((bank) => (
+              <option key={bank.code} value={bank.code} style={{ color: '#000' }}>
+                {bank.name}
+              </option>
+            ))}
+          </select>
           {label('Account name')}
           {input(accountName, setAccountName, 'Name on the account', {
             ariaLabel: 'Account name',
@@ -273,7 +317,10 @@ export function PayoutPanel({
               void run(
                 () =>
                   client.addBankAccount({
-                    bankName: bankName.trim(),
+                    // Both come from the chosen option, so the name is the
+                    // provider's own spelling rather than anyone's typing.
+                    bankName: banks.find((b) => b.code === bankCode)?.name ?? '',
+                    bankCode,
                     accountName: accountName.trim(),
                     accountNumber: accountNumber.trim(),
                   }),
@@ -282,7 +329,7 @@ export function PayoutPanel({
             {
               primary: true,
               disabled:
-                bankName.trim().length < 2 ||
+                bankCode === '' ||
                 accountName.trim().length < 2 ||
                 accountNumber.trim().length !== 10,
             },

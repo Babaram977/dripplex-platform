@@ -9,7 +9,7 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import { useAddBankAccount } from '@/hooks/wallet';
+import { useAddBankAccount, useBanks } from '@/hooks/wallet';
 
 /**
  * DPX-100 Wallet Slice 4. Self-attested bank details — no bank-account-
@@ -25,15 +25,17 @@ export function AddBankAccountScreen({
   onBack: () => void;
   onAdded: () => void;
 }): React.JSX.Element {
-  const [bankName, setBankName] = React.useState('');
+  const [bankCode, setBankCode] = React.useState('');
   const [accountNumber, setAccountNumber] = React.useState('');
   const [accountName, setAccountName] = React.useState('');
   const addBankAccount = useAddBankAccount();
+  const banksQuery = useBanks();
   const { body } = useSuperAppFonts();
 
+  const banks = banksQuery.data ?? [];
+  const chosenBank = banks.find((bank) => bank.code === bankCode);
   const validAccountNumber = /^[0-9]{6,20}$/.test(accountNumber);
-  const canSubmit =
-    bankName.trim().length > 0 && validAccountNumber && accountName.trim().length > 0;
+  const canSubmit = chosenBank !== undefined && validAccountNumber && accountName.trim().length > 0;
 
   return (
     <div
@@ -45,17 +47,35 @@ export function AddBankAccountScreen({
 
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="pb-4">
-          <SuperAppWalletSectionLabel>Bank name</SuperAppWalletSectionLabel>
-          <input
-            value={bankName}
+          <SuperAppWalletSectionLabel>Bank</SuperAppWalletSectionLabel>
+          {/*
+            Chosen from the provider's list, never typed. The provider's own
+            spelling of a bank ("OPay Digital Services Limited (OPay)") is not
+            what anyone writes, and a name that fails to match is an account
+            that cannot be linked. Picking carries the bank code with it.
+          */}
+          <select
+            value={bankCode}
             onChange={(event) => {
-              setBankName(event.target.value);
+              setBankCode(event.target.value);
             }}
-            placeholder="e.g. GTBank"
-            maxLength={150}
-            className={`mt-2.5 h-[48px] w-full rounded-xl px-4 text-[14px] text-white outline-none ${body}`}
-            style={{ background: '#112238', border: '1px solid rgba(255,255,255,.08)' }}
-          />
+            aria-label="Bank"
+            className={`mt-2.5 h-[48px] w-full rounded-xl px-4 text-[14px] outline-none ${body}`}
+            style={{
+              background: '#112238',
+              border: '1px solid rgba(255,255,255,.08)',
+              color: bankCode === '' ? 'rgba(255,255,255,.5)' : '#fff',
+            }}
+          >
+            <option value="" style={{ color: '#000' }}>
+              {banksQuery.isPending ? 'Loading banks…' : 'Choose your bank'}
+            </option>
+            {banks.map((bank) => (
+              <option key={bank.code} value={bank.code} style={{ color: '#000' }}>
+                {bank.name}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="pb-4">
@@ -100,7 +120,12 @@ export function AddBankAccountScreen({
           loading={addBankAccount.isPending}
           onClick={() => {
             addBankAccount.mutate(
-              { bankName: bankName.trim(), accountNumber, accountName: accountName.trim() },
+              {
+                bankName: chosenBank?.name ?? '',
+                bankCode,
+                accountNumber,
+                accountName: accountName.trim(),
+              },
               { onSuccess: onAdded },
             );
           }}

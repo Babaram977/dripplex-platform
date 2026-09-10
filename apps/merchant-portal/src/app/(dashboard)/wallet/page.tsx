@@ -16,6 +16,7 @@ import * as React from 'react';
 
 import type {
   BankAccountDto,
+  BankOptionDto,
   CommissionAccountDto,
   CommissionLedgerEntryDto,
   OrderSettlementDto,
@@ -743,11 +744,25 @@ function AddBankAccountForm({
   onCancel: () => void;
   onCreated: (account: BankAccountDto) => void;
 }): React.JSX.Element {
-  const [bankName, setBankName] = React.useState('');
+  const [banks, setBanks] = React.useState<BankOptionDto[]>([]);
+  const [bankCode, setBankCode] = React.useState('');
   const [accountName, setAccountName] = React.useState('');
   const [accountNumber, setAccountNumber] = React.useState('');
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // The provider's own list. A typed bank name does not match what the provider
+  // calls that bank, and a settlement destination that cannot be matched is a
+  // merchant who quietly never gets paid.
+  React.useEffect(() => {
+    void sdk.merchant
+      .listBanks()
+      .then(setBanks)
+      .catch(() => {
+        // Leave it empty rather than offering a guessed list; the form below
+        // cannot be submitted without a chosen bank.
+      });
+  }, []);
 
   const onSubmit: React.SubmitEventHandler<HTMLFormElement> = (event) => {
     event.preventDefault();
@@ -759,7 +774,10 @@ function AddBankAccountForm({
       setError(null);
       try {
         const account = await sdk.merchant.createBankAccount({
-          bankName: bankName.trim(),
+          // Both taken from the chosen option, so the name is the provider's
+          // spelling rather than anyone's typing.
+          bankName: banks.find((bank) => bank.code === bankCode)?.name ?? '',
+          bankCode,
           accountName: accountName.trim(),
           accountNumber: accountNumber.trim(),
         });
@@ -779,17 +797,23 @@ function AddBankAccountForm({
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="bankName">Bank name</Label>
-          <Input
-            id="bankName"
+          <Label htmlFor="bankCode">Bank</Label>
+          <select
+            id="bankCode"
             required
-            minLength={2}
-            maxLength={100}
-            value={bankName}
+            className="border-input bg-background h-9 rounded-md border px-3 py-1 text-sm"
+            value={bankCode}
             onChange={(event) => {
-              setBankName(event.target.value);
+              setBankCode(event.target.value);
             }}
-          />
+          >
+            <option value="">{banks.length === 0 ? 'Loading banks…' : 'Choose your bank'}</option>
+            {banks.map((bank) => (
+              <option key={bank.code} value={bank.code}>
+                {bank.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="accountName">Account name</Label>

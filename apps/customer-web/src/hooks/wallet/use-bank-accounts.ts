@@ -6,13 +6,23 @@ import { sdk } from '../../lib/sdk';
 
 import { walletQueryKeys } from './query-keys';
 
-import type { AddBankAccountRequest, CustomerBankAccountDto } from '@dripplex/types';
+import type { AddBankAccountRequest, BankOptionDto, CustomerBankAccountDto } from '@dripplex/types';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 
 export function useBankAccounts(): UseQueryResult<CustomerBankAccountDto[]> {
   return useQuery({
     queryKey: walletQueryKeys.bankAccounts,
     queryFn: () => sdk.wallet.listBankAccounts(),
+  });
+}
+
+/** The provider's bank list, for the picker. Cached hard: it changes rarely and
+ * a customer opening the form should not wait on a network round trip. */
+export function useBanks(): UseQueryResult<BankOptionDto[]> {
+  return useQuery({
+    queryKey: walletQueryKeys.banks,
+    queryFn: () => sdk.wallet.listBanks(),
+    staleTime: 60 * 60 * 1000,
   });
 }
 

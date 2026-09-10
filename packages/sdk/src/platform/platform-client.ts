@@ -1,6 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
   AddBankAccountRequest,
+  BankOptionDto,
   AddWishlistItemRequest,
   AdminReferralRedemptionsQuery,
   AdminWalletMutationRequest,
@@ -748,6 +749,10 @@ export class WalletClient {
 
   public listBankAccounts(): Promise<CustomerBankAccountDto[]> {
     return this.http.request<CustomerBankAccountDto[]>('/customer/wallet/bank-accounts');
+  }
+
+  public listBanks(): Promise<BankOptionDto[]> {
+    return this.http.request<BankOptionDto[]>('/customer/wallet/bank-accounts/banks');
   }
 
   public addBankAccount(body: AddBankAccountRequest): Promise<CustomerBankAccountDto> {

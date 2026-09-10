@@ -236,10 +236,19 @@ export interface SubmitKycRequest {
 
 export interface CreateBankAccountRequest {
   bankName: string;
+  /** Sent by any client that presents the bank picker. The backend resolves a
+   * bare name for older clients, but a chosen code needs no guessing. */
+  bankCode?: string;
   accountName: string;
   accountNumber: string;
   currency?: string;
   isDefault?: boolean;
+}
+
+/** One entry in the payment provider's bank list: what to show, what to send. */
+export interface BankOptionDto {
+  name: string;
+  code: string;
 }
 
 export interface ListMerchantsQuery {

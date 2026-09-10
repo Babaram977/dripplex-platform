@@ -12,6 +12,7 @@ export { useLoyaltyAccount, useReferralCode, useReferralStats } from './use-loya
 export {
   useBankAccounts,
   useAddBankAccount,
+  useBanks,
   useSetDefaultBankAccount,
   useRemoveBankAccount,
 } from './use-bank-accounts';

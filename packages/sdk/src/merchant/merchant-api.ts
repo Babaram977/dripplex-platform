@@ -4,6 +4,7 @@ import type {
   BankAccountDto,
   BrowseMerchantsQuery,
   BusinessDto,
+  BankOptionDto,
   CreateBankAccountRequest,
   CreateBusinessRequest,
   CreateProductRequest,
@@ -92,6 +93,15 @@ export class MerchantApi {
 
   public getKycStatus(): Promise<KycStatusResponse> {
     return this.http.request<KycStatusResponse>('/merchant/kyc', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /** The banks the payment provider accepts, for the picker. A merchant typing
+   * a bank name by hand is how a settlement destination ends up unlinkable. */
+  public listBanks(): Promise<BankOptionDto[]> {
+    return this.http.request<BankOptionDto[]>('/merchant/bank-account/banks', {
       method: 'GET',
       auth: true,
     });

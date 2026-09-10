@@ -2423,6 +2423,12 @@ export interface NotificationDto {
   updatedAt: string;
 }
 
+/** One entry in the provider's bank list: what to show, and the code to send. */
+export interface BankOptionDto {
+  name: string;
+  code: string;
+}
+
 // ─── API Namespaces ───────────────────────────────────────────────────────────
 
 /**
@@ -2432,6 +2438,10 @@ export interface NotificationDto {
  */
 const partnerPayouts = (prefix: 'rider' | 'driver') => ({
   listBankAccounts: () => dx<PartnerBankAccountDto[]>('GET', `/${prefix}/wallet/bank-accounts`),
+  /** The banks the payment provider will actually accept, for the picker.
+   * Typing a bank name by hand is how an account ends up unlinkable: the
+   * provider spells OPay "OPay Digital Services Limited (OPay)". */
+  listBanks: () => dx<BankOptionDto[]>('GET', `/${prefix}/wallet/bank-accounts/banks`),
   addBankAccount: (body: {
     bankName: string;
     accountName: string;
@@ -2686,6 +2696,7 @@ export const api = {
     verifyPin: (body: { pin: string }) =>
       dx<{ valid: boolean }>('POST', '/customer/wallet/pin/verify', body),
     getBankAccounts: () => dx<CustomerBankAccountDto[]>('GET', '/customer/wallet/bank-accounts'),
+    listBanks: () => dx<BankOptionDto[]>('GET', '/customer/wallet/bank-accounts/banks'),
     addBankAccount: (body: {
       bankCode: string;
       accountNumber: string;
