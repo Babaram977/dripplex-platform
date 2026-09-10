@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { WalletOwnerType, OrderPaymentMethod } from '@prisma/client';
 
@@ -9,7 +10,6 @@ import { BANK_ACCOUNT_RESOLVER, type BankAccountResolver } from '../wallet/verif
 import { WalletService } from '../wallet/wallet.service';
 
 const MERCHANT_BANK_SETTLEMENT_REFERENCE = 'MERCHANT_BANK_SETTLEMENT';
-
 type TransferStatus = 'SUCCESS' | 'FAILED';
 
 @Injectable()
@@ -22,20 +22,13 @@ export class MerchantBankSettlementService implements OnModuleInit {
     @Inject(BANK_ACCOUNT_RESOLVER) private readonly resolver: BankAccountResolver,
   ) {}
 
-  public onModuleInit(): void {
-    this.eventBus.on(DOMAIN_EVENTS.ORDER_COMPLETED, (event) => this.handleCompleted(event));
-  }
+  public onModuleInit(): void { this.eventBus.on(DOMAIN_EVENTS.ORDER_COMPLETED, (event) => this.handleCompleted(event)); }
 
   private async handleCompleted(event: DomainEvent): Promise<void> {
     const orderId = this.stringField(event, 'orderId');
     if (!orderId) return;
-
-    // MerchantSettlementService and this service are independent event
-    // consumers. Wait for the canonical settlement row rather than assuming
-    // listener registration order.
     for (let attempt = 0; attempt < 10; attempt += 1) {
-      const ready = await this.settleOrder(orderId);
-      if (ready) return;
+      if (await this.settleOrder(orderId)) return;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
@@ -43,36 +36,26 @@ export class MerchantBankSettlementService implements OnModuleInit {
   public async settleOrder(orderId: string): Promise<boolean> {
     const order = await this.prisma.order.findUnique({ where: { id: orderId } });
     if (!order || order.paymentMethod === OrderPaymentMethod.MERCHANT_DIRECT || order.paymentMethod === OrderPaymentMethod.CASH) return true;
-
     const settlement = await this.prisma.orderSettlement.findUnique({ where: { orderId } });
     if (!settlement) return false;
     if (settlement.status !== 'COMPLETED') return false;
 
     const profile = await this.prisma.merchantProfile.findUnique({ where: { id: settlement.merchantId }, select: { userId: true } });
     if (!profile) return true;
-
-    const bank = await this.prisma.bankAccount.findFirst({
-      where: { merchantId: profile.userId, isDefault: true },
-      orderBy: { verifiedAt: 'desc' },
-    });
-    if (!bank || !bank.verifiedAt) {
-      return true; // Ops can see a completed internal settlement; no unverified bank transfer is attempted.
-    }
+    const bank = await this.prisma.bankAccount.findFirst({ where: { merchantId: profile.userId, isDefault: true }, orderBy: { verifiedAt: 'desc' } });
+    if (!bank || !bank.verifiedAt) return true;
 
     const bankName = bank.bankName.toLowerCase().replace(/[^a-z0-9]/g, '');
     const bankOption = (await this.resolver.listBanks()).find((item) => item.name.toLowerCase().replace(/[^a-z0-9]/g, '') === bankName);
     if (!bankOption) return true;
 
-    const existing = await this.prisma.$queryRaw<Array<{ id: string; status: string; provider_reference: string | null }>>`
-      SELECT id, status, provider_reference
-      FROM merchant_settlement_transfers
-      WHERE settlement_id = ${settlement.id}::uuid
-      LIMIT 1
+    const existing = await this.prisma.$queryRaw<Array<{ id: string; status: string }>>`
+      SELECT id, status FROM merchant_settlement_transfers WHERE settlement_id = ${settlement.id}::uuid LIMIT 1
     `;
     if (existing[0]?.status === 'SUCCESS') return true;
     if (existing[0]?.status === 'PENDING') return false;
 
-    const transferId = existing[0]?.id ?? crypto.randomUUID();
+    const transferId = existing[0]?.id ?? randomUUID();
     if (!existing[0]) {
       await this.prisma.$executeRaw`
         INSERT INTO merchant_settlement_transfers
@@ -84,10 +67,7 @@ export class MerchantBankSettlementService implements OnModuleInit {
     }
 
     const provider = this.providers.find((item) => String(item.provider) === 'PAYSTACK');
-    if (!provider) {
-      await this.markFailed(transferId, 'Paystack payout provider is not configured');
-      return true;
-    }
+    if (!provider) { await this.markFailed(transferId, 'Paystack payout provider is not configured'); return true; }
 
     try {
       await this.walletService.withdrawal({
@@ -109,7 +89,6 @@ export class MerchantBankSettlementService implements OnModuleInit {
         accountName: bank.accountName,
         narration: `DrippleX merchant settlement ${order.orderNumber}`,
       });
-
       if (result.status === 'SUCCESS') await this.markSuccess(transferId, result.providerTransferId ?? result.reference);
       if (result.status === 'FAILED') await this.markFailed(transferId, 'Provider rejected merchant settlement');
       return true;
@@ -120,62 +99,64 @@ export class MerchantBankSettlementService implements OnModuleInit {
   }
 
   public async processProviderResult(reference: string, status: TransferStatus, reason?: string): Promise<void> {
-    const rows = await this.prisma.$queryRaw<Array<{ id: string; settlement_id: string; merchant_id: string; amount: number; currency: string; status: string; }>>`
-      SELECT id, settlement_id, merchant_id, amount, currency, status
-      FROM merchant_settlement_transfers
-      WHERE id = ${reference}::uuid
-      LIMIT 1
+    const rows = await this.prisma.$queryRaw<Array<{ id: string; merchant_id: string; amount: number; currency: string; status: string }>>`
+      SELECT id, merchant_id, amount, currency, status FROM merchant_settlement_transfers WHERE id = ${reference}::uuid LIMIT 1
     `;
     const row = rows[0];
     if (!row) return;
-
     if (status === 'SUCCESS') {
       if (row.status === 'PENDING') await this.markSuccess(row.id, reference);
       return;
     }
-
-    if (row.status === 'PENDING' || row.status === 'SUCCESS') {
-      await this.markFailed(row.id, reason ?? 'Provider transfer failed or was reversed');
-      await this.walletService.credit({
-        ownerType: WalletOwnerType.MERCHANT,
-        ownerId: row.merchant_id,
-        amount: Number(row.amount),
-        currency: row.currency,
-        referenceType: `${MERCHANT_BANK_SETTLEMENT_REFERENCE}_REVERSAL`,
-        referenceId: row.id,
-        description: 'Merchant bank settlement reversed',
-      });
+    if (row.status === 'PENDING') {
+      await this.markFailed(row.id, reason ?? 'Provider transfer failed');
+      return;
+    }
+    if (row.status === 'SUCCESS') {
+      const changed = await this.prisma.$executeRaw`
+        UPDATE merchant_settlement_transfers SET status = 'REVERSED', failure_reason = ${reason ?? 'Provider transfer reversed'}, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ${row.id}::uuid AND status = 'SUCCESS'
+      `;
+      if (changed > 0) {
+        await this.walletService.credit({
+          ownerType: WalletOwnerType.MERCHANT,
+          ownerId: row.merchant_id,
+          amount: Number(row.amount),
+          currency: row.currency,
+          referenceType: `${MERCHANT_BANK_SETTLEMENT_REFERENCE}_REVERSAL`,
+          referenceId: row.id,
+          description: 'Merchant bank settlement reversed',
+        });
+      }
     }
   }
 
   private async markSuccess(id: string, providerReference: string): Promise<void> {
     await this.prisma.$executeRaw`
-      UPDATE merchant_settlement_transfers
-      SET status = 'SUCCESS', provider_reference = ${providerReference}, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      UPDATE merchant_settlement_transfers SET status = 'SUCCESS', provider_reference = ${providerReference}, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}::uuid AND status = 'PENDING'
     `;
   }
 
   private async markFailed(id: string, reason: string): Promise<void> {
-    await this.prisma.$executeRaw`
-      UPDATE merchant_settlement_transfers
-      SET status = 'FAILED', failure_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP
+    const changed = await this.prisma.$executeRaw`
+      UPDATE merchant_settlement_transfers SET status = 'FAILED', failure_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}::uuid AND status = 'PENDING'
     `;
+    if (changed === 0) return;
     const row = await this.prisma.$queryRaw<Array<{ merchant_id: string; amount: number; currency: string }>>`
       SELECT merchant_id, amount, currency FROM merchant_settlement_transfers WHERE id = ${id}::uuid LIMIT 1
     `;
-    if (row[0]) {
-      await this.walletService.credit({
-        ownerType: WalletOwnerType.MERCHANT,
-        ownerId: row[0].merchant_id,
-        amount: Number(row[0].amount),
-        currency: row[0].currency,
-        referenceType: `${MERCHANT_BANK_SETTLEMENT_REFERENCE}_REVERSAL`,
-        referenceId: id,
-        description: `Merchant bank settlement failed: ${reason}`,
-      });
-    }
+    if (!row[0]) return;
+    await this.walletService.credit({
+      ownerType: WalletOwnerType.MERCHANT,
+      ownerId: row[0].merchant_id,
+      amount: Number(row[0].amount),
+      currency: row[0].currency,
+      referenceType: `${MERCHANT_BANK_SETTLEMENT_REFERENCE}_REVERSAL`,
+      referenceId: id,
+      description: `Merchant bank settlement failed: ${reason}`,
+    });
   }
 
   private stringField(event: DomainEvent, key: string): string | null {
