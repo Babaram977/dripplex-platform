@@ -33,6 +33,7 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'Withdraw funds from own wallet to a bank account',
   },
   { code: 'merchant:wallet:read', description: 'Read merchant wallet' },
+  { code: 'merchant:wallet:withdraw', description: 'Request a merchant wallet payout' },
   { code: 'rider:wallet:read', description: 'Read rider wallet' },
   { code: 'driver:wallet:read', description: 'Read driver wallet' },
   { code: 'admin:wallet:manage', description: 'Manage wallets and reconciliation' },

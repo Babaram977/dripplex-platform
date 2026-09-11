@@ -1015,6 +1015,15 @@ export interface CreateWithdrawalRequest {
   pin: string;
 }
 
+/**
+ * What a payout request actually did. `payout` is null when the whole amount
+ * went to clearing commission owed, so there is no bank transfer to make.
+ */
+export interface PayoutResultDto {
+  commissionSettled: number;
+  payout: WithdrawalRequestDto | null;
+}
+
 export interface WithdrawalHistoryQuery {
   page?: number;
   pageSize?: number;

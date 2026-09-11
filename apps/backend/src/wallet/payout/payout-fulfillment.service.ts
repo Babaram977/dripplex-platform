@@ -27,9 +27,39 @@ export class PayoutFulfillmentService implements OnModuleInit {
     if (id) await this.initiate(id);
   }
 
-  public async initiate(id: string): Promise<void> {
-    const row = await this.prisma.withdrawalRequest.findUnique({ where: { id } });
-    if (row?.status !== WithdrawalRequestStatus.PENDING) return;
+  /**
+   * The verified account this payout is going to.
+   *
+   * A merchant's settlement account is in `bank_accounts`, everyone else's in
+   * `customer_bank_accounts`, and a request carries exactly one of the two.
+   * Null means there is no destination that can still be paid — deleted,
+   * never confirmed by the bank, or missing the code the provider needs — and
+   * the caller fails the payout rather than guessing at any of it.
+   */
+  private async destination(row: {
+    bankAccountId: string | null;
+    merchantBankAccountId: string | null;
+  }): Promise<{ bankCode: string; accountNumber: string; accountName: string } | null> {
+    if (row.merchantBankAccountId !== null) {
+      const merchantAccount = await this.prisma.bankAccount.findUnique({
+        where: { id: row.merchantBankAccountId },
+      });
+      if (merchantAccount === null) {
+        return null;
+      }
+      if (merchantAccount.verifiedAt === null || merchantAccount.bankCode === null) {
+        return null;
+      }
+      return {
+        bankCode: merchantAccount.bankCode,
+        accountNumber: merchantAccount.accountNumber,
+        accountName: merchantAccount.accountName,
+      };
+    }
+
+    if (row.bankAccountId === null) {
+      return null;
+    }
     const account = await this.prisma.customerBankAccount.findUnique({
       where: { id: row.bankAccountId },
     });
@@ -38,6 +68,20 @@ export class PayoutFulfillmentService implements OnModuleInit {
       account.accountNameVerifiedAt === null ||
       account.bankCode === null
     ) {
+      return null;
+    }
+    return {
+      bankCode: account.bankCode,
+      accountNumber: account.accountNumber,
+      accountName: account.accountName,
+    };
+  }
+
+  public async initiate(id: string): Promise<void> {
+    const row = await this.prisma.withdrawalRequest.findUnique({ where: { id } });
+    if (row?.status !== WithdrawalRequestStatus.PENDING) return;
+    const account = await this.destination(row);
+    if (account === null) {
       await this.fail(id, 'Verified payout destination is no longer available');
       return;
     }

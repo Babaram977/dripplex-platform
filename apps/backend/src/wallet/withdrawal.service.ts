@@ -44,6 +44,8 @@ export interface WithdrawalRequestDto {
   amount: number;
   currency: string;
   status: WithdrawalRequestStatus;
+  /// The destination this payout is going to, whichever table it lives in.
+  /// Callers care which account, not which persona's table holds it.
   bankAccountId: string;
   failureReason: string | null;
   adminNote: string | null;
@@ -57,7 +59,7 @@ function toDto(row: WithdrawalRequest): WithdrawalRequestDto {
     amount: Number(row.amount),
     currency: row.currency,
     status: row.status,
-    bankAccountId: row.bankAccountId,
+    bankAccountId: row.bankAccountId ?? row.merchantBankAccountId ?? '',
     failureReason: row.failureReason,
     adminNote: row.adminNote,
     processedAt: row.processedAt?.toISOString() ?? null,
@@ -104,6 +106,47 @@ export class WithdrawalService {
    * this is, and the reversal path below resolves it from the debited wallet
    * itself rather than assuming.
    */
+  /**
+   * Which verified bank account this payout is going to, and which column it
+   * belongs in.
+   *
+   * A merchant's settlement account lives in `bank_accounts` while every other
+   * persona links theirs in `customer_bank_accounts`, so the request carries
+   * one or the other and the database enforces that exactly one is set. The
+   * alternative — making merchants link a second account for payouts — is two
+   * records of the same bank that nobody keeps in step, and the one that drifts
+   * is the one money goes to.
+   *
+   * A merchant destination must be bank-verified. The other personas' accounts
+   * are verified at the point they are linked; a merchant may still hold a row
+   * created before verification existed, and an unverified destination is
+   * precisely what the name enquiry exists to prevent.
+   */
+  private async resolveDestination(
+    userId: string,
+    ownerType: WalletOwnerType,
+    bankAccountId: string,
+  ): Promise<{ bankAccountId: string } | { merchantBankAccountId: string }> {
+    if (ownerType !== WalletOwnerType.MERCHANT) {
+      await this.bankAccountsService.assertOwned(userId, bankAccountId);
+      return { bankAccountId };
+    }
+
+    const account = await this.prisma.bankAccount.findFirst({
+      where: { id: bankAccountId, merchantId: userId },
+    });
+    if (!account) {
+      throw new NotFoundDomainException('Bank account not found');
+    }
+    if (account.verifiedAt === null) {
+      throw new ValidationDomainException(
+        'That settlement account has not been confirmed with the bank yet',
+      );
+    }
+
+    return { merchantBankAccountId: account.id };
+  }
+
   public async create(
     userId: string,
     ownerType: WalletOwnerType,
@@ -121,7 +164,7 @@ export class WithdrawalService {
 
     await this.walletService.assertWithinLimits(ownerType, userId, input.amount);
     await this.walletPinService.verify(userId, input.pin);
-    await this.bankAccountsService.assertOwned(userId, input.bankAccountId);
+    const destination = await this.resolveDestination(userId, ownerType, input.bankAccountId);
 
     const wallet = await this.walletService.getWallet(ownerType, userId);
 
@@ -154,7 +197,7 @@ export class WithdrawalService {
       data: {
         userId,
         walletId: wallet.id,
-        bankAccountId: input.bankAccountId,
+        ...destination,
         amount: payable,
         currency: wallet.currency,
         status: WithdrawalRequestStatus.PENDING,

@@ -590,6 +590,7 @@ export type {
   WalletTransferReceiptDto,
   WalletTransferRequest,
   WithdrawalHistoryQuery,
+  PayoutResultDto,
   WithdrawalRequestDto,
   WithdrawalRequestStatus,
   WishlistDto,

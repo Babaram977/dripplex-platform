@@ -137,7 +137,16 @@ export class SettlementReportService {
       partnerRows.map((row) => row.userId),
     );
 
-    const lines: SettlementLineDto[] = partnerRows.map((row) => {
+    const lines: SettlementLineDto[] = partnerRows.flatMap((row) => {
+      // A rider or driver always links their destination in
+      // customer_bank_accounts; only a merchant's sits elsewhere, and merchants
+      // are already excluded above. A partner row without one would mean a
+      // payout with nowhere to send it, so it is left off the run rather than
+      // printed with blank bank details for somebody to transfer against.
+      if (row.bankAccount === null) {
+        return [];
+      }
+
       const partnerType =
         ownerTypeByWallet.get(row.walletId) === WalletOwnerType.RIDER ? 'RIDER' : 'DRIVER';
       return {

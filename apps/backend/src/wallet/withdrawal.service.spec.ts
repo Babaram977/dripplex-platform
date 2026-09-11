@@ -23,6 +23,7 @@ const walletId = '33333333-3333-4333-8333-333333333333';
 const requestId = '44444444-4444-4444-8444-444444444444';
 
 interface WithdrawalPrismaMock {
+  bankAccount: { findFirst: jest.Mock };
   withdrawalRequest: {
     create: jest.Mock;
     update: jest.Mock;
@@ -55,6 +56,104 @@ function request(overrides: Partial<Record<string, unknown>> = {}): Record<strin
 }
 
 describe('WithdrawalService', () => {
+  /**
+   * Merchants are paid by automatic settlement, and that does not change. This
+   * is the request they make for the balance it does not move — the same flow
+   * every other persona uses, which meant teaching it about a destination that
+   * lives in a different table.
+   */
+  describe('merchant payout destination', () => {
+    const merchantBankAccountId = 'merchant-bank-1';
+
+    beforeEach(() => {
+      prisma.wallet.findUnique.mockResolvedValue({
+        id: walletId,
+        ownerType: WalletOwnerType.MERCHANT,
+        ownerId: userId,
+      });
+      prisma.withdrawalRequest.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => request(data),
+      );
+    });
+
+    it('files the payout against the merchant bank account, not a customer one', async () => {
+      prisma.bankAccount.findFirst.mockResolvedValue({
+        id: merchantBankAccountId,
+        merchantId: userId,
+        verifiedAt: new Date(),
+      });
+
+      await service.create(userId, WalletOwnerType.MERCHANT, {
+        amount: 5000,
+        bankAccountId: merchantBankAccountId,
+        pin: '1234',
+      });
+
+      expect(prisma.withdrawalRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ merchantBankAccountId }),
+        }),
+      );
+      // The customer table is not consulted at all for a merchant.
+      expect(bankAccountsService.assertOwned).not.toHaveBeenCalled();
+    });
+
+    it('refuses an account the bank has never confirmed', async () => {
+      // Merchants can still hold rows created before verification existed.
+      // Paying one is exactly what the name enquiry is there to prevent.
+      prisma.bankAccount.findFirst.mockResolvedValue({
+        id: merchantBankAccountId,
+        merchantId: userId,
+        verifiedAt: null,
+      });
+
+      await expect(
+        service.create(userId, WalletOwnerType.MERCHANT, {
+          amount: 5000,
+          bankAccountId: merchantBankAccountId,
+          pin: '1234',
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+
+      expect(prisma.withdrawalRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an account belonging to another merchant', async () => {
+      prisma.bankAccount.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.create(userId, WalletOwnerType.MERCHANT, {
+          amount: 5000,
+          bankAccountId: merchantBankAccountId,
+          pin: '1234',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundDomainException);
+
+      expect(prisma.withdrawalRequest.create).not.toHaveBeenCalled();
+    });
+
+    it('still routes a driver through the customer bank table', async () => {
+      // The merchant branch must not have changed anyone else's destination.
+      prisma.wallet.findUnique.mockResolvedValue({
+        id: walletId,
+        ownerType: WalletOwnerType.DRIVER,
+        ownerId: userId,
+      });
+
+      await service.create(userId, WalletOwnerType.DRIVER, {
+        amount: 5000,
+        bankAccountId,
+        pin: '1234',
+      });
+
+      expect(bankAccountsService.assertOwned).toHaveBeenCalledWith(userId, bankAccountId);
+      expect(prisma.bankAccount.findFirst).not.toHaveBeenCalled();
+      expect(prisma.withdrawalRequest.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ bankAccountId }) }),
+      );
+    });
+  });
+
   let prisma: WithdrawalPrismaMock;
   let walletService: {
     getWallet: jest.Mock;
@@ -77,6 +176,9 @@ describe('WithdrawalService', () => {
           ownerType: WalletOwnerType.CUSTOMER,
           ownerId: userId,
         }),
+      },
+      bankAccount: {
+        findFirst: jest.fn(),
       },
       withdrawalRequest: {
         create: jest.fn(),

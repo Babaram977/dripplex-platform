@@ -117,7 +117,12 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // `Referral.ownerType` is fixed at creation and decides which wallet the
     // reward is paid into, so a rider issued a code under the driver
     // permission would have their reward filed as a driver's.
-    expect(PERMISSION_SEEDS).toHaveLength(142);
+    // 142 -> 143: `merchant:wallet:withdraw`. Merchants are paid by automatic
+    // settlement when an online order completes, which continues, but they were
+    // the only earning persona who could not ask for a payout of their own
+    // balance. Split from :read for the reason every persona splits them —
+    // seeing a balance and moving it are different authorities.
+    expect(PERMISSION_SEEDS).toHaveLength(143);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

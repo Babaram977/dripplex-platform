@@ -46,6 +46,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'merchant:kyc:manage',
     'merchant:bank:manage',
     'merchant:wallet:read',
+    'merchant:wallet:withdraw',
     'merchant:commercial:read',
     'merchant:analytics:read',
     'merchant:reviews:reply',

@@ -18,6 +18,7 @@ import type {
   BankAccountDto,
   BankOptionDto,
   ResolvedBankAccountDto,
+  WithdrawalRequestDto,
   CommissionAccountDto,
   CommissionLedgerEntryDto,
   OrderSettlementDto,
@@ -128,6 +129,7 @@ export default function WalletPage(): React.JSX.Element {
       ) : (
         <>
           <BalanceCard wallet={wallet} />
+          <PayoutCard wallet={wallet} />
           <CommercialCard currency={wallet?.currency ?? 'NGN'} />
           <SettlementsCard />
           <LedgerCard currency={wallet?.currency ?? 'NGN'} />
@@ -180,6 +182,183 @@ function BalanceCard({ wallet }: { wallet: WalletDto | null }): React.JSX.Elemen
  * warning. Pure read — no new commercial behavior, matches
  * `MerchantCommercialController`'s `GET /merchant/commercial/account` 1:1.
  */
+/**
+ * Asking to be paid out of the wallet balance.
+ *
+ * Automatic settlement is unchanged and remains how a merchant is normally
+ * paid — an online order completing transfers the net amount to the verified
+ * account without anybody asking. This is the manual request alongside it, for
+ * the balance automatic settlement does not move, and it goes into the same
+ * Operations queue and the same approval as a driver's or a rider's.
+ *
+ * The destination is the verified settlement account already on file. It is
+ * not chosen here, because a second bank account linked only for payouts is
+ * one more record nobody keeps in step with the first.
+ */
+function PayoutCard({ wallet }: { wallet: WalletDto | null }): React.JSX.Element {
+  const [accounts, setAccounts] = React.useState<BankAccountDto[]>([]);
+  const [payouts, setPayouts] = React.useState<WithdrawalRequestDto[]>([]);
+  const [pinSet, setPinSet] = React.useState<boolean | null>(null);
+  const [amount, setAmount] = React.useState('');
+  const [pin, setPin] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<string | null>(null);
+
+  const load = React.useCallback(() => {
+    void sdk.merchant
+      .listBankAccounts()
+      .then(setAccounts)
+      .catch(() => {
+        setAccounts([]);
+      });
+    void sdk.merchant
+      .listPayouts()
+      .then((page) => {
+        setPayouts(page.items);
+      })
+      .catch(() => {
+        setPayouts([]);
+      });
+    void sdk.merchant
+      .hasWalletPin()
+      .then((r) => {
+        setPinSet(r.set);
+      })
+      .catch(() => {
+        setPinSet(null);
+      });
+  }, []);
+  React.useEffect(load, [load]);
+
+  const destination = accounts.find((a) => a.isDefault && a.verifiedAt !== null);
+  const available = wallet?.availableBalance ?? 0;
+  const requested = Number(amount);
+  const canRequest =
+    destination !== undefined &&
+    pinSet === true &&
+    Number.isFinite(requested) &&
+    requested > 0 &&
+    requested <= available &&
+    /^[0-9]{4}$/.test(pin);
+
+  const submit = (): void => {
+    // canRequest already establishes a verified destination; TypeScript narrows
+    // `destination` through it, so re-checking here is dead code.
+    if (!canRequest) {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    void (async () => {
+      try {
+        const result = await sdk.merchant.requestPayout({
+          amount: requested,
+          bankAccountId: destination.id,
+          pin,
+        });
+        setNotice(
+          result.payout === null
+            ? 'That amount cleared commission owed, so there is nothing to transfer.'
+            : 'Payout requested. Operations will action it on the next run.',
+        );
+        setAmount('');
+        setPin('');
+        load();
+      } catch (submitError) {
+        setError(describeSdkError(submitError).description);
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Request a payout</CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <p className="text-muted-foreground text-sm">
+          Online orders settle to your bank automatically. Use this for the balance that has not
+          settled on its own — Operations approves it the same way they do for drivers and riders.
+        </p>
+
+        {destination === undefined ? (
+          <p className="text-muted-foreground text-sm">
+            Add a bank account above and confirm it with your bank first. A payout only goes to a
+            verified default account.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm">
+              To <span className="font-medium">{destination.bankName}</span> ·{' '}
+              {destination.accountName} · {destination.accountNumber}
+            </p>
+
+            {pinSet === false ? (
+              <p className="text-muted-foreground text-sm">
+                Set a 4-digit wallet PIN before requesting a payout.
+              </p>
+            ) : null}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="payoutAmount">Amount</Label>
+                <Input
+                  id="payoutAmount"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(event) => {
+                    setAmount(event.target.value.replace(/[^0-9.]/g, ''));
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="payoutPin">Wallet PIN</Label>
+                <Input
+                  id="payoutPin"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={pin}
+                  onChange={(event) => {
+                    setPin(event.target.value.replace(/[^0-9]/g, ''));
+                  }}
+                />
+              </div>
+              <div className="flex items-end">
+                <Button type="button" disabled={!canRequest || busy} onClick={submit}>
+                  {busy ? 'Requesting…' : 'Request payout'}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {error !== null ? (
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {notice !== null ? <p className="text-sm">{notice}</p> : null}
+
+        {payouts.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-muted-foreground text-xs">Recent requests</p>
+            {payouts.slice(0, 5).map((payout) => (
+              <div key={payout.id} className="flex items-center justify-between text-sm">
+                <span>{formatMoney(payout.amount, payout.currency)}</span>
+                <span className="text-muted-foreground">{payout.status}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 function CommercialCard({ currency }: { currency: string }): React.JSX.Element | null {
   const [account, setAccount] = React.useState<CommissionAccountDto | null>(null);
   const [loading, setLoading] = React.useState(true);

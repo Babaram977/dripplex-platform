@@ -6,7 +6,10 @@ import type {
   BusinessDto,
   BankOptionDto,
   CreateBankAccountRequest,
+  CreateWithdrawalRequest,
+  PayoutResultDto,
   ResolvedBankAccountDto,
+  WithdrawalRequestDto,
   CreateBusinessRequest,
   CreateProductRequest,
   CreateProductVariantRequest,
@@ -186,6 +189,48 @@ export class MerchantApi {
       `/merchant/wallet/transactions${toQueryString(query)}`,
       { method: 'GET', auth: true },
     );
+  }
+
+  /**
+   * A merchant asking to be paid out of their own wallet balance.
+   *
+   * Automatic settlement is unchanged and stays the main route: an online order
+   * completing transfers the net amount without anybody asking. This is the
+   * manual request alongside it, into the same Operations queue and the same
+   * approval every other persona goes through. The destination is the
+   * merchant's existing verified settlement account.
+   */
+  public requestPayout(body: CreateWithdrawalRequest): Promise<PayoutResultDto> {
+    return this.http.request<PayoutResultDto>('/merchant/wallet/payouts', {
+      method: 'POST',
+      body,
+      auth: true,
+    });
+  }
+
+  public listPayouts(
+    query: WalletHistoryQuery = {},
+  ): Promise<PaginatedResult<WithdrawalRequestDto>> {
+    return this.http.request<PaginatedResult<WithdrawalRequestDto>>(
+      `/merchant/wallet/payouts${toQueryString(query)}`,
+      { method: 'GET', auth: true },
+    );
+  }
+
+  /** Required before money can leave the wallet, exactly as for a driver. */
+  public setWalletPin(pin: string): Promise<{ set: true }> {
+    return this.http.request<{ set: true }>('/merchant/wallet/pin', {
+      method: 'POST',
+      body: { pin },
+      auth: true,
+    });
+  }
+
+  public hasWalletPin(): Promise<{ set: boolean }> {
+    return this.http.request<{ set: boolean }>('/merchant/wallet/pin', {
+      method: 'GET',
+      auth: true,
+    });
   }
 
   /**

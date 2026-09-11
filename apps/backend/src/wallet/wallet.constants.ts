@@ -4,6 +4,10 @@ export const WALLET_PERMISSIONS = {
   CUSTOMER_FUND: 'customer:wallet:fund',
   CUSTOMER_WITHDRAW: 'customer:wallet:withdraw',
   MERCHANT_READ: 'merchant:wallet:read',
+  /** A merchant asking for a payout of their own wallet balance. Separate from
+   *  reading it, for the same reason every other persona splits the two:
+   *  seeing a balance and moving it are different authorities. */
+  MERCHANT_WITHDRAW: 'merchant:wallet:withdraw',
   RIDER_READ: 'rider:wallet:read',
   DRIVER_READ: 'driver:wallet:read',
   /// A rider or driver asking for their earnings to be paid out. Separate

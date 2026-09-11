@@ -75,6 +75,7 @@ const PERMISSION_SEEDS = [
     description: 'Withdraw funds from own wallet to a bank account',
   },
   { code: 'merchant:wallet:read', description: 'Read merchant wallet' },
+  { code: 'merchant:wallet:withdraw', description: 'Request a merchant wallet payout' },
   { code: 'rider:wallet:read', description: 'Read rider wallet' },
   { code: 'driver:wallet:read', description: 'Read driver wallet' },
   {
@@ -425,6 +426,7 @@ const ROLE_PERMISSION_GRANTS = {
     'merchant:kyc:manage',
     'merchant:bank:manage',
     'merchant:wallet:read',
+    'merchant:wallet:withdraw',
     'integrations:read',
     'integrations:write',
     'merchant:commercial:read',
