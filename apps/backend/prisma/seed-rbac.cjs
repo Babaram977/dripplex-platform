@@ -190,6 +190,15 @@ const PERMISSION_SEEDS = [
     description: 'View and edit the Ops-configurable platform (ride) commission rate',
   },
   {
+    code: 'admin:commission-campaign:read',
+    description: 'View DPX-COMMISSION-001 commission campaigns and their windows',
+  },
+  {
+    code: 'admin:commission-campaign:manage',
+    description:
+      'Create, edit, pause and archive commission campaigns — the temporary rates charged to merchants, riders and drivers',
+  },
+  {
     code: 'admin:commercial:account:manage',
     description: 'View a commission account/ledger and record manual external payments against it',
   },
@@ -542,6 +551,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:history:read',
     'admin:fleets:manage',
     'admin:fleets:commission:manage',
+    'admin:commission-campaign:read',
     'users:read',
     'audit:read',
   ],
@@ -594,6 +604,8 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
     'admin:commercial:commission-settings:manage',
+    'admin:commission-campaign:read',
+    'admin:commission-campaign:manage',
     'admin:rides:pricing:manage',
     'admin:utilities:manage',
     'admin:commercial:account:manage',
@@ -716,6 +728,8 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:merchant-settlement:commission:manage',
     'admin:commercial:credit-settings:manage',
     'admin:commercial:commission-settings:manage',
+    'admin:commission-campaign:read',
+    'admin:commission-campaign:manage',
     'admin:rides:pricing:manage',
     'admin:utilities:manage',
     'admin:commercial:account:manage',

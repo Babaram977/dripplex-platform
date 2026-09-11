@@ -5,6 +5,7 @@ import { CartClient } from '../cart/cart-client.js';
 import { HttpClient } from '../client/http-client.js';
 import { AdminCommercialCreditSettingsClient } from '../commercial/admin-commercial-credit-settings-client.js';
 import { AdminCommissionAccountsClient } from '../commercial/admin-commission-accounts-client.js';
+import { AdminCommissionCampaignsClient } from '../commercial/admin-commission-campaigns-client.js';
 import { AdminPlatformCommissionSettingsClient } from '../commercial/admin-platform-commission-settings-client.js';
 import { DriverCommercialClient } from '../commercial/driver-commercial-client.js';
 import { MerchantCommercialClient } from '../commercial/merchant-commercial-client.js';
@@ -126,6 +127,7 @@ export class DripplexClient {
   public readonly driverInspections: DriverInspectionsClient;
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
   public readonly adminRidePricing: AdminRidePricingClient;
+  public readonly adminCommissionCampaigns: AdminCommissionCampaignsClient;
   public readonly adminUtilities: AdminUtilitiesClient;
   public readonly operationsInspections: OperationsInspectionsClient;
   public readonly operationsFleet: OperationsFleetClient;
@@ -209,6 +211,7 @@ export class DripplexClient {
     this.driverInspections = new DriverInspectionsClient(this.http);
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
     this.adminRidePricing = new AdminRidePricingClient(this.http);
+    this.adminCommissionCampaigns = new AdminCommissionCampaignsClient(this.http);
     this.adminUtilities = new AdminUtilitiesClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);

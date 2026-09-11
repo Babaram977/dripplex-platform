@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   CommissionOwnerType,
+  CommissionScope,
   DeliveryCourierType,
   OrderPaymentMethod,
   WalletOwnerType,
@@ -8,6 +9,7 @@ import {
 
 import { COMMISSION_REFERENCE_TYPES } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { ORDERS_REPOSITORY, type OrdersRepository } from '../orders/repositories/orders.repository';
 import { PrismaService } from '../prisma/prisma.service';
@@ -54,6 +56,7 @@ export class RiderSettlementService {
     private readonly walletService: WalletService,
     private readonly commissionAccounts: CommissionAccountService,
     private readonly platformCommissionSettings: PlatformCommissionSettingsService,
+    private readonly commissionRates: CommissionRateResolverService,
     @Inject(ORDERS_REPOSITORY)
     private readonly ordersRepository: OrdersRepository,
   ) {}
@@ -108,7 +111,21 @@ export class RiderSettlementService {
       return false;
     }
 
-    const rate = await this.platformCommissionSettings.getEffectiveRate();
+    // A commission campaign can override the standing rate for a window, for a
+    // scope, under conditions (DPX-COMMISSION-001). Which one applied is
+    // recorded on the delivery, because rates now change week to week — the
+    // rate itself stays derivable as platformCommission / deliveryFee.
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.DELIVERY,
+      await this.platformCommissionSettings.getEffectiveRate(),
+      {
+        userId: job.riderId,
+        ...(order?.paymentMethod === undefined || order.paymentMethod === null
+          ? {}
+          : { paymentMethod: order.paymentMethod }),
+      },
+    );
+    const rate = resolved.rate;
     // Round the platform's cut, then give the rider the remainder, so the two
     // halves always add back to exactly the fee — never a stray kobo either way.
     const platformCommission = Math.round(deliveryFee * rate * 100) / 100;
@@ -118,7 +135,12 @@ export class RiderSettlementService {
     // claimed it, stop — this is the idempotency guard.
     const claimed = await this.prisma.deliveryJob.updateMany({
       where: { id: job.id, settledAt: null },
-      data: { settledAt: new Date(), riderEarning, platformCommission },
+      data: {
+        settledAt: new Date(),
+        riderEarning,
+        platformCommission,
+        commissionCampaignId: resolved.campaignId,
+      },
     });
     if (claimed.count === 0) {
       return false;

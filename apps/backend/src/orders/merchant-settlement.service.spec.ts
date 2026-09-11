@@ -5,6 +5,7 @@ import { OrderSettlementStatus, PrismaClient, WalletOwnerType } from '@prisma/cl
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -94,6 +95,7 @@ describe('MerchantSettlementService', () => {
       auditService,
       commissionSettings,
       commissionAccounts,
+      new CommissionRateResolverService(prisma),
     );
 
     // Reset the singleton commission setting to a known 10% before every

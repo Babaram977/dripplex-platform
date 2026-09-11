@@ -1619,6 +1619,55 @@ model RideSurchargeZone {
   @@map("ride_surcharge_zones")
 }
 
+/// DPX-COMMISSION-001 — a commission rate that applies for a window, to a
+/// scope, under conditions.
+///
+/// The two singleton settings (MerchantCommissionSetting,
+/// PlatformCommissionSetting) remain the standing rate — what DrippleX charges
+/// when nothing special is running. A campaign is a temporary override on top:
+/// 7% this week, 14% next week, 5% on weekend orders. Ops creates and edits
+/// them without a redeploy, the same as the singletons.
+///
+/// Overlap is resolved by `priority` (highest wins), then by the most recently
+/// created — so a deliberate override always beats a broad standing campaign,
+/// and two equally-ranked campaigns never resolve arbitrarily.
+///
+/// `rules` reuses the PromotionRules JSON vocabulary (weekdays, hour window,
+/// cities, states, merchant categories, ride types, payment methods) rather
+/// than inventing a second eligibility language for the same concepts.
+/// "Weekend orders" is `{ "weekdays": [0, 6] }`.
+///
+/// Campaigns are never hard-deleted — a rate that was once applied to real
+/// money has to stay explicable, and settlement rows point back here.
+model CommissionCampaign {
+  id             String                   @id @default(uuid()) @db.Uuid
+  name           String                   @db.VarChar(150)
+  description    String?                  @db.Text
+  scope          CommissionScope
+  /// Fraction, not percent: 0.07 is 7%.
+  commissionRate Decimal                  @map("commission_rate") @db.Decimal(5, 4)
+  status         CommissionCampaignStatus @default(DRAFT)
+  priority       Int                      @default(0)
+  startsAt       DateTime                 @map("starts_at")
+  endsAt         DateTime                 @map("ends_at")
+  rules          Json?
+  /// Whether the affected partners are told when this goes live. A rate cut
+  /// nobody hears about earns nothing; a rate rise nobody hears about is worse.
+  announce       Boolean                  @default(true)
+  announcedAt    DateTime?                @map("announced_at")
+  pausedAt       DateTime?                @map("paused_at")
+  archivedAt     DateTime?                @map("archived_at")
+  createdBy      String?                  @map("created_by") @db.Uuid
+  updatedBy      String?                  @map("updated_by") @db.Uuid
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  /// The resolver's hot path: active campaigns for one scope, in force now.
+  @@index([scope, status, startsAt, endsAt])
+  @@index([status])
+  @@map("commission_campaigns")
+}
+
 model PlatformCommissionSetting {
   id             String   @id @default(uuid()) @db.Uuid
   commissionRate Decimal  @default(0.10) @map("commission_rate") @db.Decimal(5, 4)
@@ -1700,6 +1749,11 @@ model OrderSettlement {
   commissionRate        Decimal               @map("commission_rate") @db.Decimal(5, 4)
   commissionAmount      Decimal               @map("commission_amount") @db.Decimal(12, 2)
   merchantAmount        Decimal               @map("merchant_amount") @db.Decimal(12, 2)
+  /// Which CommissionCampaign produced `commissionRate`, or null when the
+  /// standing MerchantCommissionSetting did. Rates now change week to week,
+  /// so "why was this one 7%?" has to be answerable from the settlement row
+  /// rather than reconstructed from timestamps against a campaign table.
+  commissionCampaignId  String?               @map("commission_campaign_id") @db.Uuid
   currency              String                @default("NGN") @db.VarChar(3)
   walletLedgerEntryId   String?               @map("wallet_ledger_entry_id") @db.Uuid
   failureReason         String?               @map("failure_reason") @db.VarChar(1000)
@@ -1884,6 +1938,10 @@ model DeliveryJob {
   /// nothing at all — the fee was collected and attributed to no one.
   riderEarning             Decimal?             @map("rider_earning") @db.Decimal(12, 2)
   platformCommission       Decimal?             @map("platform_commission") @db.Decimal(12, 2)
+  /// Which CommissionCampaign set the rate behind `platformCommission`, or
+  /// null for the standing PlatformCommissionSetting. The rate itself stays
+  /// derivable as platformCommission / deliveryFee.
+  commissionCampaignId     String?              @map("commission_campaign_id") @db.Uuid
   /// Set once, by the settlement path. Its presence is the idempotency guard:
   /// a re-fired completion event must never pay a rider twice.
   settledAt                DateTime?            @map("settled_at")
@@ -2077,6 +2135,9 @@ model Ride {
   paymentStatus          RidePaymentStatus        @default(PENDING) @map("payment_status")
   platformCommission     Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
   platformCommissionRate Decimal?                 @map("platform_commission_rate") @db.Decimal(5, 4)
+  /// Which CommissionCampaign set `platformCommissionRate`, or null for the
+  /// standing PlatformCommissionSetting.
+  commissionCampaignId   String?                  @map("commission_campaign_id") @db.Uuid
   driverEarning          Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
   tipAmount              Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
   requestedAt            DateTime                 @default(now()) @map("requested_at")
@@ -2831,6 +2892,13 @@ enum NotificationType {
   /// succeeding and the *service* arriving are two different moments for
   /// utilities: money can be taken minutes or hours before Peyflex answers.
   UTILITY_PURCHASE_DELIVERED
+  /// DPX-COMMISSION-001 — the commission rate a partner is charged has
+  /// changed for a period. Its own type rather than PROMOTION or GENERIC:
+  /// NotificationPreference is keyed on (channel, type), and what DrippleX
+  /// charges a partner is not marketing they should be able to mute alongside
+  /// offers.
+  COMMISSION_CAMPAIGN_STARTED
+  COMMISSION_CAMPAIGN_ENDED
   /// A utility purchase could not be completed and the money has been
   /// returned to the DrippleX Wallet (DPX-D4).
   UTILITY_PURCHASE_REVERSED
@@ -2963,6 +3031,30 @@ enum PromotionStatus {
   EXPIRED
   ARCHIVED
   CANCELLED
+}
+
+/// Which commission a CommissionCampaign overrides. One value per place the
+/// platform actually reads a rate at settlement time.
+///
+/// Fleet commission is deliberately absent: it is banded on a fleet's monthly
+/// order volume and settles once the month closes, so a week-long campaign has
+/// no well-defined meaning against it. See docs/DPX-COMMISSION-001.
+enum CommissionScope {
+  /// The platform's cut of a marketplace order — the merchant's rate.
+  MERCHANT_ORDER
+  /// The platform's cut of a delivery fee — the rider's rate.
+  DELIVERY
+  /// The platform's cut of a ride fare — the driver's rate.
+  RIDE
+}
+
+enum CommissionCampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
 }
 
 enum LoyaltyTier {

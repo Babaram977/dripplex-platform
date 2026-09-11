@@ -5,6 +5,7 @@ import { PrismaClient, WalletOwnerType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { FleetsService } from '../fleets/fleets.service';
@@ -206,6 +207,11 @@ describe('Ride end-to-end lifecycle (RIDE-002.9)', () => {
       // DPX-FLEET — resolves whether a driver rides for a fleet, which is
       // what decides between the platform rate and zero.
       new FleetsService(prisma, auditService),
+      // DPX-COMMISSION-001 — a real resolver against the real database. With
+      // no campaigns stored it returns the standing rate, which is exactly the
+      // fallback these tests rely on and is worth exercising rather than
+      // stubbing away.
+      new CommissionRateResolverService(prisma),
     );
     ratingService = new RideRatingService(prisma, auditService);
     receiptService = new RideReceiptService(prisma);

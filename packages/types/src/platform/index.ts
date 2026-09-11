@@ -764,6 +764,84 @@ export interface ListReferralFraudChecksQuery {
   status?: ReferralFraudCheckStatus;
 }
 
+/**
+ * DPX-COMMISSION-001 — which commission a campaign overrides. One value per
+ * place the platform actually reads a rate at settlement time.
+ *
+ * Fleet commission is deliberately absent: it is banded on a fleet's monthly
+ * order volume and settles once the month closes, so a week-long campaign has
+ * no well-defined meaning against it.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE';
+
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+/**
+ * Optional eligibility conditions on a commission campaign, in the same
+ * vocabulary the promotions engine uses for customer discounts rather than a
+ * second language for the same concepts. "Weekend orders" is
+ * `{ weekdays: [0, 6] }` — 0 is Sunday, matching `Date.getDay()`.
+ *
+ * A condition the settlement cannot answer makes the campaign not apply, and
+ * the standing rate is charged instead.
+ */
+export interface CommissionCampaignRules {
+  weekdays?: number[];
+  startHour?: number;
+  endHour?: number;
+  eligibleCities?: string[];
+  eligibleStates?: string[];
+  eligibleCountries?: string[];
+  merchantCategories?: string[];
+  paymentMethods?: string[];
+  rideTypes?: string[];
+  whitelistUserIds?: string[];
+  blacklistUserIds?: string[];
+}
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** Fraction, not percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: CommissionCampaignRules | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCommissionCampaignRequest {
+  name: string;
+  description?: string;
+  scope: CommissionScope;
+  commissionRate: number;
+  priority?: number;
+  startsAt: string;
+  endsAt: string;
+  rules?: CommissionCampaignRules;
+  announce?: boolean;
+}
+
+export type UpdateCommissionCampaignRequest = Partial<
+  Omit<CreateCommissionCampaignRequest, 'scope'>
+>;
+
+export interface ListCommissionCampaignsQuery {
+  page?: number;
+  pageSize?: number;
+  scope?: CommissionScope;
+  status?: CommissionCampaignStatus;
+}
+
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM' | 'VIP';
 
 export interface LoyaltyAccountDto {

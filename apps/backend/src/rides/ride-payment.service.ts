@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   CommissionOwnerType,
+  CommissionScope,
   RidePaymentMethod,
   RidePaymentStatus,
   RideStatus,
@@ -16,6 +17,7 @@ import {
   DEFAULT_PLATFORM_COMMISSION_RATE,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import {
   ConflictDomainException,
@@ -67,6 +69,8 @@ interface FareSplit {
   driverEarning: number;
   /** The commission rate this split was computed at (snapshotted onto the ride). */
   platformCommissionRate: number;
+  /** The commission campaign that set the rate, or null for the standing one. */
+  commissionCampaignId: string | null;
   /**
    * The fare before any coupon — `ride.totalFare + ride.promoDiscount`. This,
    * not the discounted fare, is what the driver is paid on and what commission
@@ -102,6 +106,7 @@ export class RidePaymentService {
     private readonly commissionAccounts: CommissionAccountService,
     private readonly platformCommissionSettings: PlatformCommissionSettingsService,
     private readonly fleets: FleetsService,
+    private readonly commissionRates: CommissionRateResolverService,
   ) {}
 
   public async initiatePayment(
@@ -210,8 +215,8 @@ export class RidePaymentService {
       return toRideDto(await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } }));
     }
 
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId);
     await this.captureIntoPlatformWallet(ride, context);
     await this.payoutDriver(ride, split, context);
     return await this.markPaid(ride, ride.paymentMethod, split, context);
@@ -231,12 +236,30 @@ export class RidePaymentService {
    * join or leave a fleet: what matters is who they rode for when the trip
    * settled, and the rate is snapshotted onto the ride either way.
    */
-  private async effectiveCommissionRate(ride: Ride): Promise<number> {
+  private async effectiveCommissionRate(
+    ride: Ride,
+  ): Promise<{ rate: number; campaignId: string | null }> {
     if (ride.driverId !== null) {
       const membership = await this.fleets.fleetForUser(ride.driverId);
-      if (membership !== null) return 0;
+      // A fleet trip charges the fleet, not the driver. No commission campaign
+      // applies here — overriding zero would charge the driver on a trip
+      // DrippleX already bills the fleet for, taking twice from one fare.
+      if (membership !== null) return { rate: 0, campaignId: null };
     }
-    return await this.platformCommissionSettings.getEffectiveRate();
+
+    // DPX-COMMISSION-001 — a campaign can override the standing rate for a
+    // window, under conditions. The resolved rate is snapshotted onto the ride
+    // exactly as before, now alongside which campaign produced it.
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.RIDE,
+      await this.platformCommissionSettings.getEffectiveRate(),
+      {
+        ...(ride.driverId === null ? {} : { userId: ride.driverId }),
+        rideType: ride.rideType,
+        ...(ride.paymentMethod === null ? {} : { paymentMethod: ride.paymentMethod }),
+      },
+    );
+    return { rate: resolved.rate, campaignId: resolved.campaignId };
   }
 
   public async confirmCash(
@@ -245,8 +268,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId);
 
     // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
     // the driver already holds it physically, so there is nothing to
@@ -478,8 +501,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requirePayableRide(customerId, rideId);
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId);
 
     try {
       await this.walletService.debit({
@@ -614,7 +637,11 @@ export class RidePaymentService {
    * the discount exceeds the commission**. At a 10% rate that is most coupons,
    * and it is the intended behaviour: funding a promotion means paying for it.
    */
-  private computeSplit(ride: Ride, rate: number): FareSplit {
+  private computeSplit(
+    ride: Ride,
+    rate: number,
+    commissionCampaignId: string | null = null,
+  ): FareSplit {
     const charged = Number(ride.totalFare);
     const promoDiscount = Number(ride.promoDiscount);
     const grossFare = this.roundCurrency(charged + promoDiscount);
@@ -624,6 +651,7 @@ export class RidePaymentService {
       platformCommission,
       driverEarning,
       platformCommissionRate: rate,
+      commissionCampaignId,
       grossFare,
       promoDiscount,
     };
@@ -1069,6 +1097,7 @@ export class RidePaymentService {
         paymentStatus: RidePaymentStatus.PAID,
         platformCommission: split.platformCommission,
         platformCommissionRate: split.platformCommissionRate,
+        commissionCampaignId: split.commissionCampaignId,
         driverEarning: split.driverEarning,
       },
     });

@@ -148,6 +148,15 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     description: 'View and edit the Ops-configurable platform (ride) commission rate',
   },
   {
+    code: 'admin:commission-campaign:read',
+    description: 'View DPX-COMMISSION-001 commission campaigns and their windows',
+  },
+  {
+    code: 'admin:commission-campaign:manage',
+    description:
+      'Create, edit, pause and archive commission campaigns — the temporary rates charged to merchants, riders and drivers',
+  },
+  {
     code: 'admin:rides:pricing:manage',
     description:
       'View and edit the ride fare table and surcharge zones (pricing console). Separate from admin:rides:support — refunding a trip must not also grant repricing the platform',

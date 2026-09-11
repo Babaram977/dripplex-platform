@@ -122,13 +122,22 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // the only earning persona who could not ask for a payout of their own
     // balance. Split from :read for the reason every persona splits them —
     // seeing a balance and moving it are different authorities.
-    expect(PERMISSION_SEEDS).toHaveLength(143);
+    // 143 -> 145: `admin:commission-campaign:read` / `:manage`
+    // (DPX-COMMISSION-001). Split from each other because Operations staff need
+    // to see which rate is running to answer a partner's question, without
+    // being able to change what the platform charges; split from
+    // `admin:commercial:commission-settings:manage` because that is the
+    // standing rate and this is a temporary override, and the two are edited
+    // by the same people but read by different ones.
+    expect(PERMISSION_SEEDS).toHaveLength(145);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
         'customer:utilities:read',
         'customer:utilities:purchase',
         'admin:utilities:manage',
+        'admin:commission-campaign:read',
+        'admin:commission-campaign:manage',
       ]),
     );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(

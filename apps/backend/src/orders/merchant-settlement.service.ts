@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import {
   CommissionOwnerType,
+  CommissionScope,
   OrderPaymentMethod,
   OrderSettlementStatus,
   OrderStatus,
@@ -15,6 +16,7 @@ import {
   COMMISSION_REFERENCE_TYPES,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -85,6 +87,7 @@ export class MerchantSettlementService implements OnModuleInit {
     private readonly auditService: AuditService,
     private readonly commissionSettings: MerchantCommissionSettingsService,
     private readonly commissionAccounts: CommissionAccountService,
+    private readonly commissionRates: CommissionRateResolverService,
     @Optional() private readonly eventBus?: DomainEventBus,
   ) {}
 
@@ -155,8 +158,21 @@ export class MerchantSettlementService implements OnModuleInit {
       return null;
     }
 
+    // The standing rate is what DrippleX charges when nothing special is
+    // running; a commission campaign can override it for a window, for a
+    // scope, under conditions (DPX-COMMISSION-001). Which one applied is
+    // recorded on the settlement row, because rates now change week to week
+    // and "why was this one 7%?" has to be answerable from the money record.
     const setting = await this.commissionSettings.getEffective();
-    const rate = Number(setting.commissionRate);
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.MERCHANT_ORDER,
+      Number(setting.commissionRate),
+      {
+        userId: order.merchantId,
+        ...(order.paymentMethod === null ? {} : { paymentMethod: order.paymentMethod }),
+      },
+    );
+    const rate = resolved.rate;
     const grossAmount = this.roundMoney(Number(order.subtotal));
     const commissionAmount = this.roundMoney(grossAmount * rate);
     const merchantAmount = this.roundMoney(grossAmount - commissionAmount);
@@ -171,6 +187,7 @@ export class MerchantSettlementService implements OnModuleInit {
           status: OrderSettlementStatus.PENDING,
           grossAmount,
           commissionRate: rate,
+          commissionCampaignId: resolved.campaignId,
           commissionAmount,
           merchantAmount,
           currency: order.currency,
