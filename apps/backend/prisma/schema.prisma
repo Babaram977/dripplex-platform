@@ -1775,10 +1775,24 @@ model OrderSettlement {
   commissionAmount      Decimal               @map("commission_amount") @db.Decimal(12, 2)
   merchantAmount        Decimal               @map("merchant_amount") @db.Decimal(12, 2)
   /// Which CommissionCampaign produced `commissionRate`, or null when the
-  /// standing MerchantCommissionSetting did. Rates now change week to week,
-  /// so "why was this one 7%?" has to be answerable from the settlement row
-  /// rather than reconstructed from timestamps against a campaign table.
+  /// standing rate did. Rates now change week to week, so "why was this one
+  /// 7%?" has to be answerable from the settlement row rather than
+  /// reconstructed from timestamps against a campaign table.
   commissionCampaignId  String?               @map("commission_campaign_id") @db.Uuid
+  /// The merchant's negotiated rate as it stood when this settled, or null if
+  /// they had no agreement then (DPX-MERCHANT-016).
+  ///
+  /// Locked by founder decision 2026-09-11: an agreement is a commercial term,
+  /// and editing one must never be able to change what a past sale was charged.
+  /// `commissionRate` alone cannot say this — when a campaign set it, the row
+  /// carries no trace of what the merchant would otherwise have paid, and when
+  /// no campaign ran it cannot distinguish an agreed rate from the platform
+  /// default that happened to equal it.
+  ///
+  /// With all three fields the charge is fully explicable from the row alone:
+  /// a campaign id names the override, this names the standing agreement, and
+  /// both null means the platform rate applied and `commissionRate` is it.
+  negotiatedRate        Decimal?              @map("negotiated_rate") @db.Decimal(5, 4)
   currency              String                @default("NGN") @db.VarChar(3)
   walletLedgerEntryId   String?               @map("wallet_ledger_entry_id") @db.Uuid
   failureReason         String?               @map("failure_reason") @db.VarChar(1000)

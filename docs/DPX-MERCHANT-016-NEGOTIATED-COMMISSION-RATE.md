@@ -33,9 +33,24 @@ NULL is a different statement from any number — "no agreement" rather than "we
 and keeping them distinct is what stops a cleared agreement being indistinguishable from one that
 was never made.
 
-## 3. Precedence, which is the part worth being explicit about
+## 3. Precedence — **LOCKED**
 
-**Campaign → negotiated → platform.**
+> **Campaign → Negotiated merchant rate → Platform rate**
+>
+> Locked by founder/architecture review, 2026-09-11 (Nora, approved by Saeed).
+> **Do not change the financial precedence without explicit approval.**
+
+A negotiated rate is the merchant's **standing commercial rate**. A campaign is **exceptional
+promotional pricing** that may temporarily override it for the campaign's eligible window and
+transactions. When the campaign ends, resolution returns to the negotiated rate automatically —
+nothing re-applies the agreement, because the agreement is what resolution falls back to.
+
+The worked example from the review, which is now a test: a merchant agreed at **8%** who joins a
+campaign at **5%** pays 5% while it runs, and 8% again the moment it stops.
+
+Four tests under `LOCKED precedence: campaign > negotiated > platform` make reordering this a
+failing build rather than a discovery on somebody's invoice. Inverting the lock in the source fails
+three of them.
 
 A campaign outranks an agreement for the window it covers. This is not a compromise; it is the same
 ordering `Fleet` already uses, where `blendedCommission` charges the campaign rate for the segments
@@ -55,8 +70,33 @@ Everything is keyed on the **merchant profile id**, which is what `Order.merchan
 `OrderSettlement.merchantId` hold — not the user id. Passing the user id reads as "no agreement" and
 silently bills the platform rate, which surfaces on somebody's invoice rather than in a stack trace.
 
-Changing the platform rate never disturbs an agreement, and settling never re-prices an order that
-has already settled — each `OrderSettlement` snapshots the rate it used.
+Changing the platform rate never disturbs an agreement.
+
+### 3.1 A settled sale is history, not a view
+
+Also locked 2026-09-11: _"Preserve the negotiated rate as a historical snapshot on financially
+settled transactions so changing a merchant's agreement later cannot alter historical
+settlements."_
+
+`OrderSettlement.commission_rate` already snapshotted **what** was charged, so no past sale could be
+re-priced. What it could not answer was **why** that figure applied: when a campaign set it the row
+carried no trace of the merchant's standing agreement, and when no campaign ran it could not tell an
+agreed rate from a platform default that happened to match.
+
+`order_settlements.negotiated_rate` closes that. The three fields together make a charge fully
+explicable from the row alone:
+
+| `commission_campaign_id` | `negotiated_rate` | What the row says                                               |
+| ------------------------ | ----------------- | --------------------------------------------------------------- |
+| set                      | set               | A campaign overrode the agreement; both rates are on the record |
+| set                      | null              | A campaign applied to a merchant with no agreement              |
+| null                     | set               | The agreement applied, and `commission_rate` equals it          |
+| null                     | null              | The platform rate applied, and `commission_rate` is it          |
+
+**Deliberately not backfilled.** NULL means "no agreement was in force", which is true of every row
+written before this existed — merchants had no negotiated rate to be in force. Writing today's
+agreement onto a sale that settled before it was made would invent history, which is the precise
+failure the column exists to prevent.
 
 ## 4. Where it is set and seen
 
@@ -83,7 +123,7 @@ own P2025 error message also reads _"...required but not found"_, and the test m
 message. Asserting the exception **type** distinguishes a handled refusal from an unhandled ORM
 error leaking out as a 500 — and with that change the mutation fails as it should.
 
-Full backend suite green on a fresh never-seeded Postgres with `CI=true` (271 suites, 2708 tests).
+Full backend suite green on a fresh never-seeded Postgres with `CI=true` (271 suites, 2718 tests).
 Migration/schema parity clean. Super-app 192 tests, production build clean. Repo-wide `pnpm
 typecheck` green across all 18 packages.
 
@@ -93,6 +133,5 @@ typecheck` green across all 18 packages.
   page. A column on the list is a reasonable follow-up; it is not needed to agree a rate.
 - **No scheduled or expiring agreement.** An agreement runs until it is changed. A rate that should
   end on a date is a campaign, which already exists.
-- **Zero commission cannot be expressed here.** The endpoint bounds the rate strictly inside 0 and
-  1. A merchant charged nothing is a decision with no ceiling on its cost, and a campaign — which
-     ends — is the right instrument for it.
+- **Zero commission cannot be expressed here — confirmed and locked 2026-09-11.** Four tests pin the
+  boundary: 0, 1, a negative, and a percentage mistaken for a fraction are all refused.

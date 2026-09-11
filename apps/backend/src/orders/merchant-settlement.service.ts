@@ -167,12 +167,22 @@ export class MerchantSettlementService implements OnModuleInit {
     // scope, under conditions (DPX-COMMISSION-001). Which one applied is
     // recorded on the settlement row, because rates now change week to week
     // and "why was this one 7%?" has to be answerable from the money record.
-    // A rate agreed with this merchant individually takes the place of the
-    // platform singleton (DPX-MERCHANT-016). A campaign still outranks both for
-    // the window it covers, which is what passing it as the *standing* rate
-    // expresses: the resolver returns a campaign if one matches, and this
-    // otherwise.
-    const standingRate = await this.commissionSettings.standingRateFor(order.merchantId);
+    // DPX-MERCHANT-016, precedence LOCKED 2026-09-11:
+    //
+    //     Campaign  >  Negotiated merchant rate  >  Platform rate
+    //
+    // A negotiated rate is the merchant's standing commercial rate; a campaign
+    // is exceptional promotional pricing that overrides it for its eligible
+    // window, after which resolution returns to the agreement automatically.
+    // Do not reorder these without explicit founder approval — the ordering is
+    // a commercial commitment, not an implementation detail.
+    //
+    // It needs no branch: passing the merchant's own rate as the *standing*
+    // rate is the whole expression of it, because the resolver returns a
+    // matching campaign and this otherwise.
+    const negotiatedRate = await this.commissionSettings.negotiatedRateFor(order.merchantId);
+    const standingRate =
+      negotiatedRate ?? Number((await this.commissionSettings.getEffective()).commissionRate);
     const resolved = await this.commissionRates.resolve(
       CommissionScope.MERCHANT_ORDER,
       standingRate,
@@ -198,6 +208,10 @@ export class MerchantSettlementService implements OnModuleInit {
           grossAmount,
           commissionRate: rate,
           commissionCampaignId: resolved.campaignId,
+          // The agreement as it stood at this moment, so editing it later can
+          // never change what this sale was charged — and so a campaign-priced
+          // row still records what the merchant would otherwise have paid.
+          negotiatedRate,
           commissionAmount,
           merchantAmount,
           currency: order.currency,

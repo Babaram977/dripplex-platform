@@ -69,20 +69,6 @@ export class MerchantCommissionSettingsService {
   }
 
   /**
-   * The standing rate for one merchant: their agreement if they have one, the
-   * platform singleton otherwise.
-   *
-   * "Standing" in the sense the campaign resolver means it — the rate that
-   * applies when no campaign is running. A campaign still outranks this for
-   * the window it covers, exactly as it outranks a fleet's banded rate.
-   */
-  public async standingRateFor(merchantProfileId: string): Promise<number> {
-    const negotiated = await this.negotiatedRateFor(merchantProfileId);
-    if (negotiated !== null) return negotiated;
-    return Number((await this.getEffective()).commissionRate);
-  }
-
-  /**
    * Agrees a rate with one merchant, or clears it back to the platform rate.
    *
    * A negotiated rate is a commercial commitment, so it carries who agreed it

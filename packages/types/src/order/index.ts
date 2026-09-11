@@ -210,7 +210,18 @@ export interface OrderSettlementDto {
   merchantId: string;
   status: OrderSettlementStatus;
   grossAmount: number;
+  /** What was actually charged, snapshotted at settlement. Never recomputed. */
   commissionRate: number;
+  /** The campaign that set `commissionRate`, or null when the standing rate
+   *  did. */
+  commissionCampaignId: string | null;
+  /** The merchant's negotiated rate as it stood when this settled, or null if
+   *  they had no agreement then (DPX-MERCHANT-016).
+   *
+   *  Together with the two above, the charge is explicable from the row alone:
+   *  a campaign id names the override, this names the standing agreement, and
+   *  both null means the platform rate applied and `commissionRate` is it. */
+  negotiatedRate: number | null;
   commissionAmount: number;
   merchantAmount: number;
   currency: string;
