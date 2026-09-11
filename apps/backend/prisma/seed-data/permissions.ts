@@ -24,6 +24,15 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:delivery:manage', description: 'Manage delivery jobs (admin)' },
   { code: 'customer:loyalty:read', description: 'Read own loyalty account' },
   { code: 'customer:loyalty:redeem', description: 'Redeem own loyalty points' },
+  {
+    code: 'loyalty:redemption-code:create',
+    description:
+      'Generate a one-time code authorising a merchant to take your DX points at their counter',
+  },
+  {
+    code: 'merchant:loyalty:redeem',
+    description: "Take a holder's DX points at the counter, crediting the merchant's DX wallet",
+  },
   { code: 'admin:loyalty:manage', description: 'Manage loyalty accounts and achievements' },
   { code: 'customer:wallet:read', description: 'Read own wallet' },
   { code: 'customer:wallet:transfer', description: 'Transfer funds from own wallet' },
@@ -75,6 +84,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'driver:referrals:use', description: "A driver's own referral code" },
   { code: 'rider:referrals:use', description: "A rider's own referral code" },
+  {
+    code: 'merchant:referrals:use',
+    description: "A merchant's own standing referral code, paid into their merchant wallet",
+  },
+  {
+    code: 'fleet:referrals:use',
+    description: "A fleet owner's own standing referral code, paid into their personal wallet",
+  },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {
@@ -146,6 +163,15 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   {
     code: 'admin:commercial:commission-settings:manage',
     description: 'View and edit the Ops-configurable platform (ride) commission rate',
+  },
+  {
+    code: 'admin:commission-campaign:read',
+    description: 'View DPX-COMMISSION-001 commission campaigns and their windows',
+  },
+  {
+    code: 'admin:commission-campaign:manage',
+    description:
+      'Create, edit, pause and archive commission campaigns — the temporary rates charged to merchants, riders and drivers',
   },
   {
     code: 'admin:rides:pricing:manage',
@@ -273,6 +299,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'operations:history:read',
     description:
       'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
+  },
+  {
+    code: 'operations:finance:read',
+    description:
+      'View the settlements and payout-request queue across every persona, and referral performance',
   },
   {
     code: 'messaging:use',

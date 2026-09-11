@@ -773,3 +773,32 @@ launch market, so the implementation diverges from the design as follows.
 The hold-to-send interaction, the progress ring and the overall layout are
 unchanged from the design. The "Current Trip" card is unchanged in shape but now
 reads real values rather than placeholders.
+
+## Rewards screen — a "DX points" card the design does not contain (DPX-LOYALTY-001, 2026-09-11)
+
+The Figma wallet Rewards frame shows a rewards hero, a cashback breakdown and a
+referral card. It has **no element for the points balance itself** — the tier bar
+in the hero is the only trace of the loyalty system in the design, and it was
+mocked ("72% to Platinum").
+
+That was tenable while points did nothing. It is not now: points convert to wallet
+balance at 200 points = ₦1, they lapse 365 days after they are earned, and two
+founder-set thresholds change what a customer is entitled to. A screen that shows a
+tier bar and no balance, no rate, no expiry date and no way to redeem would leave
+the customer's own points invisible to them.
+
+| Shipped element                                      | Figma counterpart | Why                                                                                                                                                                                                |
+| ---------------------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DxPointsCard` — balance, naira value, redeem button | No frame          | Redemption pays into the wallet. Without this there is no route to it anywhere in the product, and the points a customer has earned since launch stay unspendable.                                 |
+| Expiry line ("N points expire on …")                 | No frame          | Points now genuinely lapse. A balance shown without its expiry date is a number the customer cannot plan around, and the first expiries land a year after launch.                                  |
+| Two benefit-threshold lines (10,000 / 50,000)        | No frame          | The thresholds are founder decisions that change what the customer gets. Stating progress toward them is the honest alternative to silently applying a benefit they never knew they qualified for. |
+
+The card is built entirely from `SuperAppWallet*` primitives already derived from
+the wallet frames (`SuperAppWalletSectionLabel`, `SuperAppWalletButton`, the card's
+`rgba(255,255,255,.04)` surface and `#2BAC52` accent), so it inherits the approved
+visual language rather than introducing one. Every figure it renders is computed by
+the backend and arrives in `GET /customer/loyalty` — the app states no rate,
+threshold or date of its own.
+
+**If the Rewards frame is revisited in Figma, this card is the element to bring
+into the file rather than re-derive.**

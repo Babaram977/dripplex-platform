@@ -122,13 +122,46 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // the only earning persona who could not ask for a payout of their own
     // balance. Split from :read for the reason every persona splits them —
     // seeing a balance and moving it are different authorities.
-    expect(PERMISSION_SEEDS).toHaveLength(143);
+    // 143 -> 145: `admin:commission-campaign:read` / `:manage`
+    // (DPX-COMMISSION-001). Split from each other because Operations staff need
+    // to see which rate is running to answer a partner's question, without
+    // being able to change what the platform charges; split from
+    // `admin:commercial:commission-settings:manage` because that is the
+    // standing rate and this is a temporary override, and the two are edited
+    // by the same people but read by different ones.
+    // 145 -> 147: `loyalty:redemption-code:create` and
+    // `merchant:loyalty:redeem` (DPX-LOYALTY-002). The first is held by
+    // customers, drivers and riders alike, because a DX point balance is keyed
+    // on the user rather than the persona and all three can spend theirs in a
+    // shop; the second is the merchant side of the same transaction, and the
+    // two are deliberately not one permission — generating an authorisation
+    // over your own points and taking somebody else's are opposite ends of it.
+    // 147 -> 148: `operations:finance:read` (DPX-OPS). Its own permission
+    // rather than reusing ANALYTICS_READ, which is aggregate operating data —
+    // this names individual partners, what they are owed and what they have
+    // earned. Read-only: approving a payout stays on the withdrawal and
+    // fleet-settlement endpoints, so an operator can be given the queue
+    // without being given the ability to pay anybody.
+    // 148 -> 150: `merchant:referrals:use` and `fleet:referrals:use`
+    // (DPX-REFERRAL-002). One per persona for the reason every referral
+    // permission is split: `Referral.ownerType` is fixed when the code is
+    // created and decides which wallet the reward lands in, so a persona
+    // issued a code under another's permission would have their reward filed
+    // under the wrong one.
+    expect(PERMISSION_SEEDS).toHaveLength(150);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
         'customer:utilities:read',
         'customer:utilities:purchase',
         'admin:utilities:manage',
+        'admin:commission-campaign:read',
+        'admin:commission-campaign:manage',
+        'loyalty:redemption-code:create',
+        'merchant:loyalty:redeem',
+        'operations:finance:read',
+        'merchant:referrals:use',
+        'fleet:referrals:use',
       ]),
     );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(

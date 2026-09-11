@@ -30,6 +30,17 @@ export const OPERATIONS_PERMISSIONS = {
    * different grant, and revoking it does not blind an operator to live work.
    */
   HISTORY_READ: 'operations:history:read',
+  /**
+   * DPX-OPS — the settlements and payout-request queue, and referral
+   * performance.
+   *
+   * Its own permission rather than ANALYTICS_READ: that is aggregate operating
+   * data, while this names individual partners, what they are owed and what
+   * they have earned. Read-only — approving a payout stays on the existing
+   * withdrawal and fleet-settlement endpoints with their own grants, so this
+   * lets an operator see the queue without letting them pay anybody.
+   */
+  FINANCE_READ: 'operations:finance:read',
 } as const;
 
 /** DPX-OPS-001 Slice 2 — audit trail actions for `OperationsCasesService`

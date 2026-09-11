@@ -53,6 +53,22 @@ const NAV: NavEntry[] = [
     ],
   },
   { href: '/pricing', label: 'Ride Pricing' },
+  {
+    label: 'Money',
+    items: [
+      { href: '/settlements', label: 'Settlements & Payouts' },
+      { href: '/commission', label: 'Commission' },
+      { href: '/referrals', label: 'Referral Performance' },
+      // DPX-REFERRAL-003 — the queue sits next to performance because it is
+      // the other half of the same programme: one says whether referrals are
+      // converting, the other is the referrals nobody has decided about.
+      { href: '/referrals/review', label: 'Referral Review Queue' },
+      { href: '/referrals/programmes', label: 'Referral Programmes' },
+      // DPX-LOYALTY-007 — under Money because switching one of these on is a
+      // commitment to pay people, not a marketing setting.
+      { href: '/loyalty/earning', label: 'DX Points Earning' },
+    ],
+  },
   { href: '/utilities', label: 'Bill Payments' },
   { href: '/analytics', label: 'Analytics' },
 ];

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LoyaltyTier, Prisma } from '@prisma/client';
+import { LoyaltyLedgerEntryType, LoyaltyTier, Prisma, WalletOwnerType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -7,14 +7,19 @@ import {
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
+import { WalletService, type WalletDto } from '../wallet/wallet.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import {
   LOYALTY_AUDIT_ACTIONS,
+  LOYALTY_BENEFIT_THRESHOLDS,
   LOYALTY_MILESTONE_ACHIEVEMENTS,
   LOYALTY_POINT_EXPIRY_DAYS,
   LOYALTY_REFERENCE_TYPES,
   LOYALTY_TIER_THRESHOLDS,
+  LOYALTY_WALLET_REFERENCE_TYPE,
 } from './loyalty.constants';
+import { allocatePointsLots, nextExpiry, remainingForLot, type PointsLot } from './points-lots';
 
 import type { PaginatedResult } from '@dripplex/types';
 import type {
@@ -28,6 +33,56 @@ export interface LoyaltyAccountOverview {
   account: LoyaltyAccountDto;
   nextTier: { tier: LoyaltyTier; pointsRequired: number } | null;
   achievements: UserAchievementDto[];
+  /** What the balance is worth, and what it takes to use it. */
+  points: LoyaltyPointsSummary;
+}
+
+/**
+ * The answer to "what are my DX points actually worth, and when do they go
+ * away" — every number a customer needs to make sense of their balance,
+ * derived from the ledger rather than restated by hand in the app.
+ */
+export interface LoyaltyPointsSummary {
+  balance: number;
+  /** Founder decision: 200 points = ₦1 — now an Ops setting rather than a
+   *  constant, so a screen quoting it must read it from here. */
+  pointsPerNaira: number;
+  /** Naira the current balance is worth, rounded down to whole naira. */
+  balanceValue: number;
+  /** The largest multiple of `pointsPerNaira` that can be redeemed now. */
+  redeemablePoints: number;
+  /** Smallest cash-out the platform accepts, in points. Ops-configurable. */
+  minimumRedeemablePoints: number;
+  /** Whether points can be cashed out to the wallet at all. When false they
+   *  remain fully spendable in store and against the rewards catalogue, and a
+   *  client must not offer a cash-out that will be refused. */
+  walletRedemptionEnabled: boolean;
+  /** Points earned so far this calendar month, in Lagos time. */
+  earnedThisMonth: number;
+  /** The next award to fall due, and how much goes with it. */
+  nextExpiry: { at: string; points: number } | null;
+  benefits: LoyaltyBenefitStatus;
+}
+
+/**
+ * Which founder-decided benefit lines the customer is on the right side of.
+ *
+ * The thresholds are policy and live in code; the size of each benefit is set
+ * per campaign, so nothing here claims a discount percentage. `eligible` means
+ * "qualifies" — whether a campaign is currently offering anything against that
+ * line is the campaign's business, not the loyalty account's.
+ */
+export interface LoyaltyBenefitStatus {
+  deliveryFeeDiscount: { threshold: number; eligible: boolean; pointsToGo: number };
+  monthlyElite: { threshold: number; eligible: boolean; pointsToGo: number };
+}
+
+export interface LoyaltyRedemptionResult {
+  overview: LoyaltyAccountOverview;
+  pointsRedeemed: number;
+  /** Naira credited to the customer's wallet. */
+  amountCredited: number;
+  wallet: WalletDto;
 }
 
 export interface LoyaltyAccountDto {
@@ -74,6 +129,13 @@ export interface AwardPointsInput {
   referenceType?: string;
   referenceId?: string;
   expiresAt?: Date | null;
+  /**
+   * DPX-LOYALTY-006 — EARNED by default, because that is what the overwhelming
+   * majority of awards are. BONUS is for points given rather than earned, and
+   * the distinction is what lets Operations separate the cost of the programme
+   * working from the cost of promoting it.
+   */
+  type?: LoyaltyLedgerEntryType;
   context?: AuditContext;
 }
 
@@ -82,6 +144,8 @@ export class LoyaltyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly walletService: WalletService,
+    private readonly settings: LoyaltySettingsService,
   ) {}
 
   public calculateTier(lifetimePoints: number): LoyaltyTier {
@@ -123,7 +187,75 @@ export class LoyaltyService {
       account: toLoyaltyAccountDto(account),
       nextTier: this.nextTier(account.lifetimePoints),
       achievements: achievements.map(toUserAchievementDto),
+      points: await this.getPointsSummary(account),
     };
+  }
+
+  /**
+   * Everything about the balance that is not just the number: what it is worth
+   * in naira, how much of it can actually be redeemed, what was earned this
+   * month, when the next award lapses, and which benefit lines are met.
+   *
+   * Computed from the ledger, never stored. A stored copy is a second source
+   * of truth for money, and the ledger already has the answer.
+   */
+  public async getPointsSummary(
+    account: LoyaltyAccount,
+    now = new Date(),
+  ): Promise<LoyaltyPointsSummary> {
+    const [lots, earnedThisMonth] = await Promise.all([
+      this.loadLots(account.id),
+      this.getEarnedThisMonth(account.id, now),
+    ]);
+
+    const balance = account.pointsBalance;
+    // DPX-LOYALTY-005 — read from the Ops setting, not a constant. A screen
+    // telling somebody their points are worth ₦X has to follow the figure
+    // Operations actually set, or it is quoting a price nobody honours.
+    const setting = await this.settings.getEffective();
+    const pointsPerNaira = setting.pointsPerNaira;
+    const redeemablePoints = Math.floor(balance / pointsPerNaira) * pointsPerNaira;
+    const upcoming = nextExpiry(lots, now);
+
+    return {
+      balance,
+      pointsPerNaira,
+      balanceValue: Math.floor(balance / pointsPerNaira),
+      redeemablePoints,
+      minimumRedeemablePoints: setting.minRedemptionPoints,
+      walletRedemptionEnabled: setting.walletRedemptionEnabled,
+      earnedThisMonth,
+      nextExpiry:
+        upcoming === null ? null : { at: upcoming.at.toISOString(), points: upcoming.points },
+      benefits: {
+        deliveryFeeDiscount: benefitStatus(
+          LOYALTY_BENEFIT_THRESHOLDS.DELIVERY_DISCOUNT_BALANCE,
+          balance,
+        ),
+        monthlyElite: benefitStatus(
+          LOYALTY_BENEFIT_THRESHOLDS.MONTHLY_ELITE_EARNED,
+          earnedThisMonth,
+        ),
+      },
+    };
+  }
+
+  /**
+   * Points awarded since the start of the current calendar month in Lagos
+   * time — the measure behind the 50,000-in-a-month benefit. Redemptions and
+   * expiries do not count against it: the benefit is for earning, and spending
+   * what you earned should not take it away.
+   */
+  public async getEarnedThisMonth(accountId: string, now = new Date()): Promise<number> {
+    const aggregate = await this.prisma.loyaltyLedgerEntry.aggregate({
+      where: {
+        accountId,
+        points: { gt: 0 },
+        createdAt: { gte: lagosMonthStart(now) },
+      },
+      _sum: { points: true },
+    });
+    return aggregate._sum.points ?? 0;
   }
 
   public async listHistory(
@@ -178,6 +310,7 @@ export class LoyaltyService {
         data: {
           accountId: existing.id,
           points: input.points,
+          type: input.type ?? LoyaltyLedgerEntryType.EARNED,
           reason: input.reason,
           referenceType: input.referenceType ?? null,
           referenceId: input.referenceId ?? null,
@@ -223,14 +356,72 @@ export class LoyaltyService {
     });
   }
 
+  /**
+   * Turn points into money.
+   *
+   * Redemption used to burn the points and pay nothing — the ledger said
+   * "Redeemed loyalty points for discount" and no discount existed anywhere in
+   * the platform. Now it credits the customer's wallet at the founder-set rate
+   * of 200 points to the naira, which makes a point worth something real in
+   * every place the wallet already works: rides, deliveries, orders, transfers
+   * and payouts.
+   *
+   * Two things make this safe to run against live balances:
+   *
+   * - The points debit and the wallet credit happen in *one* transaction. If
+   *   either fails, neither happened. Crediting first would pay for points not
+   *   taken; debiting first would destroy points and pay nothing, which is the
+   *   bug this replaces.
+   * - The credit is keyed on the loyalty ledger entry's id, and
+   *   `wallet_ledger_entries` carries a unique index over (wallet, reference
+   *   type, reference id). A retry that reaches the wallet twice pays once.
+   *
+   * Redemptions are whole naira only. Allowing 250 points would either round
+   * ₦1.25 down and quietly keep 50 points, or introduce kobo the wallet does
+   * not deal in; refusing it is the honest option and the app shows the
+   * redeemable figure so nobody has to guess.
+   */
   public async redeemPoints(
     userId: string,
     points: number,
     context: AuditContext = {},
-  ): Promise<LoyaltyAccountOverview> {
+  ): Promise<LoyaltyRedemptionResult> {
     this.assertPositivePoints(points);
 
-    const account = await this.prisma.$transaction(async (tx) => {
+    // DPX-LOYALTY-005 — the terms of the cash-out are Operations settings now.
+    // Founder decision 2026-09-11: "as shipped, but can be controlled."
+    const setting = await this.settings.getEffective();
+    if (!setting.walletRedemptionEnabled) {
+      throw new ValidationDomainException(
+        'DX Points cannot be cashed out to your wallet at the moment. They can still be spent in store and on rewards.',
+      );
+    }
+    if (points < setting.minRedemptionPoints) {
+      throw new ValidationDomainException(
+        `The smallest redemption is ${String(setting.minRedemptionPoints)} DX points`,
+      );
+    }
+    if (points % setting.pointsPerNaira !== 0) {
+      throw new ValidationDomainException(
+        `Points must be redeemed in multiples of ${String(setting.pointsPerNaira)} (${String(setting.pointsPerNaira)} points = NGN 1)`,
+      );
+    }
+    await this.assertWithinDailyCap(userId, points, setting);
+
+    const amount = points / setting.pointsPerNaira;
+    const creditInput = {
+      ownerType: WalletOwnerType.CUSTOMER,
+      ownerId: userId,
+      amount,
+      description: `Redeemed ${String(points)} DX points`,
+      referenceType: LOYALTY_WALLET_REFERENCE_TYPE,
+      // Snapshotted, so re-pricing points later never rewrites what this
+      // redemption was worth.
+      metadata: { points, pointsPerNaira: setting.pointsPerNaira },
+      context: { ...context, userId },
+    };
+
+    const { account, outcome, ledgerEntryId } = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.loyaltyAccount.upsert({
         where: { userId },
         update: { deletedAt: null },
@@ -246,19 +437,30 @@ export class LoyaltyService {
         data: { pointsBalance: { decrement: points } },
       });
 
-      await tx.loyaltyLedgerEntry.create({
+      const entry = await tx.loyaltyLedgerEntry.create({
         data: {
           accountId: existing.id,
           points: -points,
-          reason: 'Redeemed loyalty points for discount',
+          type: LoyaltyLedgerEntryType.REDEEMED,
+          reason: `Redeemed for NGN ${String(amount)} wallet credit`,
           referenceType: LOYALTY_REFERENCE_TYPES.REDEMPTION,
           referenceId: null,
           expiresAt: null,
         },
       });
 
-      return updated;
+      const credited = await this.walletService.creditWithin(tx, {
+        ...creditInput,
+        referenceId: entry.id,
+      });
+
+      return { account: updated, outcome: credited, ledgerEntryId: entry.id };
     });
+
+    // Announced only after the transaction has committed — the wallet event
+    // tells the rest of the platform money moved, and it must not say so about
+    // a transaction that could still roll back.
+    await this.walletService.publishCredit({ ...creditInput, referenceId: ledgerEntryId }, outcome);
 
     await this.auditService.record(
       LOYALTY_AUDIT_ACTIONS.POINTS_REDEEMED,
@@ -266,13 +468,28 @@ export class LoyaltyService {
       {
         resource: 'loyalty_account',
         resourceId: account.id,
-        metadata: { points },
+        metadata: { points, amountCredited: amount, walletLedgerEntryId: outcome.ledgerId },
       },
     );
 
-    return await this.getCustomerOverview(userId);
+    return {
+      overview: await this.getCustomerOverview(userId),
+      pointsRedeemed: points,
+      amountCredited: amount,
+      wallet: outcome.wallet,
+    };
   }
 
+  /**
+   * Retire awards that have reached their 365th day.
+   *
+   * Due awards are handled an account at a time because what expires depends
+   * on the whole of that account's ledger, not on the row that fell due: an
+   * award the customer already spent has nothing left to take, and taking it
+   * anyway destroys points that belong to a *later* award. The old version did
+   * exactly that — it expired `min(entry.points, account.pointsBalance)`, so
+   * spending an old award made a newer one vanish with it.
+   */
   public async expirePoints(now = new Date(), limit = 500): Promise<{ expiredPoints: number }> {
     const dueEntries = await this.prisma.loyaltyLedgerEntry.findMany({
       where: {
@@ -285,10 +502,19 @@ export class LoyaltyService {
       take: limit,
     });
 
-    let expiredPoints = 0;
+    const byAccount = new Map<string, (LoyaltyLedgerEntry & { account: LoyaltyAccount })[]>();
     for (const entry of dueEntries) {
-      const expired = await this.expireLedgerEntry(entry);
-      expiredPoints += expired;
+      const bucket = byAccount.get(entry.accountId) ?? [];
+      bucket.push(entry);
+      byAccount.set(entry.accountId, bucket);
+    }
+
+    let expiredPoints = 0;
+    for (const [accountId, entries] of byAccount) {
+      const lots = await this.loadLots(accountId);
+      for (const entry of entries) {
+        expiredPoints += await this.expireLedgerEntry(entry, lots);
+      }
     }
 
     return { expiredPoints };
@@ -389,6 +615,7 @@ export class LoyaltyService {
 
   private async expireLedgerEntry(
     entry: LoyaltyLedgerEntry & { account: LoyaltyAccount },
+    lots: PointsLot[],
   ): Promise<number> {
     const existingExpiration = await this.prisma.loyaltyLedgerEntry.count({
       where: {
@@ -405,9 +632,20 @@ export class LoyaltyService {
       return 0;
     }
 
-    const pointsToExpire = Math.min(entry.points, account.pointsBalance);
+    // Only what is genuinely left of *this* award. The balance cap stays as a
+    // floor under the arithmetic: the ledger and the balance should agree, and
+    // if they ever drift, expiry must not be what drives a balance negative.
+    const pointsToExpire = Math.min(remainingForLot(lots, entry.id), account.pointsBalance);
     if (pointsToExpire <= 0) {
       return 0;
+    }
+
+    // The debit this is about to write consumes oldest-first, and this award is
+    // the oldest thing with anything left — so record it against the in-memory
+    // allocation rather than re-reading the ledger for every due award.
+    const lot = lots.find((candidate) => candidate.id === entry.id);
+    if (lot !== undefined) {
+      lot.remaining -= pointsToExpire;
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -419,6 +657,7 @@ export class LoyaltyService {
         data: {
           accountId: entry.accountId,
           points: -pointsToExpire,
+          type: LoyaltyLedgerEntryType.EXPIRED,
           reason: 'Expired loyalty points',
           referenceType: LOYALTY_REFERENCE_TYPES.EXPIRATION,
           referenceId: entry.id,
@@ -514,6 +753,7 @@ export class LoyaltyService {
         data: {
           accountId: account.id,
           points: achievement.pointsReward,
+          type: LoyaltyLedgerEntryType.BONUS,
           reason: `Achievement reward: ${achievement.name}`,
           referenceType: LOYALTY_REFERENCE_TYPES.ACHIEVEMENT,
           referenceId: achievement.id,
@@ -547,8 +787,223 @@ export class LoyaltyService {
     return null;
   }
 
+  /** Every ledger row for one account, replayed into per-award remainders. */
+  private async loadLots(accountId: string): Promise<PointsLot[]> {
+    const lines = await this.prisma.loyaltyLedgerEntry.findMany({
+      where: { accountId },
+      select: { id: true, points: true, createdAt: true, expiresAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return allocatePointsLots(lines);
+  }
+
   private defaultExpiryDate(): Date {
     return new Date(Date.now() + LOYALTY_POINT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  }
+
+  /**
+   * DPX-LOYALTY-005 — the rolling 24-hour cash-out cap, when one is set.
+   *
+   * Counted off the loyalty ledger rather than the wallet, because the ledger
+   * is where a redemption is recorded first and is the record that cannot
+   * disagree with the points actually taken. A rolling window rather than a
+   * calendar day: a midnight boundary would let somebody take two days' worth
+   * in a few minutes, which is exactly what a cap exists to stop.
+   */
+  private async assertWithinDailyCap(
+    userId: string,
+    points: number,
+    setting: { dailyRedemptionPointsCap: number | null },
+  ): Promise<void> {
+    const cap = setting.dailyRedemptionPointsCap;
+    if (cap === null) {
+      return;
+    }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const spent = await this.prisma.loyaltyLedgerEntry.aggregate({
+      where: {
+        account: { userId },
+        referenceType: LOYALTY_REFERENCE_TYPES.REDEMPTION,
+        createdAt: { gte: since },
+      },
+      _sum: { points: true },
+    });
+    // Redemption entries are stored negative; the cap is a positive quantity.
+    const alreadyRedeemed = Math.abs(spent._sum.points ?? 0);
+    if (alreadyRedeemed + points > cap) {
+      const remaining = Math.max(0, cap - alreadyRedeemed);
+      throw new ValidationDomainException(
+        remaining === 0
+          ? `You have reached the ${String(cap)}-point daily redemption limit. Try again tomorrow.`
+          : `That would pass the ${String(cap)}-point daily redemption limit — you can redeem ${String(remaining)} more today.`,
+      );
+    }
+  }
+
+  /**
+   * DPX-LOYALTY-006 — Operations moving a balance by hand.
+   *
+   * Support needs this: points lost to a bug, goodwill after a bad trip, a
+   * duplicate award taken back. It happens today anyway, by an engineer running
+   * SQL, which leaves no audit trail and no state anybody can count. Giving it
+   * an endpoint and its own ledger state makes it visible rather than making it
+   * possible.
+   *
+   * A positive adjustment does **not** raise `lifetimePoints`. Lifetime points
+   * drive the tier, and an operator handing somebody 5,000 points as an apology
+   * must not also hand them a tier they did not earn.
+   *
+   * A negative adjustment is floored at the balance. A loyalty balance must
+   * never go negative: it is not a debt anybody agreed to, and the expiry
+   * allocator assumes lots that sum to the balance.
+   */
+  public async adjustPoints(input: {
+    userId: string;
+    points: number;
+    reason: string;
+    adminUserId: string;
+    context?: AuditContext;
+  }): Promise<{ applied: number; balance: number }> {
+    if (!Number.isInteger(input.points) || input.points === 0) {
+      throw new ValidationDomainException(
+        'An adjustment must be a whole number of points, positive or negative',
+      );
+    }
+    if (input.reason.trim() === '') {
+      throw new ValidationDomainException('An adjustment needs a reason');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const account = await tx.loyaltyAccount.upsert({
+        where: { userId: input.userId },
+        update: { deletedAt: null },
+        create: { userId: input.userId },
+      });
+
+      const applied =
+        input.points < 0 ? -Math.min(account.pointsBalance, Math.abs(input.points)) : input.points;
+      if (applied === 0) {
+        return { applied: 0, balance: account.pointsBalance };
+      }
+
+      const updated = await tx.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { pointsBalance: { increment: applied } },
+      });
+
+      await tx.loyaltyLedgerEntry.create({
+        data: {
+          accountId: account.id,
+          points: applied,
+          type: LoyaltyLedgerEntryType.ADJUSTED,
+          reason: input.reason.trim().slice(0, 255),
+          referenceType: LOYALTY_REFERENCE_TYPES.ADJUSTMENT,
+          referenceId: null,
+          // Adjusted points expire on the same clock as earned ones; a positive
+          // adjustment that never expired would quietly outlive the policy.
+          expiresAt: applied > 0 ? this.defaultExpiryDate() : null,
+        },
+      });
+
+      return { applied, balance: updated.pointsBalance };
+    });
+
+    await this.auditService.record(
+      LOYALTY_AUDIT_ACTIONS.POINTS_ADJUSTED,
+      { ...(input.context ?? {}), userId: input.adminUserId },
+      {
+        resource: 'loyalty_account',
+        resourceId: input.userId,
+        metadata: {
+          requestedPoints: input.points,
+          appliedPoints: result.applied,
+          reason: input.reason,
+          holderId: input.userId,
+        },
+      },
+    );
+
+    return result;
+  }
+
+  /**
+   * DPX-LOYALTY-006 — take back points awarded for something that was undone.
+   *
+   * A refunded order is the case that exists today: points were awarded when it
+   * was paid, the money went back, and the points stayed. REVERSED rather than
+   * REDEEMED because the holder did not spend these — a statement saying they
+   * did would be wrong, and the two are counted separately.
+   *
+   * Bounded by what is still there. Somebody who has already spent the points
+   * cannot be reversed below zero, and the shortfall is reported rather than
+   * forced: a negative loyalty balance is not a debt anybody agreed to. Like
+   * the referral reversal, that is a real limit of clawing anything back after
+   * it has moved, not something to paper over.
+   *
+   * Idempotent on the reference: replaying a refund event reverses once.
+   */
+  public async reversePointsFor(input: {
+    userId: string;
+    referenceType: string;
+    referenceId: string;
+    reason: string;
+  }): Promise<{ reversed: number; shortfall: number }> {
+    return await this.prisma.$transaction(async (tx) => {
+      const account = await tx.loyaltyAccount.findUnique({ where: { userId: input.userId } });
+      if (account === null) {
+        return { reversed: 0, shortfall: 0 };
+      }
+
+      const [awarded, alreadyReversed] = await Promise.all([
+        tx.loyaltyLedgerEntry.aggregate({
+          where: {
+            accountId: account.id,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+            points: { gt: 0 },
+          },
+          _sum: { points: true },
+        }),
+        tx.loyaltyLedgerEntry.count({
+          where: {
+            accountId: account.id,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+            type: LoyaltyLedgerEntryType.REVERSED,
+          },
+        }),
+      ]);
+
+      const toReverse = awarded._sum.points ?? 0;
+      if (toReverse <= 0 || alreadyReversed > 0) {
+        return { reversed: 0, shortfall: 0 };
+      }
+
+      const reversed = Math.min(account.pointsBalance, toReverse);
+      const shortfall = toReverse - reversed;
+      if (reversed === 0) {
+        return { reversed: 0, shortfall };
+      }
+
+      await tx.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { pointsBalance: { decrement: reversed } },
+      });
+      await tx.loyaltyLedgerEntry.create({
+        data: {
+          accountId: account.id,
+          points: -reversed,
+          type: LoyaltyLedgerEntryType.REVERSED,
+          reason: input.reason.slice(0, 255),
+          referenceType: input.referenceType,
+          referenceId: input.referenceId,
+          expiresAt: null,
+        },
+      });
+
+      return { reversed, shortfall };
+    });
   }
 
   private assertPositivePoints(points: number): void {
@@ -556,6 +1011,33 @@ export class LoyaltyService {
       throw new ValidationDomainException('Points must be a positive integer');
     }
   }
+}
+
+/**
+ * Midnight on the first of the current month, Lagos time, expressed as the
+ * instant it happened. Africa/Lagos is UTC+1 all year (no DST), so the month
+ * boundary is simply 23:00 UTC on the last day of the previous month — a
+ * customer's "this month" should not roll over an hour early because the
+ * server keeps time in UTC.
+ */
+function lagosMonthStart(now: Date): Date {
+  const lagos = new Date(now.getTime() + LAGOS_OFFSET_MS);
+  return new Date(
+    Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), 1, 0, 0, 0, 0) - LAGOS_OFFSET_MS,
+  );
+}
+
+const LAGOS_OFFSET_MS = 60 * 60 * 1000;
+
+function benefitStatus(
+  threshold: number,
+  achieved: number,
+): { threshold: number; eligible: boolean; pointsToGo: number } {
+  return {
+    threshold,
+    eligible: achieved >= threshold,
+    pointsToGo: Math.max(0, threshold - achieved),
+  };
 }
 
 function toLoyaltyAccountDto(account: LoyaltyAccount): LoyaltyAccountDto {

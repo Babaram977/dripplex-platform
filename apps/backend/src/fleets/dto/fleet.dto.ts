@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNumber,
@@ -17,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { REFERRAL_CODE_PATTERN } from '../../referrals/referral.constants';
 import { FLEET_NUMBER_PATTERN } from '../fleet.constants';
 
 export class CreateFleetDto {
@@ -49,6 +51,24 @@ export class RegisterFleetDto {
   @IsString()
   @MaxLength(20)
   public contactPhone?: string;
+
+  /**
+   * A referral code the owner was given.
+   *
+   * DPX-REFERRAL-003 — a fleet is worth several times what a customer is worth
+   * to whoever brought it, and this is the only place a fleet signup can be
+   * attributed: the owner already had a DrippleX account before they registered
+   * the company, so the code cannot be collected at account registration.
+   *
+   * An unknown or invalid code is ignored rather than refused. Nobody's fleet
+   * registration fails over somebody else's marketing.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(REFERRAL_CODE_PATTERN, {
+    message: 'Referral code must be 4 to 16 letters or digits',
+  })
+  public referralCode?: string;
 }
 
 /**
@@ -156,4 +176,27 @@ export class SetFleetNegotiatedRateDto {
   @IsString()
   @MaxLength(500)
   public note?: string;
+}
+
+/**
+ * DPX-AUDIT-001 §3.1 — reconstructing what fleets owe for the months the
+ * broken subscriber never counted.
+ *
+ * `apply` is a body field on a POST rather than a query string on a GET, and
+ * that is the point of it: the applied form rewrites `FleetCommissionPeriod`
+ * rows across every fleet. A GET is safe by convention, and a great deal of
+ * infrastructure trusts that convention — browser prefetch, link unfurling,
+ * proxy caches, retry-on-timeout. None of those should be able to start a
+ * platform-wide financial write.
+ */
+export class ReconstructFleetCommissionDto {
+  /**
+   * Omitted or false reports what each month should have held and writes
+   * nothing. True writes the recomputed totals back — never over a settled
+   * month, and setting rather than incrementing, so a repeat lands on the same
+   * number rather than doubling a fleet's bill.
+   */
+  @IsOptional()
+  @IsBoolean()
+  public apply?: boolean;
 }

@@ -156,6 +156,8 @@ export function toOrderSettlementDto(
     status: settlement.status,
     grossAmount: Number(settlement.grossAmount),
     commissionRate: Number(settlement.commissionRate),
+    commissionCampaignId: settlement.commissionCampaignId,
+    negotiatedRate: settlement.negotiatedRate === null ? null : Number(settlement.negotiatedRate),
     commissionAmount: Number(settlement.commissionAmount),
     merchantAmount: Number(settlement.merchantAmount),
     currency: settlement.currency,

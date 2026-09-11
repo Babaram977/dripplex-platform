@@ -1,12 +1,15 @@
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
   Max,
   MaxLength,
+  MinLength,
   Min,
 } from 'class-validator';
 
@@ -82,4 +85,157 @@ export class UpdateLoyaltyAchievementDto {
   @IsOptional()
   @IsBoolean()
   public active?: boolean;
+}
+
+export class IssueRedemptionCodeDto {
+  /** Omit, or send 0, for a coupon-only code. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsInt()
+  @Min(0)
+  public points?: number;
+
+  /** A coupon to spend at the same counter, on the same code. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  public couponCode?: string;
+}
+
+export class RedeemStoreCodeDto {
+  /**
+   * The bill total, required when the code carries a coupon — a percentage
+   * discount is meaningless without something to take it off, and guessing
+   * would either short the merchant or overpay them.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  public billAmount?: number;
+
+  /**
+   * The code the holder is showing. Sent in a body rather than a path so it
+   * does not end up in access logs or browser history — it is a bearer
+   * authorisation over somebody's points until it is used.
+   */
+  @IsString()
+  @MaxLength(32)
+  public code!: string;
+}
+
+export class RedeemRewardDto {
+  /**
+   * The caller's own key, unique per holder. It is what makes a retry safe: two
+   * taps on a slow connection are one redemption rather than two, enforced by a
+   * unique index rather than by hope.
+   */
+  @IsString()
+  @MaxLength(100)
+  public idempotencyKey!: string;
+}
+
+export class AdvanceFulfilmentDto {
+  @IsIn([
+    'FULFILMENT_PENDING',
+    'PROCESSING',
+    'READY_FOR_COLLECTION',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLED',
+  ])
+  public status!:
+    | 'FULFILMENT_PENDING'
+    | 'PROCESSING'
+    | 'READY_FOR_COLLECTION'
+    | 'SHIPPED'
+    | 'DELIVERED'
+    | 'CANCELLED';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  public note?: string;
+}
+
+/**
+ * DPX-LOYALTY-005 — the Ops-controlled terms on which DX Points convert.
+ *
+ * Every field optional: an operator closing the cash-out must not have to
+ * restate the conversion rate, and restating it is how it gets changed by
+ * accident.
+ */
+export class UpdateLoyaltySettingDto {
+  /** How many points buy one naira. Re-prices every unspent balance on the
+   *  platform at once, so it is validated again in the service. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public pointsPerNaira?: number;
+
+  /** Whether points may be cashed out to the wallet. False leaves them fully
+   *  spendable in store and against the rewards catalogue. */
+  @IsOptional()
+  @IsBoolean()
+  public walletRedemptionEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  public storeRedemptionEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public minRedemptionPoints?: number;
+
+  /** Null removes the cap. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public dailyRedemptionPointsCap?: number | null;
+}
+
+/** DPX-LOYALTY-006 — Operations moving a balance by hand. Always with a reason:
+ *  an adjustment nobody can explain later is indistinguishable from a bug. */
+export class AdjustLoyaltyPointsDto {
+  /** Positive gives, negative takes back. Never zero. */
+  @IsInt()
+  public points!: number;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  public reason!: string;
+}
+
+/** DPX-LOYALTY-007 — whether a partner persona earns DX Points, and for what.
+ *  Every field optional: switching a programme on must not require restating
+ *  the point sizes, and restating them is how one gets changed by accident. */
+export class UpdateLoyaltyEarningProgrammeDto {
+  @IsOptional()
+  @IsBoolean()
+  public active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  public pointsPerCompletedJob?: number;
+
+  /** Founder decision: a review boosts DX Points and never the star rating. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  public pointsPerQualifyingReview?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  public minReviewRating?: number;
+
+  /** Null removes the cap. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public dailyPointsCap?: number | null;
 }

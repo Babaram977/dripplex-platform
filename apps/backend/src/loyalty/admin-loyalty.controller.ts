@@ -10,9 +10,22 @@ import {
   Req,
 } from '@nestjs/common';
 
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
-import { CreateLoyaltyAchievementDto, UpdateLoyaltyAchievementDto } from './dto/loyalty.dto';
+import {
+  AdjustLoyaltyPointsDto,
+  CreateLoyaltyAchievementDto,
+  UpdateLoyaltyAchievementDto,
+  UpdateLoyaltyEarningProgrammeDto,
+  UpdateLoyaltySettingDto,
+} from './dto/loyalty.dto';
+import {
+  LoyaltyEarningService,
+  type LoyaltyEarningImpactDto,
+  type LoyaltyEarningProgrammeDto,
+} from './loyalty-earning.service';
+import { LoyaltySettingsService, type LoyaltySettingDto } from './loyalty-settings.service';
 import { LOYALTY_PERMISSIONS } from './loyalty.constants';
 import {
   LoyaltyService,
@@ -20,12 +33,116 @@ import {
   type LoyaltyAchievementDto,
 } from './loyalty.service';
 
+import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
+import type { LoyaltyEarnerPersona } from '@prisma/client';
 import type { Request } from 'express';
 
 @Controller('admin/loyalty')
 export class AdminLoyaltyController {
-  constructor(private readonly loyaltyService: LoyaltyService) {}
+  constructor(
+    private readonly loyaltyService: LoyaltyService,
+    private readonly settings: LoyaltySettingsService,
+    private readonly earning: LoyaltyEarningService,
+  ) {}
+
+  /**
+   * Whether a partner persona earns DX Points, and for what.
+   *
+   * Every programme is off until somebody switches it on, which is what Nora's
+   * "approved programme" and "where a campaign permits" both mean in practice.
+   */
+  @Get('earning-programmes')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async listEarningProgrammes(): Promise<ApiSuccessResponse<LoyaltyEarningProgrammeDto[]>> {
+    const data = await this.earning.list();
+    return { success: true, data };
+  }
+
+  /**
+   * What switching each programme on would commit DrippleX to.
+   *
+   * Served beside the programmes rather than folded into them: an operator
+   * about to switch DRIVER on is asking a different question from one adjusting
+   * a point size, and the answer is expensive enough to count separately.
+   */
+  @Get('earning-programmes/impact')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async earningProgrammeImpact(): Promise<ApiSuccessResponse<LoyaltyEarningImpactDto[]>> {
+    const data = await this.earning.impact();
+    return { success: true, data };
+  }
+
+  @Patch('earning-programmes/:persona')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async updateEarningProgramme(
+    @Param('persona') persona: LoyaltyEarnerPersona,
+    @Body() dto: UpdateLoyaltyEarningProgrammeDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<LoyaltyEarningProgrammeDto>> {
+    const data = await this.earning.update(persona, dto, user.id, {
+      ...this.auditContext(request),
+      userId: user.id,
+    });
+    return { success: true, data };
+  }
+
+  /**
+   * What DX Points convert to, and whether they may.
+   *
+   * Founder decision 2026-09-11: the cash-out stays exactly as shipped, but
+   * every number behind it is an Operations setting rather than a deployment.
+   */
+  @Get('settings')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async getSettings(): Promise<ApiSuccessResponse<LoyaltySettingDto>> {
+    const data = await this.settings.get();
+    return { success: true, data };
+  }
+
+  @Patch('settings')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async updateSettings(
+    @Body() dto: UpdateLoyaltySettingDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<LoyaltySettingDto>> {
+    const data = await this.settings.update(dto, user.id, {
+      ...this.auditContext(request),
+      userId: user.id,
+    });
+    return { success: true, data };
+  }
+
+  /**
+   * Move a holder's balance by hand.
+   *
+   * This happens today anyway — an engineer running SQL — which leaves no audit
+   * trail and no state anybody can count. Giving it an endpoint and its own
+   * ledger state makes it visible rather than making it possible.
+   *
+   * A positive adjustment deliberately does not raise lifetime points, so an
+   * apology cannot hand somebody a tier they did not earn; a negative one is
+   * floored at the balance, because a loyalty balance is not a debt.
+   */
+  @Post('accounts/:userId/adjust')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async adjustPoints(
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body() dto: AdjustLoyaltyPointsDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<{ applied: number; balance: number }>> {
+    const data = await this.loyaltyService.adjustPoints({
+      userId,
+      points: dto.points,
+      reason: dto.reason,
+      adminUserId: user.id,
+      context: { ...this.auditContext(request), userId: user.id },
+    });
+    return { success: true, data };
+  }
 
   @Get('achievements')
   @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)

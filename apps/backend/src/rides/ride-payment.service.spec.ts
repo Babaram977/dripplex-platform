@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
-import { PrismaClient, WalletOwnerType } from '@prisma/client';
+import {
+  CommissionCampaignStatus,
+  CommissionScope,
+  DriverTier,
+  PrismaClient,
+  WalletOwnerType,
+} from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
@@ -9,8 +15,10 @@ import {
   PLATFORM_COMMISSION_SETTING_ID,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { FleetsService } from '../fleets/fleets.service';
@@ -123,6 +131,15 @@ describe('RidePaymentService', () => {
       // DPX-FLEET — resolves whether a driver rides for a fleet, which is
       // what decides between the platform rate and zero.
       new FleetsService(prisma, auditService),
+      // DPX-COMMISSION-001 — a real resolver against the real database. With
+      // no campaigns stored it returns the standing rate, which is exactly the
+      // fallback these tests rely on and is worth exercising rather than
+      // stubbing away.
+      new CommissionRateResolverService(prisma),
+      // DPX-TIER-001 — a real tier service against the real database. The tier
+      // table is seeded by migration with STANDARD at the platform rate, so
+      // these tests exercise the real resolution rather than stubbing it.
+      new DriverTierService(prisma, auditService),
     );
 
     const customer = await prisma.user.create({
@@ -1006,6 +1023,159 @@ describe('RidePaymentService', () => {
         },
       });
       expect(refundEntries).toBe(1);
+    });
+  });
+
+  describe('DPX-TIER-002 — an earned tier takes its points off the rate in force', () => {
+    /**
+     * Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4.
+     *
+     * The tier's qualification bars are lowered to zero rather than trading
+     * 4,500 trips into the fixture: they are Operations settings, lowering them
+     * is a supported thing to do, and what is under test here is the
+     * arithmetic at settlement, not the qualification that the tier suite
+     * already covers at its real thresholds.
+     */
+    async function makeDriverQualifyFor(reduction: number): Promise<void> {
+      await prisma.driverTierSetting.update({
+        where: { tier: DriverTier.STANDARD },
+        data: {
+          commissionReduction: reduction,
+          minCompletedTrips: 0,
+          minRatedTrips: 0,
+          minAverageRating: 0,
+          maxCancellationRate: null,
+        },
+      });
+      // Only STANDARD should be reachable, so the assertions are about one
+      // known reduction rather than whichever tier happens to be cleared.
+      await prisma.driverTierSetting.updateMany({
+        where: { tier: { not: DriverTier.STANDARD } },
+        data: { active: false },
+      });
+    }
+
+    async function setPlatformRate(rate: number): Promise<void> {
+      await prisma.platformCommissionSetting.upsert({
+        where: { id: PLATFORM_COMMISSION_SETTING_ID },
+        create: { id: PLATFORM_COMMISSION_SETTING_ID, commissionRate: rate },
+        update: { commissionRate: rate },
+      });
+    }
+
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.platformCommissionSetting.deleteMany({});
+      await prisma.driverTierSetting.update({
+        where: { tier: DriverTier.STANDARD },
+        data: {
+          commissionReduction: 0,
+          minCompletedTrips: 500,
+          minRatedTrips: 0,
+          minAverageRating: 0,
+        },
+      });
+      await prisma.driverTierSetting.updateMany({
+        where: { tier: { not: DriverTier.STANDARD } },
+        data: { active: true },
+      });
+    });
+
+    it('charges a tiered driver the reduced rate and snapshots it onto the ride', async () => {
+      if (!databaseAvailable) return;
+      // Platform 10%, tier takes 1.5 points off: 8.5%, the specified PLATINUM
+      // figure. This is the assertion that DPX-TIER-001 deliberately could not
+      // make — the tier now moves money.
+      await makeDriverQualifyFor(0.015);
+
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.085);
+      expect(Number(settled.platformCommission)).toBeCloseTo(85);
+      expect(Number(settled.driverEarning)).toBeCloseTo(915);
+      expect(settled.driverTier).toBe(DriverTier.STANDARD);
+    });
+
+    it('still follows the platform rate when Operations moves it', async () => {
+      if (!databaseAvailable) return;
+      // The reason Option B was chosen over absolute tier rates. Under the
+      // absolute table this ride would have settled at the tier's own number
+      // and the platform control would have done nothing.
+      await makeDriverQualifyFor(0.015);
+      await setPlatformRate(0.2);
+
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.185);
+      expect(Number(settled.driverEarning)).toBeCloseTo(815);
+    });
+
+    it('leaves a driver who has earned no tier paying exactly what they paid before', async () => {
+      if (!databaseAvailable) return;
+      // The safety property of this change: STANDARD asks for 500 trips and
+      // this driver has none, so nothing comes off and no money moves.
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommissionRate)).toBeCloseTo(0.1);
+      expect(Number(settled.driverEarning)).toBeCloseTo(900);
+      expect(settled.driverTier).toBeNull();
+    });
+
+    it('settles a cash ride under a 0% commission campaign — the free week DPX-COMMISSION-001 allows', async () => {
+      if (!databaseAvailable) return;
+      // This route to a zero commission predates tiers entirely, and it was
+      // broken: the commission ledger refuses a zero accrual by design, so a
+      // campaign at exactly 0% — which DPX-COMMISSION-001 explicitly allows,
+      // "a free week is a real offer and must not be mistaken for unset" —
+      // threw at settlement and left the ride unable to settle at all.
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: 'Free week',
+          scope: CommissionScope.RIDE,
+          commissionRate: 0,
+          status: CommissionCampaignStatus.ACTIVE,
+          startsAt: new Date(Date.now() - 60_000),
+          endsAt: new Date(Date.now() + 60 * 60_000),
+          announce: false,
+        },
+      });
+
+      try {
+        const ride = await createCompletedRide(1000);
+        await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+        await service.confirmCash(driverId, ride.id, {});
+
+        const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+        expect(Number(settled.platformCommissionRate)).toBe(0);
+        expect(Number(settled.platformCommission)).toBe(0);
+        expect(Number(settled.driverEarning)).toBeCloseTo(1000);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('never charges a negative commission when the reduction exceeds the rate', async () => {
+      if (!databaseAvailable) return;
+      // A misconfiguration must not turn into DrippleX paying for the trip.
+      await makeDriverQualifyFor(0.5);
+      await setPlatformRate(0.05);
+
+      const ride = await createCompletedRide(1000);
+      await service.initiatePayment(customerId, ride.id, 'CASH', undefined, {});
+      await service.confirmCash(driverId, ride.id, {});
+
+      const settled = await prisma.ride.findUniqueOrThrow({ where: { id: ride.id } });
+      expect(Number(settled.platformCommission)).toBe(0);
+      expect(Number(settled.driverEarning)).toBeCloseTo(1000);
     });
   });
 

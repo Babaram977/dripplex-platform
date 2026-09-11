@@ -210,7 +210,18 @@ export interface OrderSettlementDto {
   merchantId: string;
   status: OrderSettlementStatus;
   grossAmount: number;
+  /** What was actually charged, snapshotted at settlement. Never recomputed. */
   commissionRate: number;
+  /** The campaign that set `commissionRate`, or null when the standing rate
+   *  did. */
+  commissionCampaignId: string | null;
+  /** The merchant's negotiated rate as it stood when this settled, or null if
+   *  they had no agreement then (DPX-MERCHANT-016).
+   *
+   *  Together with the two above, the charge is explicable from the row alone:
+   *  a campaign id names the override, this names the standing agreement, and
+   *  both null means the platform rate applied and `commissionRate` is it. */
+  negotiatedRate: number | null;
   commissionAmount: number;
   merchantAmount: number;
   currency: string;
@@ -233,6 +244,50 @@ export interface MerchantCommissionSettingDto {
 
 export interface UpdateMerchantCommissionSettingsRequest {
   commissionRate: number;
+}
+
+/** The agreement itself, as Operations sets and reads it. */
+export interface MerchantNegotiatedRateDto {
+  merchantProfileId: string;
+  /** Fraction, or null when no agreement exists. */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
+}
+
+export interface SetMerchantNegotiatedRateRequest {
+  /** Null clears the agreement and returns the merchant to the platform rate. */
+  rate: number | null;
+  note?: string;
+}
+
+/**
+ * What DrippleX charges one merchant, as that merchant is shown it.
+ *
+ * Distinct from `MerchantCommissionSettingDto`, which is the Ops-facing
+ * singleton: this is the rate resolved *for a named merchant*, so a commission
+ * campaign aimed at them is already applied.
+ */
+export interface MerchantCommissionTermsDto {
+  /** The rate in force for this merchant, as a fraction (0.10 = 10%). */
+  commissionRate: number;
+  /** Their share of an order, `1 - commissionRate`. Returned rather than left
+   *  to the client so every surface subtracts it the same way. */
+  merchantShareRate: number;
+  /** The rate that applies when no campaign is running: this merchant's
+   *  negotiated rate if they have one, the platform rate otherwise. Equal to
+   *  `commissionRate` when nothing special is running. */
+  standingRate: number;
+  /** A rate agreed with this merchant individually, or null when none has
+   *  been. Reported beside `platformRate` so an agreed rate is legible as an
+   *  agreement rather than as an unexplained number. */
+  negotiatedRate: number | null;
+  /** The platform-wide default, before any agreement or campaign. */
+  platformRate: number;
+  /** The commission campaign currently overriding the standing rate, if any. */
+  campaignId: string | null;
+  campaignName: string | null;
 }
 
 export const ORDER_AUDIT_ACTIONS = {

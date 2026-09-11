@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import {
   CommissionOwnerType,
+  CommissionScope,
   OrderPaymentMethod,
   OrderSettlementStatus,
   OrderStatus,
@@ -15,6 +16,7 @@ import {
   COMMISSION_REFERENCE_TYPES,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -33,7 +35,11 @@ import {
 } from './order.constants';
 import { toOrderSettlementDto } from './order.mapper';
 
-import type { OrderSettlementDto, PaginatedResult } from '@dripplex/types';
+import type {
+  MerchantCommissionTermsDto,
+  OrderSettlementDto,
+  PaginatedResult,
+} from '@dripplex/types';
 import type { Order, OrderSettlement } from '@prisma/client';
 
 /// DPX-COMMERCIAL-001 Slice 2 §0.2 — the online/digitally-verified payment
@@ -85,6 +91,7 @@ export class MerchantSettlementService implements OnModuleInit {
     private readonly auditService: AuditService,
     private readonly commissionSettings: MerchantCommissionSettingsService,
     private readonly commissionAccounts: CommissionAccountService,
+    private readonly commissionRates: CommissionRateResolverService,
     @Optional() private readonly eventBus?: DomainEventBus,
   ) {}
 
@@ -155,8 +162,37 @@ export class MerchantSettlementService implements OnModuleInit {
       return null;
     }
 
-    const setting = await this.commissionSettings.getEffective();
-    const rate = Number(setting.commissionRate);
+    // The standing rate is what DrippleX charges when nothing special is
+    // running; a commission campaign can override it for a window, for a
+    // scope, under conditions (DPX-COMMISSION-001). Which one applied is
+    // recorded on the settlement row, because rates now change week to week
+    // and "why was this one 7%?" has to be answerable from the money record.
+    // DPX-MERCHANT-016, precedence LOCKED 2026-09-11:
+    //
+    //     Campaign  >  Negotiated merchant rate  >  Platform rate
+    //
+    // A negotiated rate is the merchant's standing commercial rate; a campaign
+    // is exceptional promotional pricing that overrides it for its eligible
+    // window, after which resolution returns to the agreement automatically.
+    // Do not reorder these without explicit founder approval — the ordering is
+    // a commercial commitment, not an implementation detail.
+    //
+    // It needs no branch: passing the merchant's own rate as the *standing*
+    // rate is the whole expression of it, because the resolver returns a
+    // matching campaign and this otherwise.
+    const negotiatedRate = await this.commissionSettings.negotiatedRateFor(order.merchantId);
+    const standingRate =
+      negotiatedRate ?? Number((await this.commissionSettings.getEffective()).commissionRate);
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.MERCHANT_ORDER,
+      standingRate,
+      {
+        userId: order.merchantId,
+        merchantId: order.merchantId,
+        ...(order.paymentMethod === null ? {} : { paymentMethod: order.paymentMethod }),
+      },
+    );
+    const rate = resolved.rate;
     const grossAmount = this.roundMoney(Number(order.subtotal));
     const commissionAmount = this.roundMoney(grossAmount * rate);
     const merchantAmount = this.roundMoney(grossAmount - commissionAmount);
@@ -171,6 +207,11 @@ export class MerchantSettlementService implements OnModuleInit {
           status: OrderSettlementStatus.PENDING,
           grossAmount,
           commissionRate: rate,
+          commissionCampaignId: resolved.campaignId,
+          // The agreement as it stood at this moment, so editing it later can
+          // never change what this sale was charged — and so a campaign-priced
+          // row still records what the merchant would otherwise have paid.
+          negotiatedRate,
           commissionAmount,
           merchantAmount,
           currency: order.currency,
@@ -464,6 +505,62 @@ export class MerchantSettlementService implements OnModuleInit {
    * real `orderNumber` so the merchant never has to look up a raw order
    * UUID to answer "why did I receive ₦9,000 instead of ₦10,000."
    */
+  /**
+   * What DrippleX actually charges this merchant — the number their own app
+   * shows them.
+   *
+   * The super-app printed a hardcoded "Commission 10% / Net to merchant 90%",
+   * which was only ever true for a merchant on the default standing rate with
+   * no campaign running. Ops can change the standing rate without a redeploy,
+   * and a commission campaign can target named merchants, so the figure on
+   * screen could differ from the one being deducted — with the merchant having
+   * no way to tell.
+   *
+   * Resolved through exactly the path `settleOrder` uses, with the same
+   * identifiers, so the answer is the rate that would be charged rather than a
+   * second opinion about it.
+   *
+   * One honest limit, and the reason `paymentMethod` is absent: a campaign may
+   * be conditioned on how an order was paid, and there is no order here to ask
+   * about. The resolver fails such a rule closed and reports the standing rate,
+   * which is the figure both sides already agreed to — so this can understate a
+   * discount on some orders, and never overstates what is owed.
+   */
+  public async getCommissionTerms(merchantUserId: string): Promise<MerchantCommissionTermsDto> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { userId: merchantUserId },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+
+    const platformRate = Number((await this.commissionSettings.getEffective()).commissionRate);
+    const negotiatedRate = await this.commissionSettings.negotiatedRateFor(profile.id);
+    const standingRate = negotiatedRate ?? platformRate;
+    // `OrderSettlement.merchantId` is the profile id, and `settleOrder` passes
+    // that same id as both `userId` and `merchantId`. Matching it exactly is
+    // what makes this the charged rate rather than a lookalike.
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.MERCHANT_ORDER,
+      standingRate,
+      { userId: profile.id, merchantId: profile.id },
+    );
+
+    const round = (value: number): number => Math.round(value * 10_000) / 10_000;
+    return {
+      commissionRate: round(resolved.rate),
+      merchantShareRate: round(1 - resolved.rate),
+      standingRate: round(standingRate),
+      // Null when no individual agreement exists. Reported separately from
+      // `standingRate` so a merchant can tell an agreed rate from the platform
+      // default, rather than seeing one number and having to take it on trust.
+      negotiatedRate: negotiatedRate === null ? null : round(negotiatedRate),
+      platformRate: round(platformRate),
+      campaignId: resolved.campaignId,
+      campaignName: resolved.campaignName,
+    };
+  }
+
   public async listSettlements(
     merchantUserId: string,
     page: number,

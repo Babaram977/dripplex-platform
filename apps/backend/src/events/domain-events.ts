@@ -43,6 +43,10 @@ export const DOMAIN_EVENTS = {
   DELIVERY_FAILED: 'DeliveryFailed',
   DELIVERY_CASH_CONFIRMED: 'DeliveryCashConfirmed',
   REVIEW_SUBMITTED: 'ReviewSubmitted',
+  /** DPX-LOYALTY-007 — a ride was rated. Emitted so a partner earning
+   *  programme can reward a good review without the rating service having to
+   *  know loyalty exists, and without loyalty being able to touch the rating. */
+  RIDE_RATED: 'RideRated',
   WALLET_CREDITED: 'WalletCredited',
   WALLET_DEBITED: 'WalletDebited',
   WITHDRAWAL_REQUESTED: 'WithdrawalRequested',

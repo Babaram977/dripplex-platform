@@ -5,6 +5,7 @@ import { CartClient } from '../cart/cart-client.js';
 import { HttpClient } from '../client/http-client.js';
 import { AdminCommercialCreditSettingsClient } from '../commercial/admin-commercial-credit-settings-client.js';
 import { AdminCommissionAccountsClient } from '../commercial/admin-commission-accounts-client.js';
+import { AdminCommissionCampaignsClient } from '../commercial/admin-commission-campaigns-client.js';
 import { AdminPlatformCommissionSettingsClient } from '../commercial/admin-platform-commission-settings-client.js';
 import { DriverCommercialClient } from '../commercial/driver-commercial-client.js';
 import { MerchantCommercialClient } from '../commercial/merchant-commercial-client.js';
@@ -43,6 +44,7 @@ import {
 import { OperationsAnalyticsClient } from '../operations/operations-analytics-client.js';
 import { OperationsCasesClient } from '../operations/operations-cases-client.js';
 import { OperationsDashboardClient } from '../operations/operations-dashboard-client.js';
+import { OperationsFinanceClient } from '../operations/operations-finance-client.js';
 import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
 import { OperationsHistoryClient } from '../operations/operations-history-client.js';
 import { OperationsQueuesClient } from '../operations/operations-queues-client.js';
@@ -52,6 +54,7 @@ import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
   AdminDriverCampaignClient,
+  AdminLoyaltyClient,
   AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,
@@ -62,6 +65,8 @@ import {
   DevicesClient,
   DriverCampaignClient,
   LoyaltyClient,
+  MerchantLoyaltyClient,
+  MerchantReferralsClient,
   NotificationsClient,
   PromotionsClient,
   ReferralsClient,
@@ -126,8 +131,10 @@ export class DripplexClient {
   public readonly driverInspections: DriverInspectionsClient;
   public readonly adminInspectionCentres: AdminInspectionCentresClient;
   public readonly adminRidePricing: AdminRidePricingClient;
+  public readonly adminCommissionCampaigns: AdminCommissionCampaignsClient;
   public readonly adminUtilities: AdminUtilitiesClient;
   public readonly operationsInspections: OperationsInspectionsClient;
+  public readonly operationsFinance: OperationsFinanceClient;
   public readonly operationsFleet: OperationsFleetClient;
   public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
   public readonly adminPlatformCommissionSettings: AdminPlatformCommissionSettingsClient;
@@ -152,10 +159,13 @@ export class DripplexClient {
   public readonly promotions: PromotionsClient;
   public readonly adminPromotions: AdminPromotionsClient;
   public readonly referrals: ReferralsClient;
+  public readonly merchantReferrals: MerchantReferralsClient;
   public readonly adminReferrals: AdminReferralsClient;
   public readonly driverCampaign: DriverCampaignClient;
   public readonly adminDriverCampaign: AdminDriverCampaignClient;
   public readonly loyalty: LoyaltyClient;
+  public readonly adminLoyalty: AdminLoyaltyClient;
+  public readonly merchantLoyalty: MerchantLoyaltyClient;
   public readonly wallet: WalletClient;
   public readonly adminWallet: AdminWalletClient;
   public readonly analytics: AnalyticsClient;
@@ -209,8 +219,10 @@ export class DripplexClient {
     this.driverInspections = new DriverInspectionsClient(this.http);
     this.adminInspectionCentres = new AdminInspectionCentresClient(this.http);
     this.adminRidePricing = new AdminRidePricingClient(this.http);
+    this.adminCommissionCampaigns = new AdminCommissionCampaignsClient(this.http);
     this.adminUtilities = new AdminUtilitiesClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
+    this.operationsFinance = new OperationsFinanceClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
     this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
     this.adminPlatformCommissionSettings = new AdminPlatformCommissionSettingsClient(this.http);
@@ -234,10 +246,13 @@ export class DripplexClient {
     this.promotions = new PromotionsClient(this.http);
     this.adminPromotions = new AdminPromotionsClient(this.http);
     this.referrals = new ReferralsClient(this.http);
+    this.merchantReferrals = new MerchantReferralsClient(this.http);
     this.adminReferrals = new AdminReferralsClient(this.http);
     this.driverCampaign = new DriverCampaignClient(this.http);
     this.adminDriverCampaign = new AdminDriverCampaignClient(this.http);
     this.loyalty = new LoyaltyClient(this.http);
+    this.adminLoyalty = new AdminLoyaltyClient(this.http);
+    this.merchantLoyalty = new MerchantLoyaltyClient(this.http);
     this.wallet = new WalletClient(this.http);
     this.adminWallet = new AdminWalletClient(this.http);
     this.analytics = new AnalyticsClient(this.http);
@@ -275,6 +290,7 @@ export { CustomerSosAlertClient } from '../rides/customer-sos-alert-client.js';
 export { UploadsClient } from '../uploads/uploads-client.js';
 export {
   AdminDriverCampaignClient,
+  AdminLoyaltyClient,
   AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,

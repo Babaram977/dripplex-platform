@@ -28,9 +28,11 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminDriverVehicles: client.adminDriverVehicles,
     adminInspectionCentres: client.adminInspectionCentres,
     adminRidePricing: client.adminRidePricing,
+    adminCommissionCampaigns: client.adminCommissionCampaigns,
     adminUtilities: client.adminUtilities,
     operationsInspections: client.operationsInspections,
     operationsFleet: client.operationsFleet,
+    operationsFinance: client.operationsFinance,
     operationsRides: client.operationsRides,
     operationsQueues: client.operationsQueues,
     operationsCases: client.operationsCases,
@@ -38,6 +40,9 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     operationsStaff: client.operationsStaff,
     operationsAnalytics: client.operationsAnalytics,
     adminPromotions: client.adminPromotions,
+    /** DPX-LOYALTY-005 / 007 — the Operations side of DX Points: partner
+     *  earning programmes, the conversion terms, and manual adjustments. */
+    adminLoyalty: client.adminLoyalty,
     analytics: client.analytics,
     notifications: client.notifications,
     promotions: client.promotions,
@@ -71,9 +76,11 @@ export interface AdminSdk {
   adminDriverVehicles: DripplexClient['adminDriverVehicles'];
   adminInspectionCentres: DripplexClient['adminInspectionCentres'];
   adminRidePricing: DripplexClient['adminRidePricing'];
+  adminCommissionCampaigns: DripplexClient['adminCommissionCampaigns'];
   adminUtilities: DripplexClient['adminUtilities'];
   operationsInspections: DripplexClient['operationsInspections'];
   operationsFleet: DripplexClient['operationsFleet'];
+  operationsFinance: DripplexClient['operationsFinance'];
   operationsRides: DripplexClient['operationsRides'];
   operationsQueues: DripplexClient['operationsQueues'];
   operationsCases: DripplexClient['operationsCases'];
@@ -81,6 +88,7 @@ export interface AdminSdk {
   operationsStaff: DripplexClient['operationsStaff'];
   operationsAnalytics: DripplexClient['operationsAnalytics'];
   adminPromotions: DripplexClient['adminPromotions'];
+  adminLoyalty: DripplexClient['adminLoyalty'];
   analytics: DripplexClient['analytics'];
   notifications: DripplexClient['notifications'];
   promotions: DripplexClient['promotions'];

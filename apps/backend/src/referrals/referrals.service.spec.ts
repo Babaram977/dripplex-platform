@@ -1,20 +1,13 @@
-import {
-  Prisma,
-  ReferralOwnerType,
-  ReferralRedemptionStatus,
-  RideStatus,
-  WalletOwnerType,
-} from '@prisma/client';
+import { Prisma, ReferralRedemptionStatus, ReferralRefereeType } from '@prisma/client';
 
 import { DOMAIN_EVENTS } from '../events/domain-events';
 
-import { REFERRAL_REWARD_AMOUNTS, REFERRAL_WALLET_REFERENCE_TYPES } from './referral.constants';
 import { ReferralsService } from './referrals.service';
 
+import type { ReferralLifecycleService } from './referral-lifecycle.service';
 import type { AuditService } from '../audit/audit.service';
 import type { DomainEventBus } from '../events/domain-event-bus';
 import type { PrismaService } from '../prisma/prisma.service';
-import type { WalletService } from '../wallet/wallet.service';
 
 describe('ReferralsService', () => {
   let prisma: {
@@ -30,7 +23,7 @@ describe('ReferralsService', () => {
   };
   let auditService: jest.Mocked<AuditService>;
   let eventBus: jest.Mocked<DomainEventBus>;
-  let walletService: jest.Mocked<WalletService>;
+  let lifecycle: jest.Mocked<ReferralLifecycleService>;
   let service: ReferralsService;
 
   beforeEach(() => {
@@ -51,14 +44,24 @@ describe('ReferralsService', () => {
     eventBus = {
       emit: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<DomainEventBus>;
-    walletService = {
-      credit: jest.fn().mockResolvedValue({}),
-    } as unknown as jest.Mocked<WalletService>;
+    lifecycle = {
+      advance: jest.fn().mockResolvedValue(ReferralRedemptionStatus.QUALIFIED),
+      programmeFor: jest.fn().mockResolvedValue({
+        id: 'programme-customer',
+        refereeType: ReferralRefereeType.CUSTOMER,
+        referrerRewardAmount: new Prisma.Decimal(350),
+        refereeRewardAmount: new Prisma.Decimal(350),
+        holdDays: 7,
+        qualificationWindowDays: 90,
+        requireKycVerified: false,
+        active: true,
+      }),
+    } as unknown as jest.Mocked<ReferralLifecycleService>;
     service = new ReferralsService(
       prisma as unknown as PrismaService,
       auditService,
       eventBus,
-      walletService,
+      lifecycle,
     );
   });
 
@@ -140,11 +143,11 @@ describe('ReferralsService', () => {
         totalRedemptions: 5,
         pendingRedemptions: 2,
         rewardedRedemptions: 3,
-        // Both amounts come from REFERRAL_REWARD_AMOUNTS rather than being
-        // repeated here, so a founder changing the reward cannot leave this
-        // test asserting the old number.
-        refereeRewardAmount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-        referrerRewardAmount: REFERRAL_REWARD_AMOUNTS.REFERRER,
+        // Read from the live programme row rather than a constant. That is the
+        // point of DPX-REFERRAL-003: an operator changes what a referral pays
+        // without a deployment, and this screen has to follow.
+        refereeRewardAmount: 350,
+        referrerRewardAmount: 350,
       });
     });
   });
@@ -186,7 +189,12 @@ describe('ReferralsService', () => {
       await service.tryRedeemAtRegistration('referee-1', 'valid001', {});
 
       expect(prisma.referralRedemption.create).toHaveBeenCalledWith({
-        data: { referralId: 'ref-6', refereeUserId: 'referee-1' },
+        data: {
+          referralId: 'ref-6',
+          refereeUserId: 'referee-1',
+          refereeType: ReferralRefereeType.CUSTOMER,
+          expiresAt: expect.any(Date),
+        },
       });
       expect(eventBus.emit).toHaveBeenCalledWith(
         DOMAIN_EVENTS.REFERRAL_REDEEMED,
@@ -211,163 +219,35 @@ describe('ReferralsService', () => {
 
       await service.handleRefereeRideCompleted('customer-1');
 
-      expect(walletService.credit).not.toHaveBeenCalled();
+      expect(lifecycle.advance).not.toHaveBeenCalled();
     });
 
-    it('does nothing when the redemption is already rewarded', async () => {
+    it('does nothing when the redemption has already left PENDING', async () => {
+      // Whether it qualified, was refused or was paid, the ride event has
+      // nothing left to prompt — everything after PENDING is the lifecycle's
+      // and the sweep's business.
       prisma.referralRedemption.findUnique.mockResolvedValue({
         id: 'redemption-2',
-        status: ReferralRedemptionStatus.REWARDED,
-        referral: { userId: 'referrer-3' },
+        status: ReferralRedemptionStatus.PAID,
       });
 
       await service.handleRefereeRideCompleted('customer-2');
 
-      expect(walletService.credit).not.toHaveBeenCalled();
+      expect(lifecycle.advance).not.toHaveBeenCalled();
     });
 
-    it('does nothing when this is not the first completed ride', async () => {
-      prisma.referralRedemption.findUnique.mockResolvedValue({
-        id: 'redemption-3',
-        status: ReferralRedemptionStatus.PENDING,
-        referral: { userId: 'referrer-4' },
-      });
-      prisma.ride.count.mockResolvedValue(2);
-
-      await service.handleRefereeRideCompleted('customer-3');
-
-      expect(walletService.credit).not.toHaveBeenCalled();
-      expect(prisma.referralRedemption.update).not.toHaveBeenCalled();
-    });
-
-    it('credits both wallets and marks the redemption rewarded on the first completed ride', async () => {
+    it('asks the lifecycle to look, rather than deciding anything itself', async () => {
+      // The rule for what qualifies a referral lives in one place, and the
+      // sweep asks the same question on its own schedule. A ride event is a
+      // prompt, so a lost one costs a delay rather than a reward.
       prisma.referralRedemption.findUnique.mockResolvedValue({
         id: 'redemption-4',
         status: ReferralRedemptionStatus.PENDING,
-        referral: { userId: 'referrer-5', ownerType: ReferralOwnerType.CUSTOMER },
       });
-      prisma.ride.count.mockResolvedValue(1);
 
       await service.handleRefereeRideCompleted('customer-4');
 
-      expect(walletService.credit).toHaveBeenCalledWith({
-        ownerType: WalletOwnerType.CUSTOMER,
-        ownerId: 'referrer-5',
-        amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
-        referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,
-        referenceId: 'redemption-4',
-        description: expect.any(String),
-      });
-      expect(walletService.credit).toHaveBeenCalledWith({
-        ownerType: WalletOwnerType.CUSTOMER,
-        ownerId: 'customer-4',
-        amount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-        referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFEREE_REWARD,
-        referenceId: 'redemption-4',
-        description: expect.any(String),
-      });
-      expect(prisma.referralRedemption.update).toHaveBeenCalledWith({
-        where: { id: 'redemption-4' },
-        data: { status: ReferralRedemptionStatus.REWARDED, rewardedAt: expect.any(Date) },
-      });
-      expect(eventBus.emit).toHaveBeenCalledWith(
-        DOMAIN_EVENTS.REFERRAL_REWARDED,
-        {
-          userId: 'referrer-5',
-          amount: String(REFERRAL_REWARD_AMOUNTS.REFERRER),
-          role: 'referrer',
-        },
-        { actorUserId: 'customer-4' },
-      );
-      expect(eventBus.emit).toHaveBeenCalledWith(
-        DOMAIN_EVENTS.REFERRAL_REWARDED,
-        {
-          userId: 'customer-4',
-          amount: String(REFERRAL_REWARD_AMOUNTS.REFEREE),
-          role: 'referee',
-        },
-        { actorUserId: 'customer-4' },
-      );
-      expect(prisma.ride.count).toHaveBeenCalledWith({
-        where: { customerId: 'customer-4', status: RideStatus.COMPLETED },
-      });
-    });
-
-    it('pays a DRIVER referrer into their driver wallet, not a customer one', async () => {
-      // Founder decision, 2026-08-26: drivers market DrippleX to passengers
-      // and earn ₦350 of wallet cash per customer who actually rides. It has
-      // to land in the DRIVER wallet — that is the balance their app shows
-      // and the one they can withdraw. A customer-wallet credit would be
-      // money they can neither see nor reach.
-      prisma.referralRedemption.findUnique.mockResolvedValue({
-        id: 'redemption-5',
-        status: ReferralRedemptionStatus.PENDING,
-        referral: { userId: 'driver-1', ownerType: ReferralOwnerType.DRIVER },
-      });
-      prisma.ride.count.mockResolvedValue(1);
-
-      await service.handleRefereeRideCompleted('customer-5');
-
-      expect(walletService.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ownerType: WalletOwnerType.DRIVER,
-          ownerId: 'driver-1',
-          amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
-        }),
-      );
-      // The referred customer is still a customer, whoever referred them.
-      expect(walletService.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ownerType: WalletOwnerType.CUSTOMER,
-          ownerId: 'customer-5',
-          amount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-        }),
-      );
-    });
-
-    it('pays a RIDER referrer into their rider wallet, not a customer one', async () => {
-      // Riders meet customers on every delivery. Same scheme, same rule, and
-      // the same requirement that it land in the wallet their own app shows:
-      // a customer-wallet credit is money they can neither see nor withdraw.
-      prisma.referralRedemption.findUnique.mockResolvedValue({
-        id: 'redemption-6',
-        status: ReferralRedemptionStatus.PENDING,
-        referral: { userId: 'rider-1', ownerType: ReferralOwnerType.RIDER },
-      });
-      prisma.ride.count.mockResolvedValue(1);
-
-      await service.handleRefereeRideCompleted('customer-6');
-
-      expect(walletService.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ownerType: WalletOwnerType.RIDER,
-          ownerId: 'rider-1',
-          amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
-        }),
-      );
-      expect(walletService.credit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ownerType: WalletOwnerType.CUSTOMER,
-          ownerId: 'customer-6',
-          amount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-        }),
-      );
-    });
-
-    it('pays a driver nothing until the customer they referred actually rides', async () => {
-      // Registration alone must never pay: a driver could otherwise sign up
-      // accounts from their own phone and collect ₦350 each.
-      prisma.referralRedemption.findUnique.mockResolvedValue({
-        id: 'redemption-6',
-        status: ReferralRedemptionStatus.PENDING,
-        referral: { userId: 'driver-2', ownerType: ReferralOwnerType.DRIVER },
-      });
-      prisma.ride.count.mockResolvedValue(0);
-
-      await service.handleRefereeRideCompleted('customer-6');
-
-      expect(walletService.credit).not.toHaveBeenCalled();
-      expect(prisma.referralRedemption.update).not.toHaveBeenCalled();
+      expect(lifecycle.advance).toHaveBeenCalledWith('redemption-4');
     });
   });
 });

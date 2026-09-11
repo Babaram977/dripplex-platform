@@ -3,10 +3,12 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 import { OperationsAnalyticsController } from './controllers/operations-analytics.controller';
 import { OperationsCasesController } from './controllers/operations-cases.controller';
 import { OperationsDashboardController } from './controllers/operations-dashboard.controller';
+import { OperationsFinanceController } from './controllers/operations-finance.controller';
 import { OperationsFleetController } from './controllers/operations-fleet.controller';
 import { OperationsHistoryController } from './controllers/operations-history.controller';
 import { OperationsQueuesController } from './controllers/operations-queues.controller';
@@ -19,6 +21,8 @@ import { OperationsDispatchSupportService } from './operations-dispatch-support.
 import { OperationsEligibilityService } from './operations-eligibility.service';
 import { OperationsFleetService } from './operations-fleet.service';
 import { OperationsHistoryService } from './operations-history.service';
+import { OperationsPayoutsService } from './operations-payouts.service';
+import { OperationsReferralsService } from './operations-referrals.service';
 import { OperationsRideDetailService } from './operations-ride-detail.service';
 import { OperationsRideQueueService } from './operations-ride-queue.service';
 
@@ -68,8 +72,11 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * `PrismaService`, the same cross-module-read pattern established
  * throughout Driver Slice 2 and every DPX-OPS-001 slice since. */
 @Module({
-  imports: [PrismaModule, AuditModule, DriversModule],
+  // DPX-REFERRAL-003 — the referral review queue reads the programmes that
+  // set each hold, so it needs the lifecycle service that owns them.
+  imports: [PrismaModule, AuditModule, DriversModule, ReferralsModule],
   controllers: [
+    OperationsFinanceController,
     OperationsFleetController,
     OperationsRidesController,
     OperationsQueuesController,
@@ -81,6 +88,8 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
   ],
   providers: [
     OperationsFleetService,
+    OperationsPayoutsService,
+    OperationsReferralsService,
     OperationsEligibilityService,
     OperationsRideQueueService,
     OperationsRideDetailService,

@@ -2201,6 +2201,42 @@ export interface LoyaltyOverviewDto {
       updatedAt: string;
     };
   }[];
+  points: LoyaltyPointsSummaryDto;
+}
+
+// What the balance is worth and when it lapses. Every figure is computed by the
+// backend from the loyalty ledger — the rate (200 points = ₦1), the thresholds
+// and the expiry dates all live server-side, so the app never states a number
+// the backend would disagree with.
+export interface LoyaltyPointsSummaryDto {
+  balance: number;
+  pointsPerNaira: number;
+  balanceValue: number;
+  redeemablePoints: number;
+  minimumRedeemablePoints: number;
+  earnedThisMonth: number;
+  nextExpiry: { at: string; points: number } | null;
+  benefits: {
+    deliveryFeeDiscount: { threshold: number; eligible: boolean; pointsToGo: number };
+    monthlyElite: { threshold: number; eligible: boolean; pointsToGo: number };
+  };
+}
+
+// A one-time authorisation for a merchant to take DX points at their counter.
+// `code` is shown once and never comes back — show it, then forget it.
+export interface IssuedRedemptionCodeDto {
+  code: string;
+  points: number;
+  amount: number;
+  expiresAt: string;
+}
+
+// Redemption pays into the customer's wallet; the response says how much.
+export interface LoyaltyRedemptionResultDto {
+  overview: LoyaltyOverviewDto;
+  pointsRedeemed: number;
+  amountCredited: number;
+  wallet: { id: string; availableBalance: number; currency: string };
 }
 
 // ── UTILITIES (bill payments, DPX-UTILITIES-001/-002) ────────────────────────
@@ -2434,6 +2470,32 @@ export interface ResolvedBankAccountDto {
   accountName: string;
   bankName: string;
   bankCode: string;
+}
+
+/**
+ * What DrippleX charges this merchant, resolved for them specifically.
+ *
+ * Read from the platform rather than printed as static text: Ops can change the
+ * standing rate without a redeploy, and a commission campaign can target named
+ * merchants, so a hardcoded percentage is a number the app cannot stand behind.
+ */
+export interface MerchantCommissionTermsDto {
+  /** Fraction, not percent: 0.10 is 10%. */
+  commissionRate: number;
+  /** The merchant's share, `1 - commissionRate`. Supplied by the backend so
+   *  every surface subtracts it identically. */
+  merchantShareRate: number;
+  /** What applies when no campaign is running: the negotiated rate if there is
+   *  one, the platform rate otherwise. */
+  standingRate: number;
+  /** A rate agreed with this merchant individually, or null when none has
+   *  been. Worth saying out loud on screen — a merchant who negotiated a rate
+   *  should be able to see that it is the one being applied. */
+  negotiatedRate: number | null;
+  /** The platform-wide default, before any agreement or campaign. */
+  platformRate: number;
+  campaignId: string | null;
+  campaignName: string | null;
 }
 
 // ─── API Namespaces ───────────────────────────────────────────────────────────
@@ -2716,12 +2778,11 @@ export const api = {
         'GET',
         `/customer/wallet/bank-accounts/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
       ),
-    addBankAccount: (body: {
-      bankCode: string;
-      accountNumber: string;
-      bankName: string;
-      accountName: string;
-    }) => dx<CustomerBankAccountDto>('POST', '/customer/wallet/bank-accounts', body),
+    /** `accountName` is deliberately absent: the backend stores the name name
+     *  enquiry returns and ignores anything sent here, so a client that supplies
+     *  one is only inviting the two to disagree. */
+    addBankAccount: (body: { bankCode: string; accountNumber: string; bankName: string }) =>
+      dx<CustomerBankAccountDto>('POST', '/customer/wallet/bank-accounts', body),
     requestWithdrawal: (body: { amount: number; bankAccountId: string }) =>
       dx<WithdrawalRequestDto>('POST', '/customer/wallet/withdrawals', body),
     getWithdrawals: (params?: { page?: number; pageSize?: number; status?: string }) =>
@@ -3465,14 +3526,36 @@ export const api = {
       selfieImage?: string;
     }) => dx<MerchantKycDto>('POST', '/merchant/kyc', body),
 
-    // Settlement bank account. bankName is free text (any Nigerian bank),
-    // accountName is the resolved holder name (typed by the merchant — the
-    // backend has no NUBAN resolution service yet), accountNumber is 8–20 digits.
+    // Settlement bank account — the destination every merchant payout is sent
+    // to, so none of it is typed. The backend gained NUBAN resolution some time
+    // ago (this comment used to say it hadn't) and `POST /merchant/bank-account`
+    // now *requires* it: the bank must match the provider's list, the number
+    // must be exactly 10 digits, and the stored account name is the bank's
+    // answer rather than anything the merchant entered.
+    /** The commission rate actually in force for this merchant. */
+    getCommissionTerms: () =>
+      dx<MerchantCommissionTermsDto>('GET', '/merchant/settlements/commission'),
     listBankAccounts: () => dx<MerchantBankAccountDto[]>('GET', '/merchant/bank-account'),
+    /** The banks the payment provider will actually accept, for the picker.
+     * A typed bank name is how a settlement destination ends up unlinkable:
+     * the provider spells OPay "OPay Digital Services Limited (OPay)". */
+    listBanks: () => dx<BankOptionDto[]>('GET', '/merchant/bank-account/banks'),
+    /** Ask the bank who owns a number, before anything is saved. A transposed
+     * digit is a valid-looking number belonging to somebody else, and this is
+     * what catches it. */
+    resolveBankAccount: (bankCode: string, accountNumber: string) =>
+      dx<ResolvedBankAccountDto>(
+        'GET',
+        `/merchant/bank-account/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
+      ),
     createBankAccount: (body: {
       bankName: string;
       accountName: string;
       accountNumber: string;
+      /** The provider's code for the chosen bank. The backend matches on this
+       * when present, so it saves re-deriving the bank from a display name at
+       * the moment money moves. */
+      bankCode?: string;
       currency?: string;
       isDefault?: boolean;
     }) => dx<MerchantBankAccountDto>('POST', '/merchant/bank-account', body),
@@ -4419,7 +4502,10 @@ export const api = {
   },
 
   // Points accrue automatically server-side on domain events (order paid +50,
-  // delivery completed +25, registration +100, coupon +10). The app only reads.
+  // delivery completed +25, registration +100, coupon +10) and lapse 365 days
+  // after they are earned. Redeeming pays into the customer's wallet at
+  // 200 points = ₦1, in whole naira only — `points.redeemablePoints` from
+  // `get()` is the exact figure the backend will accept.
   loyalty: {
     get: () => dx<LoyaltyOverviewDto>('GET', '/customer/loyalty'),
     history: (params?: { page?: number; pageSize?: number }) =>
@@ -4430,7 +4516,15 @@ export const api = {
         params,
       ),
     redeem: (points: number) =>
-      dx<LoyaltyOverviewDto>('POST', '/customer/loyalty/redeem', { points }),
+      dx<LoyaltyRedemptionResultDto>('POST', '/customer/loyalty/redeem', { points }),
+    // DPX-LOYALTY-002 — a one-time code the holder shows at a merchant's
+    // counter. Returned once and never retrievable again: only its hash is
+    // stored. Generating one cancels any outstanding code, so a holder has at
+    // most one live authorisation against their balance.
+    issueRedemptionCode: (points: number) =>
+      dx<IssuedRedemptionCodeDto>('POST', '/customer/loyalty/redemption-code', { points }),
+    cancelRedemptionCode: () =>
+      dx<{ cancelled: number }>('DELETE', '/customer/loyalty/redemption-code'),
   },
 };
 

@@ -22,6 +22,31 @@ export class LoyaltyEventsSubscriber implements OnModuleInit {
       this.handleCustomerRegistered(event),
     );
     this.eventBus.on(DOMAIN_EVENTS.COUPON_REDEEMED, (event) => this.handleCouponRedeemed(event));
+    // DPX-LOYALTY-006 — points awarded for an order that was later refunded
+    // stayed on the balance forever. The money went back; the points did not.
+    this.eventBus.on(DOMAIN_EVENTS.ORDER_REFUNDED, (event) => this.handleOrderRefunded(event));
+  }
+
+  /**
+   * The order was refunded, so the points it earned come back off.
+   *
+   * Bounded by what is still on the balance and idempotent on the order, so a
+   * replayed refund event reverses once and a holder who has already spent the
+   * points is not pushed negative — see `reversePointsFor`.
+   */
+  private async handleOrderRefunded(event: DomainEvent): Promise<void> {
+    const userId = stringPayload(event, 'customerId') ?? stringPayload(event, 'userId');
+    const orderId = stringPayload(event, 'orderId');
+    if (!userId || !orderId) {
+      return;
+    }
+
+    await this.loyaltyService.reversePointsFor({
+      userId,
+      referenceType: LOYALTY_REFERENCE_TYPES.ORDER,
+      referenceId: orderId,
+      reason: 'Order refunded',
+    });
   }
 
   private async handleOrderPaid(event: DomainEvent): Promise<void> {

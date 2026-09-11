@@ -11,7 +11,7 @@ extending, or building on prior work:
 
 1. **Find where the last session left off** — check out the relevant branch, read its
    latest commits, and read any `docs/DPX-*` design/verification docs it produced.
-2. **Verify, don't assume.** Independently confirm what a prior session *reported* against
+2. **Verify, don't assume.** Independently confirm what a prior session _reported_ against
    the **actual code** — file existence, migrations, permission-catalog counts, SDK route
    contracts, test assertions. A report doc is a claim; the code is the ground truth.
 3. **State the verified baseline** before doing new work, and call out any gap between what
@@ -56,7 +56,15 @@ extending, or building on prior work:
 
 - **No username.** Stable identity is phone (primary) + optional email + name.
 - **Customer KYC lifecycle is locked:** `NOT_STARTED → IN_PROGRESS → PENDING_REVIEW →
-  VERIFIED | REJECTED | EXPIRED | REQUIRES_RESUBMISSION` (`REJECTED`/`REQUIRES_RESUBMISSION`
+VERIFIED | REJECTED | EXPIRED | REQUIRES_RESUBMISSION` (`REJECTED`/`REQUIRES_RESUBMISSION`
   re-enter `IN_PROGRESS`; `EXPIRED` terminal from `VERIFIED`). Customer KYC is a **separate**
   model from `DriverKyc` — do not merge them.
+- **Merchant commission precedence is locked** (2026-09-11, DPX-MERCHANT-016):
+  `Campaign → Negotiated merchant rate → Platform rate`. A negotiated rate is the merchant's
+  standing commercial rate; a campaign is exceptional promotional pricing that overrides it only for
+  its eligible window, after which resolution returns to the agreement automatically. Negotiated
+  rates are strictly `0 < rate < 1` — zero commission is **not** expressible through this control.
+  Every financially settled transaction snapshots the negotiated rate in force, so editing an
+  agreement can never alter a historical settlement. **Do not change this precedence without
+  explicit founder approval.**
 - Founder-decision records live under `docs/DPX-*`; read them before changing locked scope.

@@ -9,7 +9,11 @@ import { MerchantSettlementService } from '../merchant-settlement.service';
 
 import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { ApiSuccessResponse } from '../../common/dto/api-response.dto';
-import type { OrderSettlementDto, PaginatedResult } from '@dripplex/types';
+import type {
+  MerchantCommissionTermsDto,
+  OrderSettlementDto,
+  PaginatedResult,
+} from '@dripplex/types';
 
 /**
  * DPX-MERCHANT-007 — merchant-facing settlement transparency for the
@@ -31,5 +35,20 @@ export class MerchantSettlementsController {
   ): Promise<ApiSuccessResponse<PaginatedResult<OrderSettlementDto>>> {
     const data = await this.settlementService.listSettlements(user.id, query.page, query.pageSize);
     return { success: true, data };
+  }
+
+  /**
+   * The rate this merchant is charged, so their app can show it instead of a
+   * number compiled into the client.
+   *
+   * The super-app printed "Commission 10%" as static text. Ops can change the
+   * standing rate without a redeploy and a campaign can target named merchants,
+   * so that text was a claim the platform had stopped guaranteeing.
+   */
+  @Get('commission')
+  public async commission(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<ApiSuccessResponse<MerchantCommissionTermsDto>> {
+    return { success: true, data: await this.settlementService.getCommissionTerms(user.id) };
   }
 }

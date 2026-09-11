@@ -349,6 +349,11 @@ export class PromotionsService implements OnModuleInit {
         amountOff: source.amountOff,
         creditAmount: source.creditAmount,
         maxDiscount: source.maxDiscount,
+        minDiscount: source.minDiscount,
+        // The budget is copied; what the original spent is deliberately not.
+        // A clone is a new campaign with the same allowance, not one that
+        // starts already half spent.
+        budgetAmount: source.budgetAmount,
         buyQty: source.buyQty,
         getQty: source.getQty,
         priority: source.priority,
@@ -535,6 +540,10 @@ export class PromotionsService implements OnModuleInit {
     });
     const eligibilityContext: PromotionEligibilityContext = {
       userId: input.userId,
+      // The caller has already named the merchant; carrying it here is what
+      // gives an `eligibleMerchantIds` rule something to check. An explicit
+      // `eligibility.merchantId` still wins, for a caller that knows better.
+      ...(input.merchantId !== undefined ? { merchantId: input.merchantId } : {}),
       ...input.eligibility,
     };
     const eligible: PromotionDiscountDto[] = [];
@@ -633,6 +642,7 @@ export class PromotionsService implements OnModuleInit {
     const eligibilityContext: PromotionEligibilityContext = {
       userId: input.userId,
       now,
+      ...(input.merchantId !== undefined ? { merchantId: input.merchantId } : {}),
       ...input.eligibility,
     };
     if (
@@ -655,11 +665,40 @@ export class PromotionsService implements OnModuleInit {
     if (effect.discountAmount <= 0 && effect.creditAmount <= 0) {
       return null;
     }
+    // Checked here as well as at redemption, because offering somebody a
+    // discount and then refusing it at the till is worse than never showing it.
+    // The redemption check is still the real one — this read is not locked.
+    if (!this.withinBudget(promotion, effect.discountAmount + effect.creditAmount)) {
+      return null;
+    }
     return {
       promotion: toPromotionDto(promotion),
       discountAmount: effect.discountAmount,
       creditAmount: effect.creditAmount,
     };
+  }
+
+  /**
+   * DPX-CAMPAIGN-001 — would this benefit fit inside what the campaign is
+   * allowed to cost?
+   *
+   * A redemption that would exceed the budget is refused outright rather than
+   * trimmed to the remaining headroom. Quoting somebody ₦500 off and taking
+   * ₦120 off because the campaign is nearly out is a worse experience than
+   * being told the offer has ended, and it puts a number on a receipt that
+   * matches nothing the campaign ever advertised.
+   */
+  private withinBudget(promotion: Promotion, spend: number): boolean {
+    if (promotion.budgetAmount === null) {
+      return true;
+    }
+    return Number(promotion.budgetSpent) + spend <= Number(promotion.budgetAmount);
+  }
+
+  private assertWithinBudget(promotion: Promotion, spend: number): void {
+    if (!this.withinBudget(promotion, spend)) {
+      throw new ValidationDomainException('This campaign has spent its budget');
+    }
   }
 
   public async evaluateForCart(input: {
@@ -764,6 +803,9 @@ export class PromotionsService implements OnModuleInit {
           if (effect.discountAmount <= 0 && effect.creditAmount <= 0) {
             throw new ValidationDomainException('Promotion does not apply to order');
           }
+          // Inside the lock, on the row just re-read: two simultaneous
+          // checkouts must not both spend the last of the budget.
+          this.assertWithinBudget(lockedPromotion, effect.discountAmount + effect.creditAmount);
           const created = await tx.promotionRedemption.create({
             data: {
               promotionId: lockedPromotion.id,
@@ -777,7 +819,15 @@ export class PromotionsService implements OnModuleInit {
           });
           await tx.promotion.update({
             where: { id: lockedPromotion.id },
-            data: { usageCount: { increment: 1 } },
+            data: {
+              usageCount: { increment: 1 },
+              // Incremented by what this redemption actually saved, in the same
+              // transaction that records it, so the running total can never
+              // drift from the redemptions it is the sum of.
+              budgetSpent: {
+                increment: this.roundMoney(effect.discountAmount + effect.creditAmount),
+              },
+            },
           });
           return {
             redemption: created,
@@ -860,6 +910,7 @@ export class PromotionsService implements OnModuleInit {
     const eligibilityContext: PromotionEligibilityContext = {
       userId: input.userId,
       now,
+      ...(input.merchantId !== undefined ? { merchantId: input.merchantId } : {}),
       ...input.eligibility,
     };
 
@@ -922,6 +973,9 @@ export class PromotionsService implements OnModuleInit {
           if (effect.discountAmount <= 0 && effect.creditAmount <= 0) {
             throw new ValidationDomainException('Promotion does not apply');
           }
+          // Inside the lock, on the row just re-read: two simultaneous
+          // checkouts must not both spend the last of the budget.
+          this.assertWithinBudget(lockedPromotion, effect.discountAmount + effect.creditAmount);
           const created = await tx.promotionRedemption.create({
             data: {
               promotionId: lockedPromotion.id,
@@ -934,7 +988,15 @@ export class PromotionsService implements OnModuleInit {
           });
           await tx.promotion.update({
             where: { id: lockedPromotion.id },
-            data: { usageCount: { increment: 1 } },
+            data: {
+              usageCount: { increment: 1 },
+              // Incremented by what this redemption actually saved, in the same
+              // transaction that records it, so the running total can never
+              // drift from the redemptions it is the sum of.
+              budgetSpent: {
+                increment: this.roundMoney(effect.discountAmount + effect.creditAmount),
+              },
+            },
           });
           return {
             redemption: created,
@@ -998,9 +1060,27 @@ export class PromotionsService implements OnModuleInit {
     if (raw <= 0) {
       return 0;
     }
+    return this.roundMoney(Math.min(subtotal, this.applyBenefitBand(promotion, raw)));
+  }
+
+  /**
+   * DPX-CAMPAIGN-001 — clamp a benefit into its configured band.
+   *
+   * The floor is applied **after** the ceiling, so a misconfigured campaign
+   * where `minDiscount` exceeds `maxDiscount` resolves to the floor rather than
+   * to something between the two that matches neither. Neither bound can lift a
+   * benefit above the subtotal — that clamp is the caller's, and it is the one
+   * rule here that protects the merchant rather than the customer.
+   *
+   * A raw benefit of zero never reaches this: a campaign that does not apply
+   * must not be turned into one that does by a floor.
+   */
+  private applyBenefitBand(promotion: Promotion, raw: number): number {
     const capped =
       promotion.maxDiscount !== null ? Math.min(raw, Number(promotion.maxDiscount)) : raw;
-    return this.roundMoney(Math.min(subtotal, capped));
+    return promotion.minDiscount !== null
+      ? Math.max(capped, Number(promotion.minDiscount))
+      : capped;
   }
 
   /** Splits a promotion's benefit into `discountAmount` (reduces the
@@ -1012,9 +1092,15 @@ export class PromotionsService implements OnModuleInit {
   ): { discountAmount: number; creditAmount: number } {
     if (this.isCreditType(promotion.type)) {
       const raw = promotion.creditAmount !== null ? Number(promotion.creditAmount) : 0;
-      const capped =
-        promotion.maxDiscount !== null ? Math.min(raw, Number(promotion.maxDiscount)) : raw;
-      return { discountAmount: 0, creditAmount: this.roundMoney(Math.max(0, capped)) };
+      if (raw <= 0) {
+        return { discountAmount: 0, creditAmount: 0 };
+      }
+      // Wallet credit is not taken off a basket, so the subtotal clamp that
+      // applies to a discount does not apply here.
+      return {
+        discountAmount: 0,
+        creditAmount: this.roundMoney(this.applyBenefitBand(promotion, raw)),
+      };
     }
     return { discountAmount: this.calculateDiscount(promotion, subtotal), creditAmount: 0 };
   }
@@ -1294,6 +1380,8 @@ export class PromotionsService implements OnModuleInit {
       amountOff: dto.amountOff ?? null,
       creditAmount: dto.creditAmount ?? null,
       maxDiscount: dto.maxDiscount ?? null,
+      minDiscount: dto.minDiscount ?? null,
+      budgetAmount: dto.budgetAmount ?? null,
       buyQty: dto.buyQty ?? null,
       getQty: dto.getQty ?? null,
       priority: dto.priority ?? 0,
@@ -1322,6 +1410,11 @@ export class PromotionsService implements OnModuleInit {
       ...(dto.amountOff !== undefined ? { amountOff: dto.amountOff } : {}),
       ...(dto.creditAmount !== undefined ? { creditAmount: dto.creditAmount } : {}),
       ...(dto.maxDiscount !== undefined ? { maxDiscount: dto.maxDiscount } : {}),
+      ...(dto.minDiscount !== undefined ? { minDiscount: dto.minDiscount } : {}),
+      // `budgetSpent` is deliberately not settable. It is the sum of what the
+      // campaign's redemptions actually saved, and a figure an operator can
+      // type over is not a record of anything.
+      ...(dto.budgetAmount !== undefined ? { budgetAmount: dto.budgetAmount } : {}),
       ...(dto.buyQty !== undefined ? { buyQty: dto.buyQty } : {}),
       ...(dto.getQty !== undefined ? { getQty: dto.getQty } : {}),
       ...(dto.priority !== undefined ? { priority: dto.priority } : {}),

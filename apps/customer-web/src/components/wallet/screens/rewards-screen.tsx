@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  SuperAppWalletButton,
   SuperAppWalletReferralCard,
   SuperAppWalletRewardsHero,
   SuperAppWalletScreenHeader,
@@ -12,10 +13,13 @@ import {
 } from '@dripplex/ui';
 import * as React from 'react';
 
-import type { LoyaltyTier } from '@dripplex/types';
+import type { LoyaltyPointsSummaryDto, LoyaltyTier } from '@dripplex/types';
 
 import {
+  useCancelRedemptionCode,
+  useIssueRedemptionCode,
   useLoyaltyAccount,
+  useRedeemLoyaltyPoints,
   useReferralCode,
   useReferralStats,
   useWalletTransactions,
@@ -51,6 +55,7 @@ const TIER_LABEL: Record<LoyaltyTier, string> = {
 export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Element {
   const [copied, setCopied] = React.useState(false);
   const loyalty = useLoyaltyAccount();
+  const redeem = useRedeemLoyaltyPoints();
   const referral = useReferralCode();
   const referralStats = useReferralStats();
   const cashback = useWalletTransactions({ page: 1, pageSize: 100, type: 'CASHBACK' });
@@ -102,6 +107,18 @@ export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Ele
             Couldn&apos;t load your loyalty tier right now.
           </p>
         ) : null}
+
+        <div className="px-4 pb-5">
+          <SuperAppWalletSectionLabel>DX points</SuperAppWalletSectionLabel>
+          <div className="mt-2.5">
+            {loyalty.data ? <DxPointsCard points={loyalty.data.points} redeem={redeem} /> : null}
+            {loyalty.isLoading ? (
+              <p className={`text-[13px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+                Loading…
+              </p>
+            ) : null}
+          </div>
+        </div>
 
         <div className="px-4 pb-5">
           <SuperAppWalletSectionLabel>Cashback history</SuperAppWalletSectionLabel>
@@ -201,6 +218,258 @@ export function RewardsScreen({ onBack }: { onBack: () => void }): React.JSX.Ele
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * What DX points are worth, and the button that makes them worth it.
+ *
+ * Points had no exit before this: redeeming burned them and paid nothing
+ * anywhere in the platform. They now convert into wallet balance at the
+ * founder-set rate, and the whole card is deliberately built out of figures the
+ * backend computed — the rate, the redeemable amount, the expiry date and the
+ * benefit thresholds all arrive in `GET /customer/loyalty`. Nothing here
+ * recomputes them, so the app cannot quote a rate the backend would refuse or
+ * offer a redemption it would reject.
+ *
+ * Redemption is whole naira only. Rather than let the customer discover that
+ * through a validation error, the button redeems exactly `redeemablePoints` —
+ * the largest amount the backend will accept — and the leftover is stated
+ * plainly underneath.
+ */
+function DxPointsCard({
+  points,
+  redeem,
+}: {
+  points: LoyaltyPointsSummaryDto;
+  redeem: ReturnType<typeof useRedeemLoyaltyPoints>;
+}): React.JSX.Element {
+  const { body, heading } = useSuperAppFonts();
+  const canRedeem = points.redeemablePoints >= points.minimumRedeemablePoints;
+  const leftover = points.balance - points.redeemablePoints;
+
+  return (
+    <div
+      className="rounded-[16px] p-4"
+      style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)' }}
+    >
+      <div className="flex items-end justify-between">
+        <div>
+          <p className={`text-[26px] font-semibold ${heading}`} style={{ color: '#fff' }}>
+            {points.balance.toLocaleString()}
+          </p>
+          <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+            points · {points.pointsPerNaira} points = ₦1
+          </p>
+        </div>
+        <p className={`text-[20px] font-semibold ${heading}`} style={{ color: '#2BAC52' }}>
+          ₦{points.balanceValue.toLocaleString()}
+        </p>
+      </div>
+
+      <div className="mt-3.5">
+        <SuperAppWalletButton
+          onClick={() => {
+            redeem.mutate(points.redeemablePoints);
+          }}
+          disabled={!canRedeem || redeem.isPending}
+          loading={redeem.isPending}
+        >
+          {canRedeem
+            ? `Redeem ${points.redeemablePoints.toLocaleString()} points for ₦${points.balanceValue.toLocaleString()}`
+            : `${(points.minimumRedeemablePoints - points.balance).toLocaleString()} points to your first ₦1`}
+        </SuperAppWalletButton>
+      </div>
+
+      <div className="mt-2">
+        <PayInStore points={points} />
+      </div>
+
+      {canRedeem && leftover > 0 ? (
+        <p className={`mt-2 text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.45)' }}>
+          {leftover.toLocaleString()} points stay on your balance — redemptions are whole naira.
+        </p>
+      ) : null}
+
+      {redeem.isError ? (
+        <p className={`mt-2 text-[12px] ${body}`} style={{ color: '#EF4444' }}>
+          {redeem.error.message || "Couldn't redeem your points just now."}
+        </p>
+      ) : null}
+
+      {redeem.isSuccess ? (
+        <p className={`mt-2 text-[12px] ${body}`} style={{ color: '#2BAC52' }}>
+          ₦{redeem.data.amountCredited.toLocaleString()} added to your wallet.
+        </p>
+      ) : null}
+
+      <div className="mt-3.5 space-y-1.5">
+        <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+          {points.earnedThisMonth.toLocaleString()} points earned this month
+          {points.benefits.monthlyElite.eligible
+            ? ' — free-delivery rewards unlocked'
+            : ` · ${points.benefits.monthlyElite.pointsToGo.toLocaleString()} more unlocks free-delivery rewards`}
+        </p>
+        <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.5)' }}>
+          {points.benefits.deliveryFeeDiscount.eligible
+            ? 'Delivery-fee discounts unlocked on campaigns offering them'
+            : `${points.benefits.deliveryFeeDiscount.pointsToGo.toLocaleString()} points to delivery-fee discounts`}
+        </p>
+        {points.nextExpiry ? (
+          <p className={`text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.45)' }}>
+            {points.nextExpiry.points.toLocaleString()} points expire on{' '}
+            {new Date(points.nextExpiry.at).toLocaleDateString('en-NG', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+            })}{' '}
+            — points last 365 days.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * DPX-LOYALTY-002 — spending points at a merchant's counter.
+ *
+ * The customer decides the amount, generates a code, and shows it. The merchant
+ * types it in; the points leave here and the naira lands in the merchant's DX
+ * wallet. There is deliberately no way for a merchant to start this — a shop
+ * cannot reach into somebody's balance by knowing their phone number.
+ *
+ * The code is shown once. It is not cached, not refetchable and not stored in
+ * plaintext anywhere; if this screen is closed, the customer generates a new
+ * one, which cancels this one.
+ */
+function PayInStore({ points }: { points: LoyaltyPointsSummaryDto }): React.JSX.Element | null {
+  const issue = useIssueRedemptionCode();
+  const cancel = useCancelRedemptionCode();
+  const { body, heading } = useSuperAppFonts();
+  const [naira, setNaira] = React.useState('');
+  const [open, setOpen] = React.useState(false);
+
+  const amount = Number(naira.trim());
+  const wanted =
+    Number.isFinite(amount) && amount > 0 ? Math.floor(amount) * points.pointsPerNaira : 0;
+  const affordable = wanted > 0 && wanted <= points.balance;
+
+  if (points.redeemablePoints < points.minimumRedeemablePoints) {
+    return null;
+  }
+
+  if (issue.data) {
+    const expires = new Date(issue.data.expiresAt);
+    return (
+      <div
+        className="rounded-[14px] p-3.5"
+        style={{ background: 'rgba(43,172,82,.10)', border: '1px solid rgba(43,172,82,.35)' }}
+      >
+        <p
+          className={`text-[11px] uppercase tracking-wide ${body}`}
+          style={{ color: 'rgba(255,255,255,.55)' }}
+        >
+          Show this at the counter
+        </p>
+        <p
+          className={`mt-1 text-[30px] font-semibold tracking-[0.18em] ${heading}`}
+          style={{ color: '#fff' }}
+        >
+          {issue.data.code}
+        </p>
+        <p className={`mt-1 text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
+          ₦{issue.data.amount.toLocaleString()} · {issue.data.points.toLocaleString()} points ·
+          expires {expires.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })}
+        </p>
+        <button
+          type="button"
+          className={`mt-2.5 text-[12px] font-semibold underline ${body}`}
+          style={{ color: 'rgba(255,255,255,.6)' }}
+          onClick={() => {
+            cancel.mutate(undefined, {
+              onSuccess: () => {
+                issue.reset();
+                setOpen(false);
+                setNaira('');
+              },
+            });
+          }}
+        >
+          {cancel.isPending ? 'Cancelling…' : 'Cancel this code'}
+        </button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+        }}
+        className={`w-full rounded-[14px] py-3 text-[14px] font-semibold ${heading}`}
+        style={{
+          background: 'rgba(255,255,255,.06)',
+          color: 'rgba(255,255,255,.85)',
+          border: '1px solid rgba(255,255,255,.12)',
+        }}
+      >
+        Pay with points in a store
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-[14px] p-3.5"
+      style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.1)' }}
+    >
+      <label className={`block text-[12px] ${body}`} style={{ color: 'rgba(255,255,255,.6)' }}>
+        How much of your bill do you want to cover?
+        <input
+          value={naira}
+          inputMode="numeric"
+          placeholder="₦"
+          onChange={(event) => {
+            setNaira(event.target.value.replace(/[^0-9]/g, ''));
+          }}
+          className={`mt-1.5 w-full rounded-[10px] px-3 py-2.5 text-[16px] ${heading}`}
+          style={{
+            background: 'rgba(0,0,0,.25)',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,.14)',
+          }}
+        />
+      </label>
+      {wanted > 0 ? (
+        <p
+          className={`mt-1.5 text-[12px] ${body}`}
+          style={{ color: affordable ? 'rgba(255,255,255,.55)' : '#EF4444' }}
+        >
+          {affordable
+            ? `${wanted.toLocaleString()} points`
+            : `You only have ${points.balance.toLocaleString()} points (₦${points.balanceValue.toLocaleString()})`}
+        </p>
+      ) : null}
+      <div className="mt-2.5">
+        <SuperAppWalletButton
+          onClick={() => {
+            issue.mutate(wanted);
+          }}
+          disabled={!affordable || issue.isPending}
+          loading={issue.isPending}
+        >
+          Generate code
+        </SuperAppWalletButton>
+      </div>
+      {issue.isError ? (
+        <p className={`mt-2 text-[12px] ${body}`} style={{ color: '#EF4444' }}>
+          {issue.error.message || "Couldn't generate a code just now."}
+        </p>
+      ) : null}
     </div>
   );
 }

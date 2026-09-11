@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 
 import { DomainEventBus } from '../events/domain-event-bus';
-import { DOMAIN_EVENTS } from '../events/domain-events';
+import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { FleetCommissionService } from './fleet-commission.service';
@@ -40,11 +40,15 @@ export class FleetJobSubscriber implements OnModuleInit {
   ) {}
 
   public onModuleInit(): void {
-    this.eventBus.on(DOMAIN_EVENTS.DELIVERY_COMPLETED, async (payload: unknown) => {
-      await this.handleDeliveryCompleted(payload);
+    // The bus hands a handler the whole DomainEvent — `{ name, payload, ... }` —
+    // so the fields a job is identified by live under `.payload`, exactly as
+    // every other subscriber on this bus reads them. See the note on
+    // `handleRideCompleted` for what reading the wrapper instead cost.
+    this.eventBus.on(DOMAIN_EVENTS.DELIVERY_COMPLETED, async (event: DomainEvent) => {
+      await this.handleDeliveryCompleted(event.payload);
     });
-    this.eventBus.on(DOMAIN_EVENTS.RIDE_COMPLETED, async (payload: unknown) => {
-      await this.handleRideCompleted(payload);
+    this.eventBus.on(DOMAIN_EVENTS.RIDE_COMPLETED, async (event: DomainEvent) => {
+      await this.handleRideCompleted(event.payload);
     });
   }
 
@@ -61,6 +65,10 @@ export class FleetJobSubscriber implements OnModuleInit {
         select: { deliveryFee: true, deliveredAt: true },
       });
       if (!job) return null;
+      // No gross/net distinction to make here: nothing discounts a delivery
+      // fee today. If free delivery is ever built it must NOT reduce
+      // `deliveryFee` — see DPX-AUDIT-001 §4, which is the same trap as the
+      // ride branch above.
       return { userId: riderId, amount: job.deliveryFee, at: job.deliveredAt };
     });
   }
@@ -70,6 +78,20 @@ export class FleetJobSubscriber implements OnModuleInit {
    * is read back — which is what should happen anyway: the row is the record,
    * and reading it means the fare charged and the driver credited always agree
    * with what was actually settled.
+   *
+   * DPX-AUDIT-001 — a fleet is billed on the **gross** fare, before any coupon.
+   *
+   * `ride.totalFare` is stored discounted (`rides.service.ts` writes
+   * `estimate.totalFare − promoDiscount`), so counting it billed the fleet on
+   * the net while the driver beside them was already paid on the gross. That is
+   * the same mistake DPX-PROMO-FUNDING fixed for the driver split, one ledger
+   * over: promotional value reaching a settlement ledger. It cut in the fleet's
+   * favour rather than against them — DrippleX collected commission on less
+   * than the work generated — which is why it survived unnoticed.
+   *
+   * Added back as Decimals rather than numbers: these are money, and two
+   * float additions of a fare and a discount is how a month's total drifts a
+   * kobo at a time.
    */
   private async handleRideCompleted(payload: unknown): Promise<void> {
     const { rideId } = (payload ?? {}) as { rideId?: string };
@@ -78,14 +100,18 @@ export class FleetJobSubscriber implements OnModuleInit {
     await this.count('ride', rideId, async () => {
       const ride = await this.prisma.ride.findUnique({
         where: { id: rideId },
-        select: { driverId: true, totalFare: true, completedAt: true },
+        select: { driverId: true, totalFare: true, promoDiscount: true, completedAt: true },
       });
       // An unassigned ride cannot belong to a fleet, and a missing row has
       // nothing to count.
       if (ride === null) return null;
       const { driverId } = ride;
       if (driverId === null) return null;
-      return { userId: driverId, amount: ride.totalFare, at: ride.completedAt };
+      return {
+        userId: driverId,
+        amount: ride.totalFare.add(ride.promoDiscount),
+        at: ride.completedAt,
+      };
     });
   }
 

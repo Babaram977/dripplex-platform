@@ -588,6 +588,8 @@ model User {
   promotionRedemptions        PromotionRedemption[]
   loyaltyAccount              LoyaltyAccount?
   userAchievements            UserAchievement[]
+  loyaltyRedemptionCodes      LoyaltyRedemptionCode[]
+  loyaltyRewardRedemptions    LoyaltyRewardRedemption[]
   cmsContentVersions          CmsContentVersion[]          @relation("CmsContentVersionCreator")
   fraudSignals                FraudSignal[]                @relation("FraudSignalUser")
   fraudReviews                FraudSignal[]                @relation("FraudSignalReviewer")
@@ -771,20 +773,43 @@ model CustomerAddress {
 }
 
 model MerchantProfile {
-  id             String              @id @default(uuid()) @db.Uuid
-  userId         String              @unique @map("user_id") @db.Uuid
-  status         MerchantStatus      @default(PENDING)
-  isApproved     Boolean             @default(false) @map("is_approved")
-  approvedAt     DateTime?           @map("approved_at")
-  approvedBy     String?             @map("approved_by") @db.Uuid
-  rejectedReason String?             @map("rejected_reason") @db.VarChar(1000)
-  suspendedAt    DateTime?           @map("suspended_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  deletedAt      DateTime?           @map("deleted_at")
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding     MerchantOnboarding?
-  products       Product[]
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @unique @map("user_id") @db.Uuid
+  status         MerchantStatus @default(PENDING)
+  isApproved     Boolean        @default(false) @map("is_approved")
+  approvedAt     DateTime?      @map("approved_at")
+  approvedBy     String?        @map("approved_by") @db.Uuid
+  rejectedReason String?        @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt    DateTime?      @map("suspended_at")
+
+  /// A commission rate agreed with this merchant individually, overriding the
+  /// platform-wide `MerchantCommissionSetting` singleton.
+  ///
+  /// Founder decision 2026-09-11, extending to merchants what `Fleet` and
+  /// `CommissionAccount.negotiatedCreditLimit` already had. The reasoning is
+  /// the one already recorded for merchant credit limits on 2026-08-20:
+  /// "limit should be individually set to each merchant because of business
+  /// difference and it should be negotiated and agreed by DrippleX and
+  /// merchant". A supermarket and a jeweller cannot share one rate.
+  ///
+  /// Null means no agreement exists and the singleton applies — which is also
+  /// what keeps that singleton meaningful rather than something that silently
+  /// overwrites a negotiated figure. Fraction, not percent: 0.075 is 7.5%.
+  ///
+  /// A commission campaign still outranks this for the window it covers, the
+  /// same way it outranks a fleet's banded rate. An agreed rate is what the
+  /// merchant pays normally, not a promise that no promotion will ever beat it.
+  negotiatedRate  Decimal?  @map("negotiated_rate") @db.Decimal(5, 4)
+  negotiatedBy    String?   @map("negotiated_by") @db.Uuid
+  negotiatedAt    DateTime? @map("negotiated_at")
+  negotiationNote String?   @map("negotiation_note") @db.VarChar(500)
+
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+  deletedAt  DateTime?           @map("deleted_at")
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding MerchantOnboarding?
+  products   Product[]
 
   @@index([status])
   @@index([isApproved])
@@ -1619,6 +1644,55 @@ model RideSurchargeZone {
   @@map("ride_surcharge_zones")
 }
 
+/// DPX-COMMISSION-001 — a commission rate that applies for a window, to a
+/// scope, under conditions.
+///
+/// The two singleton settings (MerchantCommissionSetting,
+/// PlatformCommissionSetting) remain the standing rate — what DrippleX charges
+/// when nothing special is running. A campaign is a temporary override on top:
+/// 7% this week, 14% next week, 5% on weekend orders. Ops creates and edits
+/// them without a redeploy, the same as the singletons.
+///
+/// Overlap is resolved by `priority` (highest wins), then by the most recently
+/// created — so a deliberate override always beats a broad standing campaign,
+/// and two equally-ranked campaigns never resolve arbitrarily.
+///
+/// `rules` reuses the PromotionRules JSON vocabulary (weekdays, hour window,
+/// cities, states, merchant categories, ride types, payment methods) rather
+/// than inventing a second eligibility language for the same concepts.
+/// "Weekend orders" is `{ "weekdays": [0, 6] }`.
+///
+/// Campaigns are never hard-deleted — a rate that was once applied to real
+/// money has to stay explicable, and settlement rows point back here.
+model CommissionCampaign {
+  id             String                   @id @default(uuid()) @db.Uuid
+  name           String                   @db.VarChar(150)
+  description    String?                  @db.Text
+  scope          CommissionScope
+  /// Fraction, not percent: 0.07 is 7%.
+  commissionRate Decimal                  @map("commission_rate") @db.Decimal(5, 4)
+  status         CommissionCampaignStatus @default(DRAFT)
+  priority       Int                      @default(0)
+  startsAt       DateTime                 @map("starts_at")
+  endsAt         DateTime                 @map("ends_at")
+  rules          Json?
+  /// Whether the affected partners are told when this goes live. A rate cut
+  /// nobody hears about earns nothing; a rate rise nobody hears about is worse.
+  announce       Boolean                  @default(true)
+  announcedAt    DateTime?                @map("announced_at")
+  pausedAt       DateTime?                @map("paused_at")
+  archivedAt     DateTime?                @map("archived_at")
+  createdBy      String?                  @map("created_by") @db.Uuid
+  updatedBy      String?                  @map("updated_by") @db.Uuid
+  createdAt      DateTime                 @default(now()) @map("created_at")
+  updatedAt      DateTime                 @updatedAt @map("updated_at")
+
+  /// The resolver's hot path: active campaigns for one scope, in force now.
+  @@index([scope, status, startsAt, endsAt])
+  @@index([status])
+  @@map("commission_campaigns")
+}
+
 model PlatformCommissionSetting {
   id             String   @id @default(uuid()) @db.Uuid
   commissionRate Decimal  @default(0.10) @map("commission_rate") @db.Decimal(5, 4)
@@ -1700,6 +1774,25 @@ model OrderSettlement {
   commissionRate        Decimal               @map("commission_rate") @db.Decimal(5, 4)
   commissionAmount      Decimal               @map("commission_amount") @db.Decimal(12, 2)
   merchantAmount        Decimal               @map("merchant_amount") @db.Decimal(12, 2)
+  /// Which CommissionCampaign produced `commissionRate`, or null when the
+  /// standing rate did. Rates now change week to week, so "why was this one
+  /// 7%?" has to be answerable from the settlement row rather than
+  /// reconstructed from timestamps against a campaign table.
+  commissionCampaignId  String?               @map("commission_campaign_id") @db.Uuid
+  /// The merchant's negotiated rate as it stood when this settled, or null if
+  /// they had no agreement then (DPX-MERCHANT-016).
+  ///
+  /// Locked by founder decision 2026-09-11: an agreement is a commercial term,
+  /// and editing one must never be able to change what a past sale was charged.
+  /// `commissionRate` alone cannot say this — when a campaign set it, the row
+  /// carries no trace of what the merchant would otherwise have paid, and when
+  /// no campaign ran it cannot distinguish an agreed rate from the platform
+  /// default that happened to equal it.
+  ///
+  /// With all three fields the charge is fully explicable from the row alone:
+  /// a campaign id names the override, this names the standing agreement, and
+  /// both null means the platform rate applied and `commissionRate` is it.
+  negotiatedRate        Decimal?              @map("negotiated_rate") @db.Decimal(5, 4)
   currency              String                @default("NGN") @db.VarChar(3)
   walletLedgerEntryId   String?               @map("wallet_ledger_entry_id") @db.Uuid
   failureReason         String?               @map("failure_reason") @db.VarChar(1000)
@@ -1884,6 +1977,10 @@ model DeliveryJob {
   /// nothing at all — the fee was collected and attributed to no one.
   riderEarning             Decimal?             @map("rider_earning") @db.Decimal(12, 2)
   platformCommission       Decimal?             @map("platform_commission") @db.Decimal(12, 2)
+  /// Which CommissionCampaign set the rate behind `platformCommission`, or
+  /// null for the standing PlatformCommissionSetting. The rate itself stays
+  /// derivable as platformCommission / deliveryFee.
+  commissionCampaignId     String?              @map("commission_campaign_id") @db.Uuid
   /// Set once, by the settlement path. Its presence is the idempotency guard:
   /// a re-fired completion event must never pay a rider twice.
   settledAt                DateTime?            @map("settled_at")
@@ -2077,6 +2174,13 @@ model Ride {
   paymentStatus          RidePaymentStatus        @default(PENDING) @map("payment_status")
   platformCommission     Decimal?                 @map("platform_commission") @db.Decimal(12, 2)
   platformCommissionRate Decimal?                 @map("platform_commission_rate") @db.Decimal(5, 4)
+  /// The tier the driver held when this ride settled, snapshotted beside the
+  /// rate it produced. A driver who later drops to STANDARD must not make a
+  /// GOLD ride look like it was ever charged at 10%.
+  driverTier             DriverTier?              @map("driver_tier")
+  /// Which CommissionCampaign set `platformCommissionRate`, or null for the
+  /// standing PlatformCommissionSetting.
+  commissionCampaignId   String?                  @map("commission_campaign_id") @db.Uuid
   driverEarning          Decimal?                 @map("driver_earning") @db.Decimal(12, 2)
   tipAmount              Decimal?                 @map("tip_amount") @db.Decimal(12, 2)
   requestedAt            DateTime                 @default(now()) @map("requested_at")
@@ -2136,6 +2240,70 @@ model RidePaymentTransaction {
   @@index([providerReference])
   @@index([status])
   @@map("ride_payment_transactions")
+}
+
+/// DPX-TIER-001 — a driver's DrippleX status, calculated from completed trips,
+/// sustained customer rating and cancellation behaviour.
+///
+/// Deliberately not the same thing as a customer's star rating: the rating
+/// stays a 1-5 score a passenger gives, and the tier is a status DrippleX
+/// derives from it alongside volume and quality.
+enum DriverTier {
+  STANDARD
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+/// The Ops-configurable definition of one driver tier.
+///
+/// Nora's specification, 2026-09-11: every threshold and percentage here is
+/// configuration, not business logic — "do not require a software deployment
+/// merely to change a reward threshold or commission percentage".
+///
+/// `minRatedTrips` is separate from `minCompletedTrips` on purpose. A driver
+/// with three five-star trips has a 5.00 average and has proved nothing; the
+/// rated-trip floor is what stops a handful of ratings buying a premium tier.
+model DriverTierSetting {
+  id   String     @id @default(uuid()) @db.Uuid
+  tier DriverTier @unique
+
+  /// How much this tier takes **off** the commission rate in force — a
+  /// reduction, not a rate.
+  ///
+  /// Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4. The
+  /// alternative was an absolute rate per tier, which would have made
+  /// `PlatformCommissionSetting` silently dead for rides: an operator could
+  /// move the platform rate from 10% to 20% and nothing would happen, because
+  /// the tier table said 10%. Two live controls over one figure with one
+  /// quietly ignored is not something to have in settled money.
+  ///
+  /// As a reduction both controls stay live and compose: the platform rate (or
+  /// a commission campaign overriding it) sets what everyone pays, and a
+  /// driver's earned tier takes their own points off that. At today's 10% the
+  /// seeded 0 / 0.005 / 0.010 / 0.015 reproduces the specified 10 / 9.5 / 9 /
+  /// 8.5 exactly.
+  ///
+  /// Fraction, not percent: 0.005 is half a percentage point.
+  commissionReduction Decimal @map("commission_reduction") @db.Decimal(5, 4)
+
+  minCompletedTrips Int     @map("min_completed_trips")
+  minRatedTrips     Int     @map("min_rated_trips")
+  minAverageRating  Decimal @map("min_average_rating") @db.Decimal(3, 2)
+
+  /// Highest share of a driver's own cancellations tolerated, as a fraction.
+  /// Null leaves the quality gate unenforced for this tier.
+  maxCancellationRate Decimal? @map("max_cancellation_rate") @db.Decimal(5, 4)
+
+  /// Ops can retire a tier without deleting it — a tier that once moved the
+  /// rate on a settled ride has to stay explicable.
+  active Boolean @default(true)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("driver_tier_settings")
 }
 
 enum RideRatingRole {
@@ -2831,6 +2999,17 @@ enum NotificationType {
   /// succeeding and the *service* arriving are two different moments for
   /// utilities: money can be taken minutes or hours before Peyflex answers.
   UTILITY_PURCHASE_DELIVERED
+  /// DPX-COMMISSION-001 — the commission rate a partner is charged has
+  /// changed for a period. Its own type rather than PROMOTION or GENERIC:
+  /// NotificationPreference is keyed on (channel, type), and what DrippleX
+  /// charges a partner is not marketing they should be able to mute alongside
+  /// offers.
+  COMMISSION_CAMPAIGN_STARTED
+  COMMISSION_CAMPAIGN_ENDED
+  /// DPX-LOYALTY-002 — a merchant took DX points at their counter. Its own
+  /// type, not GENERIC: somebody spending a balance is not something to be
+  /// muted alongside offers.
+  LOYALTY_POINTS_SPENT
   /// A utility purchase could not be completed and the money has been
   /// returned to the DrippleX Wallet (DPX-D4).
   UTILITY_PURCHASE_REVERSED
@@ -2963,6 +3142,36 @@ enum PromotionStatus {
   EXPIRED
   ARCHIVED
   CANCELLED
+}
+
+/// Which commission a CommissionCampaign overrides. One value per place the
+/// platform actually reads a rate at settlement time.
+///
+///
+/// FLEET is the odd one: a fleet's rate is banded on its monthly order volume
+/// and settles when the month closes, so a campaign covering part of a month
+/// cannot simply replace it. Founder decision 2026-09-11 — a mid-month campaign
+/// "should add up to previously earned" — so it applies pro-rata to the days it
+/// covers, the month keeps accumulating across it, and the band is still
+/// decided on the full month's volume. See docs/DPX-COMMISSION-001.
+enum CommissionScope {
+  /// The platform's cut of a marketplace order — the merchant's rate.
+  MERCHANT_ORDER
+  /// The platform's cut of a delivery fee — the rider's rate.
+  DELIVERY
+  /// The platform's cut of a ride fare — the driver's rate.
+  RIDE
+  /// The platform's cut of a fleet's trading. Applied pro-rata within a month.
+  FLEET
+}
+
+enum CommissionCampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  PAUSED
+  EXPIRED
+  ARCHIVED
 }
 
 enum LoyaltyTier {
@@ -3379,40 +3588,63 @@ model WishlistItem {
 /// at scale (domains, status, merchant, priority, date range) stay real
 /// indexed columns exactly as they already were.
 model Promotion {
-  id             String                @id @default(uuid()) @db.Uuid
-  code           String?               @unique @db.VarChar(50)
-  name           String                @db.VarChar(150)
-  type           PromotionType
-  status         PromotionStatus       @default(DRAFT)
-  domains        PromotionDomain[]     @default([])
-  percentOff     Decimal?              @map("percent_off") @db.Decimal(5, 2)
-  amountOff      Decimal?              @map("amount_off") @db.Decimal(12, 2)
-  creditAmount   Decimal?              @map("credit_amount") @db.Decimal(12, 2)
-  maxDiscount    Decimal?              @map("max_discount") @db.Decimal(12, 2)
-  buyQty         Int?                  @map("buy_qty")
-  getQty         Int?                  @map("get_qty")
-  priority       Int                   @default(0)
-  stackable      Boolean               @default(false)
-  usageLimit     Int?                  @map("usage_limit")
-  usageCount     Int                   @default(0) @map("usage_count")
-  perUserLimit   Int?                  @map("per_user_limit")
-  perDeviceLimit Int?                  @map("per_device_limit")
-  minOrderAmount Decimal?              @map("min_order_amount") @db.Decimal(12, 2)
+  id           String            @id @default(uuid()) @db.Uuid
+  code         String?           @unique @db.VarChar(50)
+  name         String            @db.VarChar(150)
+  type         PromotionType
+  status       PromotionStatus   @default(DRAFT)
+  domains      PromotionDomain[] @default([])
+  percentOff   Decimal?          @map("percent_off") @db.Decimal(5, 2)
+  amountOff    Decimal?          @map("amount_off") @db.Decimal(12, 2)
+  creditAmount Decimal?          @map("credit_amount") @db.Decimal(12, 2)
+  maxDiscount  Decimal?          @map("max_discount") @db.Decimal(12, 2)
+
+  /// DPX-CAMPAIGN-001 — the floor of the benefit band, beside `maxDiscount`'s
+  /// ceiling. "₦200 to ₦2,000 off" is a real offer, and a 10% campaign that
+  /// hands somebody ₦30 off delivers a worse impression than no campaign.
+  /// Never raises the discount above the subtotal: nothing gives ₦200 off a
+  /// ₦150 basket.
+  minDiscount Decimal? @map("min_discount") @db.Decimal(12, 2)
+
+  /// What this campaign is allowed to cost DrippleX in total, in naira.
+  ///
+  /// The one control that actually bounds spend. `usageLimit` bounds how many
+  /// times a campaign is used, which is not the same thing at all: ten
+  /// thousand redemptions of "20% off" costs whatever ten thousand baskets
+  /// happen to add up to, and nobody knows that number in advance. Null means
+  /// uncapped, which is what every campaign that existed before this was.
+  budgetAmount Decimal? @map("budget_amount") @db.Decimal(14, 2)
+
+  /// What it has cost so far — the sum of every redemption's `amountSaved`,
+  /// incremented inside the same locked transaction that records the
+  /// redemption, so two simultaneous checkouts cannot both spend the last of
+  /// the budget.
+  budgetSpent    Decimal                   @default(0) @map("budget_spent") @db.Decimal(14, 2)
+  buyQty         Int?                      @map("buy_qty")
+  getQty         Int?                      @map("get_qty")
+  priority       Int                       @default(0)
+  stackable      Boolean                   @default(false)
+  usageLimit     Int?                      @map("usage_limit")
+  usageCount     Int                       @default(0) @map("usage_count")
+  perUserLimit   Int?                      @map("per_user_limit")
+  perDeviceLimit Int?                      @map("per_device_limit")
+  minOrderAmount Decimal?                  @map("min_order_amount") @db.Decimal(12, 2)
   rules          Json?
-  startsAt       DateTime?             @map("starts_at")
-  endsAt         DateTime?             @map("ends_at")
-  pausedAt       DateTime?             @map("paused_at")
-  archivedAt     DateTime?             @map("archived_at")
-  merchantId     String?               @map("merchant_id") @db.Uuid
-  clonedFromId   String?               @map("cloned_from_id") @db.Uuid
-  createdBy      String?               @map("created_by") @db.Uuid
+  startsAt       DateTime?                 @map("starts_at")
+  endsAt         DateTime?                 @map("ends_at")
+  pausedAt       DateTime?                 @map("paused_at")
+  archivedAt     DateTime?                 @map("archived_at")
+  merchantId     String?                   @map("merchant_id") @db.Uuid
+  clonedFromId   String?                   @map("cloned_from_id") @db.Uuid
+  createdBy      String?                   @map("created_by") @db.Uuid
   metadata       Json?
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  deletedAt      DateTime?             @map("deleted_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  deletedAt      DateTime?                 @map("deleted_at")
   redemptions    PromotionRedemption[]
-  clonedFrom     Promotion?            @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
-  clones         Promotion[]           @relation("PromotionClone")
+  loyaltyRewards LoyaltyRewardRedemption[]
+  clonedFrom     Promotion?                @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
+  clones         Promotion[]               @relation("PromotionClone")
 
   @@index([status])
   @@index([type])
@@ -3451,6 +3683,116 @@ model PromotionRedemption {
   @@map("promotion_redemptions")
 }
 
+/// DPX-LOYALTY-005 — what DX Points convert to, and whether they may.
+///
+/// Founder decision 2026-09-11: "let it be as shipped but can be controlled."
+/// Redeeming points for wallet cash at 200:1 stays exactly as it shipped; what
+/// changes is that every number behind it becomes a row an operator edits
+/// rather than a constant that needs a deployment. Nora's §7 concern — that
+/// points must not become a cash instrument — is answered by the switch rather
+/// than by removing the feature: Operations can close the cash door and leave
+/// the in-store door open, or narrow the cash door with a daily cap, without
+/// anybody shipping code.
+///
+/// One row, the same fixed-id singleton pattern as PlatformCommissionSetting.
+model LoyaltySetting {
+  id String @id @db.Uuid
+
+  /// How many points buy one naira. Founder decision: 200.
+  ///
+  /// The most consequential number on this table — it re-prices every unspent
+  /// balance on the platform at once — so it is validated hard and every change
+  /// is audited with the figure before and after. A redemption snapshots the
+  /// rate it used, so re-pricing never rewrites one that already happened.
+  pointsPerNaira Int @default(200) @map("points_per_naira")
+
+  /// Whether points may be turned into withdrawable wallet cash at all.
+  ///
+  /// Seeded true, because that is what is live today and this decision was
+  /// explicitly "as shipped". Turning it off leaves points fully spendable in
+  /// store and against the rewards catalogue; it closes only the cash-out.
+  walletRedemptionEnabled Boolean @default(true) @map("wallet_redemption_enabled")
+
+  /// Whether points may be spent at a merchant's counter. Seeded true — the
+  /// founder's instruction was not to change in-store spending, and a switch
+  /// that starts on changes nothing.
+  storeRedemptionEnabled Boolean @default(true) @map("store_redemption_enabled")
+
+  /// The smallest cash-out allowed, in points. Seeded at one naira's worth,
+  /// which is the floor the conversion already implied.
+  minRedemptionPoints Int @default(200) @map("min_redemption_points")
+
+  /// The most a holder may cash out in a rolling 24 hours, in points. Null is
+  /// uncapped, which is what shipped. A cap is the middle setting between
+  /// "points are cash" and "points are not cash at all".
+  dailyRedemptionPointsCap Int? @map("daily_redemption_points_cap")
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("loyalty_settings")
+}
+
+/// Who can earn DX Points besides a customer.
+///
+/// Nora's policy, 2026-09-11: drivers and riders earn only under an approved
+/// programme, merchants only where a campaign permits, fleets only via explicit
+/// incentive programmes. The common thread is that a partner earns nothing by
+/// default — which is also exactly what the platform did before this shipped,
+/// so switching one on is a decision somebody makes rather than one they have
+/// to remember to undo.
+enum LoyaltyEarnerPersona {
+  DRIVER
+  RIDER
+  MERCHANT
+  /// The person, not the company. A fleet has no loyalty account; what it earns
+  /// reaches its owner, the same way a fleet owner's referral reward does.
+  FLEET_OWNER
+}
+
+/// DPX-LOYALTY-007 — whether a partner persona earns DX Points, and for what.
+///
+/// One row per persona, and **every one seeded inactive**. That is the whole
+/// design: "approved programme" and "where a campaign permits" both mean the
+/// same operational thing, which is that somebody switched it on and the switch
+/// is auditable.
+model LoyaltyEarningProgramme {
+  id      String               @id @db.Uuid
+  persona LoyaltyEarnerPersona @unique
+
+  /// Nothing is earned while this is false, which is how every row starts.
+  active Boolean @default(false)
+
+  /// Points for finishing the thing this persona does — a completed ride, a
+  /// delivered job, a completed order. Zero means the programme does not reward
+  /// volume, which is a real setting beside a review-only programme.
+  pointsPerCompletedJob Int @default(0) @map("points_per_completed_job")
+
+  /// Points for a customer review at or above `minReviewRating`.
+  ///
+  /// Founder decision 2026-09-11: "review can boost driver dx points but cannot
+  /// affect the star rating." Points are the reward; the star rating stays a
+  /// measurement. Nothing in this table is readable from the rating engine, and
+  /// nothing here writes to it.
+  pointsPerQualifyingReview Int @default(0) @map("points_per_qualifying_review")
+
+  /// The rating a review has to reach to earn anything. 4 by default, so a
+  /// complaint does not pay.
+  minReviewRating Int @default(4) @map("min_review_rating")
+
+  /// The most this persona may earn in a rolling 24 hours, per person. Null is
+  /// uncapped. A cap matters more here than on the customer side: a busy driver
+  /// finishes far more jobs in a day than a customer places orders.
+  dailyPointsCap Int? @map("daily_points_cap")
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("loyalty_earning_programmes")
+}
+
 model LoyaltyAccount {
   id             String               @id @default(uuid()) @db.Uuid
   userId         String               @unique @map("user_id") @db.Uuid
@@ -3468,10 +3810,46 @@ model LoyaltyAccount {
   @@map("loyalty_accounts")
 }
 
+/// DPX-LOYALTY-006 — what a line on the DX Points ledger *is*.
+///
+/// Nora's policy, 2026-09-11: "DX Points are a separate auditable ledger" with
+/// states EARNED / BONUS / REDEEMED / EXPIRED / REVERSED / ADJUSTED.
+///
+/// Before this the only thing distinguishing one line from another was the sign
+/// of `points` and a free-text `referenceType`, which meant every question an
+/// auditor actually asks — how much was given away as bonuses, how much was
+/// clawed back, how much did support hand out by hand — could only be answered
+/// by pattern-matching strings.
+enum LoyaltyLedgerEntryType {
+  /// Earned by doing the thing the programme rewards: an order, a delivery, a
+  /// completed job.
+  EARNED
+  /// Given rather than earned — a milestone achievement, a campaign sweetener.
+  /// Separated from EARNED because the two answer different questions: one is
+  /// the cost of the programme working, the other is the cost of promoting it.
+  BONUS
+  /// Spent by the holder. Negative.
+  REDEEMED
+  /// Aged out under the 365-day rule. Negative, and nobody chose it.
+  EXPIRED
+  /// Taken back because what earned them was undone — a refunded order. Negative
+  /// and distinct from REDEEMED, because the holder did not spend these.
+  REVERSED
+  /// A human at Operations moved the balance by hand. Either direction, always
+  /// with a reason, and deliberately its own state so it can be counted.
+  ADJUSTED
+}
+
 model LoyaltyLedgerEntry {
-  id            String         @id @default(uuid()) @db.Uuid
-  accountId     String         @map("account_id") @db.Uuid
-  points        Int
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  points    Int
+
+  /// DPX-LOYALTY-006 — what kind of line this is. Defaulted to EARNED for the
+  /// rows that predate it, then corrected by the migration from the sign and
+  /// reference type each one actually carries.
+  type LoyaltyLedgerEntryType @default(EARNED)
+
   reason        String         @db.VarChar(255)
   referenceType String?        @map("reference_type") @db.VarChar(100)
   referenceId   String?        @map("reference_id") @db.Uuid
@@ -3483,7 +3861,207 @@ model LoyaltyLedgerEntry {
   @@index([accountId, createdAt])
   @@index([referenceType, referenceId])
   @@index([expiresAt])
+  /// "How much has this programme given away as bonuses this month" is a
+  /// question Operations asks of the whole ledger, not of one account.
+  @@index([type, createdAt])
   @@map("loyalty_ledger_entries")
+}
+
+/// DPX-LOYALTY-002 — a holder's authorisation for a merchant to take some of
+/// their DX points, in person.
+///
+/// Founder decision (2026-09-11): points are spendable at a merchant's physical
+/// store, by customers, drivers and riders alike, and the value lands in the
+/// merchant's DX wallet.
+///
+/// The holder generates the code in their own app and shows it at the counter.
+/// A merchant can never reach into an account on their own say-so — there is no
+/// "look the customer up by phone and take their points", because DrippleX
+/// identity is phone-primary and a phone number is not a secret.
+///
+/// The plaintext code is shown once, in the holder's app, and never stored:
+/// only a SHA-256 of it lives here, and a merchant redeems by presenting the
+/// code, which is hashed and matched. Same reasoning as OtpService.
+///
+/// One live code per holder. Generating a new one cancels the outstanding one,
+/// which is what stops two codes for the same balance reaching two merchants at
+/// once — cheaper and clearer than putting a hold on the points.
+model LoyaltyRedemptionCode {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  codeHash String @unique @map("code_hash") @db.VarChar(64)
+
+  /// What the holder authorised, fixed at generation. The merchant sees both
+  /// before confirming, so a code cannot quietly be worth less than the bill.
+  /// Zero when the code carries only a coupon.
+  points Int
+  amount Decimal @db.Decimal(12, 2)
+
+  /// A coupon the holder chose to spend at this counter, if any.
+  ///
+  /// Coupons carry per-user and per-device limits, so redeeming one needs to
+  /// know *whose* redemption it is. A merchant typing a campaign code they saw
+  /// on a poster could otherwise spend it against anybody. Putting the coupon
+  /// on the holder's own till code is what ties it to the person who chose it.
+  couponCode String? @map("coupon_code") @db.VarChar(50)
+
+  expiresAt     DateTime  @map("expires_at")
+  redeemedAt    DateTime? @map("redeemed_at")
+  /// The merchant User who took it.
+  redeemedBy    String?   @map("redeemed_by") @db.Uuid
+  cancelledAt   DateTime? @map("cancelled_at")
+  /// The negative LoyaltyLedgerEntry this produced — the audit link between the
+  /// points that left and the naira that arrived.
+  ledgerEntryId String?   @map("ledger_entry_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([redeemedBy])
+  @@index([expiresAt])
+  @@map("loyalty_redemption_codes")
+}
+
+/// What a DX Points reward actually gives.
+///
+/// Nora's specification, 2026-09-11: points are a loyalty unit, not naira. A
+/// reward is an *entitlement* the holder earns by spending points — a coupon, a
+/// free delivery, a gift — never a cash payout.
+enum LoyaltyRewardType {
+  DISCOUNT_COUPON
+  FREE_DELIVERY
+  PHYSICAL_GIFT
+  WALLET_BENEFIT
+  SERVICE_BENEFIT
+}
+
+/// Where a redemption has got to.
+///
+/// A physical gift is not finished because the points came off — it still has
+/// to reach somebody. Digital rewards go straight to FULFILLED; anything
+/// posted or collected moves through the fulfilment states, and Operations can
+/// see which are outstanding.
+enum LoyaltyRedemptionStatus {
+  FULFILLED
+  FULFILMENT_PENDING
+  PROCESSING
+  READY_FOR_COLLECTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+/// DPX-LOYALTY-004 — one row in the DX Points rewards catalogue.
+///
+/// Founder decision 2026-09-11: redemption thresholds "be like 10k 25k 50k".
+/// They are rows here rather than constants precisely so Operations can add
+/// 5,000 or 75,000 or 100,000 without a deployment — and so the thresholds are
+/// never mistaken for naira. 10,000 DX Points is ten thousand points, not
+/// ₦10,000.
+model LoyaltyReward {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(150)
+  description String?           @db.Text
+  type        LoyaltyRewardType
+  /// What it costs in DX Points. The "threshold" in 10k/25k/50k.
+  pointsCost  Int               @map("points_cost")
+
+  /// What the reward is worth where that is meaningful: the naira face value of
+  /// a coupon, or the cap on a percentage discount. Never a payout — a reward
+  /// is an entitlement, and points are not cash.
+  monetaryValue      Decimal? @map("monetary_value") @db.Decimal(12, 2)
+  discountPercentage Decimal? @map("discount_percentage") @db.Decimal(5, 2)
+  maxDiscount        Decimal? @map("max_discount") @db.Decimal(12, 2)
+
+  /// Null is unlimited. A finite stock is decremented atomically at redemption,
+  /// so a gift cannot be promised to more people than exist.
+  stockQuantity        Int? @map("stock_quantity")
+  /// How many times one holder may take this reward. Null is unlimited.
+  perUserLimit         Int? @map("per_user_limit")
+  /// How many times it may be taken in total. Null is unlimited.
+  totalRedemptionLimit Int? @map("total_redemption_limit")
+  redeemedCount        Int  @default(0) @map("redeemed_count")
+
+  /// How long the entitlement lasts once taken, in days. Null never expires.
+  entitlementDays Int? @map("entitlement_days")
+
+  /// DPX-LOYALTY-008 — where a coupon minted from this reward can be spent.
+  ///
+  /// A "₦500 coupon" that does not say where it is good is under-specified, and
+  /// guessing goes wrong in both directions: too wide lets a shopping reward
+  /// pay for a ride, too narrow is a support ticket. So Operations states it,
+  /// the same way every other number in this catalogue is stated.
+  ///
+  /// Empty means the reward mints nothing — which is the correct behaviour for
+  /// a physical gift or a service benefit, and the honest one for FREE_DELIVERY
+  /// until a delivery-fee path consults promotions at all (see the doc).
+  domains PromotionDomain[] @default([])
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  active   Boolean   @default(true)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  redemptions LoyaltyRewardRedemption[]
+
+  @@index([active, pointsCost])
+  @@map("loyalty_rewards")
+}
+
+/// One holder taking one reward.
+///
+/// The points ledger records the points leaving; this records what they bought
+/// and whether it has reached the person. The two are written in the same
+/// transaction, so an entitlement without a debit — or a debit without an
+/// entitlement — cannot exist.
+model LoyaltyRewardRedemption {
+  id       String @id @default(uuid()) @db.Uuid
+  rewardId String @map("reward_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  /// Snapshotted, not read back from the reward. Operations re-pricing a
+  /// reward must not rewrite what somebody already paid for it.
+  pointsSpent   Int               @map("points_spent")
+  rewardType    LoyaltyRewardType @map("reward_type")
+  monetaryValue Decimal?          @map("monetary_value") @db.Decimal(12, 2)
+
+  status LoyaltyRedemptionStatus @default(FULFILLED)
+
+  /// The negative LoyaltyLedgerEntry that paid for this — the audit link
+  /// between the points that left and the entitlement that arrived.
+  ledgerEntryId String?    @map("ledger_entry_id") @db.Uuid
+  /// A coupon minted for this redemption, where the reward grants one.
+  /// DPX-LOYALTY-008 — a relation, not a loose id, because the holder needs the
+  /// *code* and a column nothing can join to cannot give them one.
+  promotionId   String?    @map("promotion_id") @db.Uuid
+  promotion     Promotion? @relation(fields: [promotionId], references: [id])
+
+  /// When the entitlement lapses, if it does.
+  expiresAt      DateTime? @map("expires_at")
+  fulfilledAt    DateTime? @map("fulfilled_at")
+  /// Free text Operations uses while a physical gift is in flight.
+  fulfilmentNote String?   @map("fulfilment_note") @db.VarChar(500)
+
+  /// The caller's own key. Two taps on a slow connection are one redemption,
+  /// not two, and the unique index is what makes that true rather than likely.
+  idempotencyKey String @map("idempotency_key") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reward LoyaltyReward @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([rewardId])
+  @@map("loyalty_reward_redemptions")
 }
 
 model LoyaltyAchievement {
@@ -3705,10 +4283,55 @@ model WithdrawalRequest {
   @@map("withdrawal_requests")
 }
 
+/// DPX-REFERRAL-003 — the full lifecycle of one referral, specified by Nora
+/// 2026-09-11. The three states this replaces (PENDING / REWARDED / EXPIRED)
+/// could not express the two things that matter for money: that a referral has
+/// *earned* its reward but is not yet payable, and that a reward which was paid
+/// has been taken back.
 enum ReferralRedemptionStatus {
+  /// Code redeemed at signup. The referee has not met their milestone yet.
   PENDING
-  REWARDED
+  /// Milestone met and anti-abuse screening passed. The hold clock is running.
+  QUALIFIED
+  /// Hold elapsed. Payable, but not yet paid.
+  APPROVED
+  /// Both wallets credited. Terminal unless reversed.
+  PAID
+  /// Anti-abuse screening or Operations refused it. Terminal, never paid.
+  REJECTED
+  /// Paid, then clawed back. Distinct from REJECTED because money moved and
+  /// moved back — the wallet ledger has two entries and this says why.
+  REVERSED
+  /// The qualification window closed before the milestone was met. Terminal.
   EXPIRED
+}
+
+/// Why a referral was refused. Recorded on the row rather than left to a free
+/// text note: Operations needs to count how often each abuse pattern fires in
+/// order to know whether a check is worth what it costs in false positives.
+enum ReferralRejectionReason {
+  /// Referrer and referee are the same account.
+  SELF_REFERRAL
+  /// A already referred B, and B is now referring A back.
+  RECIPROCAL_RELATIONSHIP
+  /// Both accounts have signed in from the same device.
+  SHARED_DEVICE
+  SHARED_PHONE
+  SHARED_EMAIL
+  /// Both accounts submitted the same identity document number.
+  SHARED_IDENTITY
+  /// A human at Operations refused it. No automated check fired.
+  OPERATIONS_DECISION
+}
+
+/// What the referred party signed up as. Decides which milestone qualifies the
+/// referral and which programme row sets the money — referring a fleet is worth
+/// several times what referring a customer is worth, because it is several
+/// times the work.
+enum ReferralRefereeType {
+  CUSTOMER
+  MERCHANT
+  FLEET
 }
 
 /// Whose referral code this is, and therefore which wallet their reward is
@@ -3720,10 +4343,18 @@ enum ReferralRedemptionStatus {
 /// earn them in. Founder decision, 2026-08-26 — a driver's referral reward is
 /// wallet cash in their DRIVER wallet, paid on the referred customer's first
 /// completed ride.
+/// Who holds a referral code. Fixed when the code is created, and it decides
+/// which wallet the reward is paid into — so a persona issued a code under
+/// another's would have their reward filed under the wrong one.
 enum ReferralOwnerType {
   CUSTOMER
   DRIVER
   RIDER
+  MERCHANT
+  /// A fleet owner as a person. Their reward lands in their own wallet, not in
+  /// the fleet's receivables: a referral is personal marketing, while a fleet's
+  /// receivables are what DrippleX owes it for work its riders did.
+  FLEET_OWNER
 }
 
 /// One row per user who has generated a referral code (lazily created on
@@ -3743,23 +4374,132 @@ model Referral {
   @@map("referrals")
 }
 
+/// DPX-REFERRAL-003 — what DrippleX pays for a referral, per kind of referee,
+/// and what has to be true before it pays.
+///
+/// One row per `ReferralRefereeType`, because none of these numbers is a
+/// constant any more. Nora's specification, 2026-09-11: "₦350 customer and
+/// merchant referral, ₦2,500 configurable fleet referral", a configurable hold
+/// before payment, and configurable qualification. Every one of those is a row
+/// an operator edits, not a deployment — the same principle the commission
+/// campaigns and the driver tier table already run on.
+model ReferralProgramme {
+  id          String              @id @default(uuid()) @db.Uuid
+  /// One programme per kind of referee. Unique, so there is never a question
+  /// of which row set the price of a given referral.
+  refereeType ReferralRefereeType @unique @map("referee_type")
+
+  /// Paid to the person who shared the code. NGN.
+  referrerRewardAmount Decimal @default(350) @map("referrer_reward_amount") @db.Decimal(12, 2)
+  /// Paid to the person who used it. Zero is a legitimate setting — a fleet
+  /// referral rewards the referrer only — and means no credit is attempted.
+  refereeRewardAmount  Decimal @default(350) @map("referee_reward_amount") @db.Decimal(12, 2)
+
+  /// Days between qualifying and being paid. The founder-locked reason the
+  /// reward waits at all: a referral that qualifies through a fake account is
+  /// usually visible within a week, and money already withdrawn cannot be
+  /// clawed back. Zero pays immediately.
+  holdDays Int @default(7) @map("hold_days")
+
+  /// How long a referee has to reach their milestone before the referral
+  /// expires unpaid. Stops a redemption sitting PENDING forever against a
+  /// signup that never became a customer.
+  qualificationWindowDays Int @default(90) @map("qualification_window_days")
+
+  /// Whether the referee must be KYC-verified on top of their milestone.
+  ///
+  /// Seeded **false** for CUSTOMER deliberately. DrippleX already pays on the
+  /// referred customer's first completed ride with no verification gate, and
+  /// switching that on silently would stop paying referrals that today are
+  /// earned. Nora's specification asks for it; turning it on is an Operations
+  /// decision recorded here, not a deployment.
+  requireKycVerified Boolean @default(false) @map("require_kyc_verified")
+
+  /// A programme that is not active stops qualifying new referrals. Redemptions
+  /// already qualified keep the amounts snapshotted on them and still pay.
+  active Boolean @default(true)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  redemptions ReferralRedemption[]
+
+  @@map("referral_programmes")
+}
+
 /// One row per referred user (a referee can only be referred once — see
-/// the unique constraint on refereeUserId). Reward crediting is deferred
-/// until the referee completes their first ride (see referral-reward
-/// .subscriber.ts) rather than at signup, to reduce free-money fraud.
+/// the unique constraint on refereeUserId).
+///
+/// Reward crediting is deferred until the referee reaches the milestone their
+/// programme sets, and then held for the programme's hold period, rather than
+/// paid at signup — a signup-only trigger is free money for anyone willing to
+/// create accounts.
 model ReferralRedemption {
   id            String                   @id @default(uuid()) @db.Uuid
   referralId    String                   @map("referral_id") @db.Uuid
   refereeUserId String                   @unique @map("referee_user_id") @db.Uuid
   status        ReferralRedemptionStatus @default(PENDING)
-  rewardedAt    DateTime?                @map("rewarded_at")
-  createdAt     DateTime                 @default(now()) @map("created_at")
-  updatedAt     DateTime                 @updatedAt @map("updated_at")
-  referral      Referral                 @relation(fields: [referralId], references: [id], onDelete: Cascade)
-  refereeUser   User                     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+
+  /// What the referee signed up as, fixed at redemption. Decides the milestone
+  /// and the programme; recorded here rather than derived later, because a
+  /// customer who opens a shop next year was still referred as a customer.
+  refereeType ReferralRefereeType @default(CUSTOMER) @map("referee_type")
+
+  /// The programme that priced this referral. Nullable for every row that
+  /// predates programmes.
+  programmeId String?            @map("programme_id") @db.Uuid
+  programme   ReferralProgramme? @relation(fields: [programmeId], references: [id])
+
+  /// The amounts snapshotted when the referral qualified. Operations re-pricing
+  /// a programme must never rewrite what somebody already earned — the same
+  /// rule every settled row on this platform follows. Null until qualification.
+  referrerRewardAmount Decimal? @map("referrer_reward_amount") @db.Decimal(12, 2)
+  refereeRewardAmount  Decimal? @map("referee_reward_amount") @db.Decimal(12, 2)
+
+  /// The milestone was met and screening passed. The hold runs from here.
+  qualifiedAt DateTime? @map("qualified_at")
+  /// The hold elapsed and the reward became payable.
+  approvedAt  DateTime? @map("approved_at")
+  /// Both wallets were credited. Mapped to the original `rewarded_at` column:
+  /// it is the same fact under a name that now distinguishes itself from
+  /// qualifying and approving.
+  paidAt      DateTime? @map("rewarded_at")
+  rejectedAt  DateTime? @map("rejected_at")
+  reversedAt  DateTime? @map("reversed_at")
+
+  rejectionReason ReferralRejectionReason? @map("rejection_reason")
+
+  /// A signal that fired but did not refuse the referral.
+  ///
+  /// Not every abuse signal is worth the same. Two accounts sharing a device is
+  /// routine in a market where handsets are shared inside a household, so
+  /// refusing on it alone would reject real referrals in bulk; two accounts
+  /// sharing a verified identity document is not routine at all. The strong
+  /// signals refuse. The weak one flags, and the hold — which exists precisely
+  /// so somebody can look before the money moves — is when Operations looks.
+  flaggedReason ReferralRejectionReason? @map("flagged_reason")
+  /// Free text from Operations beside the coded reason, or the detail of an
+  /// automated match. Never the matched value itself — a rejection note is read
+  /// by support staff and must not leak one account's phone number to another.
+  reviewNote    String?                  @map("review_note") @db.VarChar(500)
+  reviewedBy    String?                  @map("reviewed_by") @db.Uuid
+
+  /// When this referral stops being able to qualify. Null for rows that predate
+  /// the window, which therefore never expire on their own.
+  expiresAt DateTime? @map("expires_at")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  referral    Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  refereeUser User     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
 
   @@index([referralId])
   @@index([status])
+  /// The sweep's two queries: what is waiting to qualify, and what has finished
+  /// its hold.
+  @@index([status, expiresAt])
+  @@index([status, qualifiedAt])
   @@map("referral_redemptions")
 }
 
@@ -4638,11 +5378,61 @@ model FleetCommissionPeriod {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  fleet Fleet @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  fleet    Fleet                          @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  segments FleetCommissionPeriodSegment[]
 
   @@unique([fleetId, periodStart])
   @@index([settledAt])
   @@map("fleet_commission_periods")
+}
+
+/// DPX-COMMISSION-001 — a month's trading, split by which commission rate was
+/// in force when each job happened.
+///
+/// A fleet's rate is banded on its *monthly* volume, so it is only knowable
+/// when the month closes. A campaign covering part of that month therefore
+/// cannot replace the band — founder decision 2026-09-11: a mid-month campaign
+/// "should add up to previously earned", meaning the month keeps accumulating
+/// across it and the campaign applies only to the days it covers.
+///
+/// That needs the month's revenue bucketed as it accrues, because the period
+/// row carries running totals and no per-job dates — by settlement time there
+/// is no way to ask which jobs fell inside a campaign window. So each job is
+/// counted into the bucket for whatever was in force at the moment it
+/// completed, the same increment-rather-than-recompute approach the period
+/// itself uses.
+///
+/// `campaignRate` is snapshotted rather than read back from the campaign: a
+/// campaign edited or archived later must not rewrite what was already earned
+/// under it.
+model FleetCommissionPeriodSegment {
+  id       String @id @default(uuid()) @db.Uuid
+  periodId String @map("period_id") @db.Uuid
+
+  /// The campaign in force for these jobs, or null for the standing band.
+  campaignId String? @map("commission_campaign_id") @db.Uuid
+
+  /// The same value as `campaignId`, with the standing band written as the
+  /// literal 'STANDING'. Postgres treats NULLs as distinct in a unique index,
+  /// so a nullable campaignId alone would let two standing buckets exist for
+  /// one month and quietly halve what the fleet is charged.
+  campaignKey String @map("commission_campaign_key") @db.VarChar(64)
+
+  /// Null for the standing bucket, whose rate is the band and is not known
+  /// until the month closes.
+  campaignRate Decimal? @map("campaign_rate") @db.Decimal(5, 4)
+
+  orderCount      Int     @default(0) @map("order_count")
+  chargeableTotal Decimal @default(0) @map("chargeable_total") @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  period FleetCommissionPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, campaignKey])
+  @@index([periodId])
+  @@map("fleet_commission_period_segments")
 }
 
 // ── MKT-INT-001 Merchant Integration Platform ──────────────────────────────

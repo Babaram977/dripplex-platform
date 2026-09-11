@@ -446,6 +446,10 @@ export interface PromotionRules {
   eligibleCountries?: string[];
   rideTypes?: string[];
   merchantCategories?: string[];
+  /** Named merchants, beside `merchantCategories`' broad cut — how a co-funded
+   *  campaign is actually scoped. Distinct from a promotion's `merchantId`,
+   *  which says who owns it rather than where it can be spent. */
+  eligibleMerchantIds?: string[];
   paymentMethods?: string[];
   weekdays?: number[];
   startHour?: number;
@@ -471,6 +475,16 @@ export interface PromotionDto {
   amountOff: number | null;
   creditAmount: number | null;
   maxDiscount: number | null;
+  /** DPX-CAMPAIGN-001 — the floor of the benefit band, beside `maxDiscount`'s
+   *  ceiling. Never lifts a discount above the basket it comes off. */
+  minDiscount: number | null;
+  /** What this campaign may cost in total, in naira. Null is uncapped —
+   *  `usageLimit` bounds how often a campaign is used, not what it costs. */
+  budgetAmount: number | null;
+  /** The sum of what its redemptions have actually saved. */
+  budgetSpent: number;
+  /** `budgetAmount - budgetSpent`, floored at zero, or null when uncapped. */
+  budgetRemaining: number | null;
   buyQty: number | null;
   getQty: number | null;
   priority: number;
@@ -553,6 +567,8 @@ export interface CreatePromotionRequest {
   amountOff?: number;
   creditAmount?: number;
   maxDiscount?: number;
+  minDiscount?: number;
+  budgetAmount?: number;
   buyQty?: number;
   getQty?: number;
   priority?: number;
@@ -599,7 +615,39 @@ export interface PromotionLeaderboardEntryDto {
   discountCost: number;
 }
 
-export type ReferralRedemptionStatus = 'PENDING' | 'REWARDED' | 'EXPIRED';
+/**
+ * DPX-REFERRAL-003 — the full lifecycle. `REWARDED` became `PAID`: keeping both
+ * names for "the money moved" means every client that checks only one of them
+ * is wrong, and the one that decides whether to pay again is wrong about money.
+ */
+export type ReferralRedemptionStatus =
+  'PENDING' | 'QUALIFIED' | 'APPROVED' | 'PAID' | 'REJECTED' | 'REVERSED' | 'EXPIRED';
+
+export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET';
+
+export type ReferralRejectionReason =
+  | 'SELF_REFERRAL'
+  | 'RECIPROCAL_RELATIONSHIP'
+  | 'SHARED_DEVICE'
+  | 'SHARED_PHONE'
+  | 'SHARED_EMAIL'
+  | 'SHARED_IDENTITY'
+  | 'OPERATIONS_DECISION';
+
+/** What DrippleX pays for a referral, per kind of referee. Every field is an
+ *  Operations setting rather than a constant. */
+export interface ReferralProgrammeDto {
+  refereeType: ReferralRefereeType;
+  referrerRewardAmount: number;
+  refereeRewardAmount: number;
+  /** Days between a referral qualifying and its reward being paid. Zero pays
+   *  immediately. */
+  holdDays: number;
+  qualificationWindowDays: number;
+  requireKycVerified: boolean;
+  active: boolean;
+  updatedAt: string;
+}
 
 export interface ReferralDto {
   id: string;
@@ -613,7 +661,17 @@ export interface ReferralStatsDto {
   totalRedemptions: number;
   pendingRedemptions: number;
   rewardedRedemptions: number;
+  /** What a referred friend earns for signing up with this code. */
   refereeRewardAmount: number;
+  /**
+   * What the sharer earns when that friend completes their first ride.
+   *
+   * The endpoint has always returned this — the shared type simply never
+   * declared it, so any client reading it had to hardcode the amount or go
+   * without. Both figures come from the backend for the same reason: a reward
+   * amount stated in a client is one that keeps being stated after it changes.
+   */
+  referrerRewardAmount: number;
 }
 
 export interface ReferralRedemptionDto {
@@ -621,7 +679,24 @@ export interface ReferralRedemptionDto {
   referralId: string;
   refereeUserId: string;
   status: ReferralRedemptionStatus;
+  refereeType: ReferralRefereeType;
+  /** Snapshotted when the referral qualified, so re-pricing a programme never
+   *  rewrites what this one was worth. Null until then. */
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  approvedAt: string | null;
+  paidAt: string | null;
+  /** The same instant as `paidAt`, under the name every existing client already
+   *  reads. */
   rewardedAt: string | null;
+  rejectedAt: string | null;
+  reversedAt: string | null;
+  rejectionReason: ReferralRejectionReason | null;
+  /** An abuse signal that fired without refusing the referral. Operations looks
+   *  at these during the hold. */
+  flaggedReason: ReferralRejectionReason | null;
+  expiresAt: string | null;
   createdAt: string;
 }
 
@@ -764,6 +839,218 @@ export interface ListReferralFraudChecksQuery {
   status?: ReferralFraudCheckStatus;
 }
 
+/**
+ * DPX-OPS — who is asking DrippleX for money. Not a column anywhere: a
+ * withdrawal's persona comes from the wallet it is drawn on, and a fleet
+ * settlement request is a fleet by construction.
+ */
+export type PayoutRequesterType = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+/**
+ * A payout is a partner drawing down a wallet balance they already hold; a
+ * fleet receivable is DrippleX owing a fleet for work its riders did, which has
+ * not been paid into any wallet yet. Different obligations, not labels.
+ */
+export type PayoutRequestKind = 'WALLET_PAYOUT' | 'FLEET_RECEIVABLE';
+
+export type PayoutRequestStatus =
+  'PENDING' | 'APPROVED' | 'PROCESSING' | 'PAID' | 'REJECTED' | 'CANCELLED';
+
+export interface OperationsPayoutRequestDto {
+  id: string;
+  kind: PayoutRequestKind;
+  requesterType: PayoutRequesterType;
+  requesterUserId: string;
+  requesterName: string;
+  /** A fleet's DX number, so Operations can quote it back. Null otherwise. */
+  requesterReference: string | null;
+  amount: number;
+  currency: string;
+  status: PayoutRequestStatus;
+  requestedAt: string;
+  resolvedAt: string | null;
+  note: string | null;
+  /** Which endpoint actions this request — the two kinds differ. */
+  actionPath: string;
+}
+
+export interface OperationsPayoutQueueSummaryDto {
+  pendingCount: number;
+  pendingAmount: number;
+  pendingByRequester: { requesterType: PayoutRequesterType; count: number; amount: number }[];
+}
+
+export interface OperationsPayoutQueueQuery {
+  page?: number;
+  pageSize?: number;
+  requesterType?: PayoutRequesterType;
+  status?: PayoutRequestStatus;
+}
+
+/**
+ * The personas that hold a referral code. Every earning persona has one since
+ * DPX-REFERRAL-002; the owner type is fixed when a code is created and decides
+ * which wallet the reward is paid into.
+ */
+export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+export interface ReferralPersonaPerformanceDto {
+  persona: ReferralPersona;
+  referrers: number;
+  activeReferrers: number;
+  redemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+  /** rewarded / redemptions — what converted, not what was clicked. */
+  conversionRate: number;
+}
+
+export interface ReferralPerformerDto {
+  userId: string;
+  name: string;
+  persona: ReferralPersona;
+  code: string;
+  redemptions: number;
+  rewardedRedemptions: number;
+  /** Driver Growth Campaign only. Null — not zero — for personas without one. */
+  rewardAmountEarned: number | null;
+  rewardAmountUnpaid: number | null;
+}
+
+export interface DriverCampaignPerformanceDto {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  participatingDrivers: number;
+  registeredPassengers: number;
+  qualifiedPassengers: number;
+  rewardsPending: { count: number; amount: number };
+  rewardsApproved: { count: number; amount: number };
+  rewardsPaid: { count: number; amount: number };
+}
+
+/**
+ * One referral waiting on a person rather than on time.
+ *
+ * DPX-REFERRAL-003 flags a shared device rather than refusing it, because a
+ * household sharing a handset is routine and refusing on that signal would
+ * reject real referrals in bulk. A flag is only worth something if somebody
+ * sees it.
+ */
+export interface ReferralReviewItemDto {
+  redemptionId: string;
+  referrerName: string;
+  referrerCode: string;
+  refereeName: string;
+  refereeType: ReferralRefereeType;
+  /** The signal that fired without refusing it — why this row is here. */
+  flaggedReason: ReferralRejectionReason | null;
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  /** When the hold would have released it. Null when it cannot be computed. */
+  releasesAt: string | null;
+  /** True once the hold has elapsed and only the flag is holding it — nothing
+   *  is coming to release it but a decision. */
+  holdElapsed: boolean;
+  /** Where the decision is actioned. A read-only screen states the endpoint
+   *  rather than implying it can act itself. */
+  actionPath: string;
+}
+
+export interface OperationsReferralOverviewDto {
+  personas: ReferralPersonaPerformanceDto[];
+  driverCampaigns: DriverCampaignPerformanceDto[];
+  /** Personas with no referral programme at all — named, not shown as zeroes. */
+  personasWithoutProgramme: string[];
+}
+
+/**
+ * DPX-COMMISSION-001 — which commission a campaign overrides. One value per
+ * place the platform actually reads a rate at settlement time.
+ *
+ * FLEET is the odd one: a fleet's rate is banded on its monthly order volume
+ * and settles when the month closes, so a campaign covering part of a month
+ * applies pro-rata to the days it covers rather than replacing the band — the
+ * month keeps accumulating across it, and the band is still decided on the
+ * full month's volume.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
+
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+/**
+ * Optional eligibility conditions on a commission campaign, in the same
+ * vocabulary the promotions engine uses for customer discounts rather than a
+ * second language for the same concepts. "Weekend orders" is
+ * `{ weekdays: [0, 6] }` — 0 is Sunday, matching `Date.getDay()`.
+ *
+ * A condition the settlement cannot answer makes the campaign not apply, and
+ * the standing rate is charged instead.
+ */
+export interface CommissionCampaignRules {
+  weekdays?: number[];
+  startHour?: number;
+  endHour?: number;
+  eligibleCities?: string[];
+  eligibleStates?: string[];
+  eligibleCountries?: string[];
+  merchantCategories?: string[];
+  /** Named merchants, beside `merchantCategories`' broad cut — how a co-funded
+   *  campaign is actually scoped. Distinct from a promotion's `merchantId`,
+   *  which says who owns it rather than where it can be spent. */
+  eligibleMerchantIds?: string[];
+  paymentMethods?: string[];
+  rideTypes?: string[];
+  whitelistUserIds?: string[];
+  blacklistUserIds?: string[];
+}
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** Fraction, not percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: CommissionCampaignRules | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCommissionCampaignRequest {
+  name: string;
+  description?: string;
+  scope: CommissionScope;
+  commissionRate: number;
+  priority?: number;
+  startsAt: string;
+  endsAt: string;
+  rules?: CommissionCampaignRules;
+  announce?: boolean;
+}
+
+export type UpdateCommissionCampaignRequest = Partial<
+  Omit<CreateCommissionCampaignRequest, 'scope'>
+>;
+
+export interface ListCommissionCampaignsQuery {
+  page?: number;
+  pageSize?: number;
+  scope?: CommissionScope;
+  status?: CommissionCampaignStatus;
+}
+
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM' | 'VIP';
 
 export interface LoyaltyAccountDto {
@@ -821,13 +1108,136 @@ export interface LoyaltyAccountOverviewDto {
   account: LoyaltyAccountDto;
   nextTier: LoyaltyNextTierDto | null;
   achievements: UserAchievementDto[];
+  points: LoyaltyPointsSummaryDto;
+}
+
+/**
+ * What a DX point balance is actually worth, and what it takes to use it.
+ * Every figure is derived from the loyalty ledger by the backend — the app
+ * shows these, it does not compute them, so the rate and the thresholds can
+ * only ever be stated in one place.
+ */
+export interface LoyaltyPointsSummaryDto {
+  balance: number;
+  /** Founder decision: 200 points = NGN 1. */
+  pointsPerNaira: number;
+  /** Naira the balance is worth, rounded down to whole naira. */
+  balanceValue: number;
+  /** The largest multiple of `pointsPerNaira` redeemable right now. */
+  redeemablePoints: number;
+  minimumRedeemablePoints: number;
+  /** DPX-LOYALTY-005 — whether points can be cashed out to the wallet at all.
+   *  When false they stay fully spendable in store and against the rewards
+   *  catalogue, and a client must not offer a cash-out that will be refused. */
+  walletRedemptionEnabled: boolean;
+  /** Points earned so far this calendar month, Lagos time. */
+  earnedThisMonth: number;
+  nextExpiry: { at: string; points: number } | null;
+  benefits: LoyaltyBenefitStatusDto;
+}
+
+export interface LoyaltyBenefitThresholdDto {
+  threshold: number;
+  eligible: boolean;
+  pointsToGo: number;
+}
+
+export interface LoyaltyBenefitStatusDto {
+  deliveryFeeDiscount: LoyaltyBenefitThresholdDto;
+  monthlyElite: LoyaltyBenefitThresholdDto;
+}
+
+/**
+ * The real shape of `POST /customer/loyalty/redeem`. Redemption pays into the
+ * customer's wallet rather than returning the account alone, so the response
+ * says what the points were worth and what the wallet holds now.
+ */
+export interface LoyaltyRedemptionResultDto {
+  overview: LoyaltyAccountOverviewDto;
+  pointsRedeemed: number;
+  amountCredited: number;
+  wallet: WalletDto;
+}
+
+/**
+ * `POST /customer/loyalty/redeem` accepts a points figure and nothing else.
+ *
+ * This used to also declare `reason`, `referenceType` and `referenceId`, none
+ * of which the endpoint has ever accepted — the backend's `RedeemPointsDto`
+ * has only ever had `points`, and the global validation pipe runs with
+ * `forbidNonWhitelisted`, so any caller that filled those in got a 400 rather
+ * than the redemption the type promised.
+ */
+/**
+ * DPX-LOYALTY-002 — a one-time authorisation for a merchant to take DX points
+ * at their counter.
+ *
+ * `code` comes back from `POST /customer/loyalty/redemption-code` once and is
+ * never retrievable again — only its hash is stored. Show it, then forget it.
+ */
+export interface IssuedRedemptionCodeDto {
+  code: string;
+  /** Zero when the code carries only a coupon. */
+  points: number;
+  /** Naira the merchant will be credited for the points. */
+  amount: number;
+  /** A coupon the holder chose to spend at the same counter, if any. */
+  couponCode: string | null;
+  expiresAt: string;
+}
+
+/** What a merchant sees before accepting a code. */
+export interface RedemptionCodePreviewDto {
+  points: number;
+  amount: number;
+  couponCode: string | null;
+  holderName: string;
+  expiresAt: string;
+}
+
+export interface StoreRedemptionResultDto {
+  points: number;
+  /** Naira credited from the points the holder spent. */
+  amount: number;
+  couponCode: string | null;
+  /** Naira credited to cover a coupon discount DrippleX funded. */
+  couponDiscount: number;
+  /** Everything credited to the merchant for this code. */
+  totalCredited: number;
+  holderName: string;
+  /** The merchant's wallet balance after the credit. */
+  merchantWalletBalance: number;
+  redeemedAt: string;
+}
+
+export interface IssueRedemptionCodeRequest {
+  /** Omit, or send 0, for a coupon-only code. */
+  points?: number;
+  couponCode?: string;
+}
+
+export interface RedeemStoreCodeRequest {
+  code: string;
+  /**
+   * The bill total. Required when the code carries a coupon — a percentage
+   * discount is meaningless without something to take it off.
+   */
+  billAmount?: number;
+}
+
+/** A merchant paying down what they owe DrippleX out of their wallet balance. */
+export interface SettleCommissionRequest {
+  amount: number;
+}
+
+export interface CommissionSettlementResultDto {
+  settled: number;
+  outstandingBalance: number;
+  wallet: WalletDto;
 }
 
 export interface RedeemLoyaltyPointsRequest {
   points: number;
-  reason: string;
-  referenceType?: string;
-  referenceId?: string;
 }
 
 export type WalletOwnerType = 'CUSTOMER' | 'MERCHANT' | 'RIDER' | 'DRIVER' | 'PLATFORM';
@@ -1279,3 +1689,76 @@ export {
   RIDE_ALERT_ANDROID_CHANNEL_ID_V1,
   CALL_ALERT_ANDROID_CHANNEL_ID_V1,
 } from './android-notification-channels.js';
+
+/** DPX-LOYALTY-005 — the Ops-controlled terms on which DX Points convert. */
+export interface LoyaltySettingDto {
+  /** How many points buy one naira. Founder decision: 200. */
+  pointsPerNaira: number;
+  /** Whether points may be turned into withdrawable wallet cash. */
+  walletRedemptionEnabled: boolean;
+  /** Whether points may be spent at a merchant's counter. */
+  storeRedemptionEnabled: boolean;
+  minRedemptionPoints: number;
+  /** The most a holder may cash out in a rolling 24 hours, in points. Null is
+   *  uncapped. */
+  dailyRedemptionPointsCap: number | null;
+  updatedAt: string;
+}
+
+/** DPX-REFERRAL-003 — every field optional: an operator changing only the hold
+ *  must not have to restate the amounts, and restating an amount is how one
+ *  gets changed by accident. */
+export interface UpdateReferralProgrammeRequest {
+  referrerRewardAmount?: number;
+  refereeRewardAmount?: number;
+  /** Days between qualifying and being paid. Zero pays immediately. */
+  holdDays?: number;
+  qualificationWindowDays?: number;
+  requireKycVerified?: boolean;
+  active?: boolean;
+}
+
+/** DPX-LOYALTY-007 — who can earn DX Points besides a customer. */
+export type LoyaltyEarnerPersona = 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+/** Whether a partner persona earns DX Points, and for what. Every programme
+ *  starts switched off. */
+export interface LoyaltyEarningProgrammeDto {
+  persona: LoyaltyEarnerPersona;
+  active: boolean;
+  pointsPerCompletedJob: number;
+  /** Founder decision: a review boosts points and never the star rating. */
+  pointsPerQualifyingReview: number;
+  minReviewRating: number;
+  /** Per person, rolling 24 hours. Null is uncapped. */
+  dailyPointsCap: number | null;
+  updatedAt: string;
+}
+
+/**
+ * What switching a programme on would commit DrippleX to.
+ *
+ * A worst case, not a forecast: everybody hitting their cap on the same day.
+ * A forecast would need assumptions about how much work a partner does, and
+ * whoever reads this cannot check those assumptions.
+ */
+export interface LoyaltyEarningImpactDto {
+  persona: LoyaltyEarnerPersona;
+  /** Partners this would begin paying — approved, verified, active. Not
+   *  everyone registered. */
+  eligiblePartners: number;
+  dailyPointsCap: number | null;
+  /** Null when uncapped: there is no ceiling to state, and that absence is the
+   *  thing worth seeing. */
+  worstCaseDailyPoints: number | null;
+  worstCaseDailyNaira: number | null;
+  pointsPerNaira: number;
+}
+
+export interface UpdateLoyaltyEarningProgrammeRequest {
+  active?: boolean;
+  pointsPerCompletedJob?: number;
+  pointsPerQualifyingReview?: number;
+  minReviewRating?: number;
+  dailyPointsCap?: number | null;
+}

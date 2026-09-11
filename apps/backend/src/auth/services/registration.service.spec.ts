@@ -1,4 +1,4 @@
-import { RegistrationChannel, UserStatus } from '@prisma/client';
+import { ReferralRefereeType, RegistrationChannel, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { AUTH_AUDIT_ACTIONS } from '../../audit/audit.constants';
@@ -263,6 +263,7 @@ describe('RegistrationService', () => {
         registrationResult.userId,
         'FRIEND01',
         expect.objectContaining({ userId: registrationResult.userId }),
+        ReferralRefereeType.CUSTOMER,
       );
     });
 
@@ -272,8 +273,29 @@ describe('RegistrationService', () => {
       expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
     });
 
-    it('does not attempt redemption for non-customer portals', async () => {
+    it('records a merchant signup against the merchant programme', async () => {
+      // DPX-REFERRAL-003 — `referralCode` has always been on the shared portal
+      // DTO, and until then a merchant who typed one had it silently dropped,
+      // which reads to both sides as the code not working. A merchant referral
+      // is priced by its own programme and qualifies on its own milestone.
       await serviceWithReferrals.registerMerchant({ ...baseDto, referralCode: 'FRIEND01' }, {});
+
+      expect(referralsService.tryRedeemAtRegistration).toHaveBeenCalledWith(
+        registrationResult.userId,
+        'FRIEND01',
+        expect.objectContaining({ userId: registrationResult.userId }),
+        ReferralRefereeType.MERCHANT,
+      );
+    });
+
+    it('still ignores a code on the driver and rider portals', async () => {
+      // No programme is priced for either, and a referral with no programme
+      // cannot qualify — recording one would promise a reward nothing has
+      // agreed to pay.
+      // Both portals require a phone of their own accord.
+      const withPhone = { ...baseDto, phone: '+2348011111111', referralCode: 'FRIEND01' };
+      await serviceWithReferrals.registerDriver(withPhone, {});
+      await serviceWithReferrals.registerRider(withPhone, {});
 
       expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
     });

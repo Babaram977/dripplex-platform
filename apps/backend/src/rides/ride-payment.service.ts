@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   CommissionOwnerType,
+  CommissionScope,
+  DriverTier,
   RidePaymentMethod,
   RidePaymentStatus,
   RideStatus,
@@ -16,12 +18,14 @@ import {
   DEFAULT_PLATFORM_COMMISSION_RATE,
 } from '../commercial/commercial.constants';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { FleetsService } from '../fleets/fleets.service';
@@ -67,6 +71,10 @@ interface FareSplit {
   driverEarning: number;
   /** The commission rate this split was computed at (snapshotted onto the ride). */
   platformCommissionRate: number;
+  /** The commission campaign that set the rate, or null for the standing one. */
+  commissionCampaignId: string | null;
+  /** The tier the driver held when this settled, or null for a fleet trip. */
+  driverTier: DriverTier | null;
   /**
    * The fare before any coupon — `ride.totalFare + ride.promoDiscount`. This,
    * not the discounted fare, is what the driver is paid on and what commission
@@ -102,6 +110,8 @@ export class RidePaymentService {
     private readonly commissionAccounts: CommissionAccountService,
     private readonly platformCommissionSettings: PlatformCommissionSettingsService,
     private readonly fleets: FleetsService,
+    private readonly commissionRates: CommissionRateResolverService,
+    private readonly driverTiers: DriverTierService,
   ) {}
 
   public async initiatePayment(
@@ -210,8 +220,8 @@ export class RidePaymentService {
       return toRideDto(await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } }));
     }
 
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
     await this.captureIntoPlatformWallet(ride, context);
     await this.payoutDriver(ride, split, context);
     return await this.markPaid(ride, ride.paymentMethod, split, context);
@@ -231,12 +241,51 @@ export class RidePaymentService {
    * join or leave a fleet: what matters is who they rode for when the trip
    * settled, and the rate is snapshotted onto the ride either way.
    */
-  private async effectiveCommissionRate(ride: Ride): Promise<number> {
+  private async effectiveCommissionRate(
+    ride: Ride,
+  ): Promise<{ rate: number; campaignId: string | null; tier: DriverTier | null }> {
     if (ride.driverId !== null) {
       const membership = await this.fleets.fleetForUser(ride.driverId);
-      if (membership !== null) return 0;
+      // A fleet trip charges the fleet, not the driver. No commission campaign
+      // and no tier apply here — overriding zero would charge the driver on a
+      // trip DrippleX already bills the fleet for, taking twice from one fare.
+      if (membership !== null) return { rate: 0, campaignId: null, tier: null };
     }
-    return await this.platformCommissionSettings.getEffectiveRate();
+
+    // DPX-COMMISSION-001 — the standing platform rate, or a campaign overriding
+    // it for a window under conditions. This is what everyone pays.
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.RIDE,
+      await this.platformCommissionSettings.getEffectiveRate(),
+      {
+        ...(ride.driverId === null ? {} : { userId: ride.driverId }),
+        rideType: ride.rideType,
+        ...(ride.paymentMethod === null ? {} : { paymentMethod: ride.paymentMethod }),
+      },
+    );
+
+    // DPX-TIER-002 — and then the driver's earned tier takes their own points
+    // off it. Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4.
+    //
+    // The order is the point. A tier is a *reduction*, so the platform rate and
+    // any campaign stay the live controls over what rides cost, and the tier
+    // composes with whatever they decide rather than replacing it. A driver who
+    // has earned half a point off keeps that half point during a promotional
+    // week as well as an ordinary one — which is what having earned it means.
+    //
+    // A driver with no tier yet gets no reduction and pays the rate in force,
+    // exactly as every driver did before tiers existed.
+    const standing =
+      ride.driverId === null ? null : await this.driverTiers.commissionReductionFor(ride.driverId);
+    const rate = DriverTierService.applyReduction(resolved.rate, standing?.reduction ?? null);
+
+    return {
+      // The effective rate, after the reduction — this is what gets snapshotted
+      // onto the ride, because it is what the driver was actually charged.
+      rate,
+      campaignId: resolved.campaignId,
+      tier: standing?.tier ?? null,
+    };
   }
 
   public async confirmCash(
@@ -245,8 +294,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
 
     // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
     // the driver already holds it physically, so there is nothing to
@@ -478,8 +527,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requirePayableRide(customerId, rideId);
-    const rate = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
 
     try {
       await this.walletService.debit({
@@ -614,7 +663,12 @@ export class RidePaymentService {
    * the discount exceeds the commission**. At a 10% rate that is most coupons,
    * and it is the intended behaviour: funding a promotion means paying for it.
    */
-  private computeSplit(ride: Ride, rate: number): FareSplit {
+  private computeSplit(
+    ride: Ride,
+    rate: number,
+    commissionCampaignId: string | null = null,
+    driverTier: DriverTier | null = null,
+  ): FareSplit {
     const charged = Number(ride.totalFare);
     const promoDiscount = Number(ride.promoDiscount);
     const grossFare = this.roundCurrency(charged + promoDiscount);
@@ -624,6 +678,8 @@ export class RidePaymentService {
       platformCommission,
       driverEarning,
       platformCommissionRate: rate,
+      commissionCampaignId,
+      driverTier,
       grossFare,
       promoDiscount,
     };
@@ -653,6 +709,19 @@ export class RidePaymentService {
   private async accrueDriverCommissionWithRetry(
     input: Parameters<CommissionAccountService['accrue']>[0],
   ): Promise<void> {
+    // A commission of zero is a real outcome, not a missing one, and there is
+    // nothing to accrue: the driver owes DrippleX nothing for this trip.
+    //
+    // Two supported settings reach it. DPX-COMMISSION-001 allows a campaign at
+    // exactly 0% — "a free week is a real offer and must not be mistaken for
+    // unset" — and DPX-TIER-002 lets an earned reduction take the rate in force
+    // down to zero. The commission ledger refuses a zero accrual by design
+    // (`Amount must be greater than zero`), so without this guard either one
+    // would throw here and leave a cash ride unable to settle at all.
+    if (Number(input.amount) <= 0) {
+      return;
+    }
+
     const maxAttempts = 5;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
@@ -1069,6 +1138,8 @@ export class RidePaymentService {
         paymentStatus: RidePaymentStatus.PAID,
         platformCommission: split.platformCommission,
         platformCommissionRate: split.platformCommissionRate,
+        commissionCampaignId: split.commissionCampaignId,
+        driverTier: split.driverTier,
         driverEarning: split.driverEarning,
       },
     });

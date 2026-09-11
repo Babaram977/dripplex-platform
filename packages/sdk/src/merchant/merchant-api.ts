@@ -18,12 +18,15 @@ import type {
   ListMerchantProductsQuery,
   ListMerchantsQuery,
   MerchantApprovalDto,
+  MerchantCommissionTermsDto,
+  MerchantNegotiatedRateDto,
   MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
   MerchantSummaryDto,
   OrderSettlementDto,
   PaginatedMerchantsResult,
+  SetMerchantNegotiatedRateRequest,
   PaginatedResult,
   PauseStoreRequest,
   ProductDto,
@@ -128,6 +131,21 @@ export class MerchantApi {
     return this.http.request<BankAccountDto>('/merchant/bank-account', {
       method: 'POST',
       body,
+      auth: true,
+    });
+  }
+
+  /**
+   * The commission rate in force for this merchant.
+   *
+   * Read from the platform rather than printed as static text: Ops can change
+   * the standing rate without a redeploy, and a commission campaign can target
+   * named merchants, so a hardcoded percentage is a claim the platform stopped
+   * guaranteeing.
+   */
+  public getCommissionTerms(): Promise<MerchantCommissionTermsDto> {
+    return this.http.request<MerchantCommissionTermsDto>('/merchant/settlements/commission', {
+      method: 'GET',
       auth: true,
     });
   }
@@ -252,6 +270,24 @@ export class MerchantApi {
 
 export class AdminMerchantsApi {
   public constructor(private readonly http: HttpClient) {}
+
+  /**
+   * Agrees a commission rate with one merchant, or clears it back to the
+   * platform rate by passing `rate: null` (DPX-MERCHANT-016).
+   *
+   * Takes the merchant **profile** id — the `id` on `MerchantProfileDto`, not
+   * its `merchantId`, which is the user id. The settlement path resolves
+   * against the profile id, so anything else reads as "no agreement".
+   */
+  public setNegotiatedRate(
+    merchantProfileId: string,
+    body: SetMerchantNegotiatedRateRequest,
+  ): Promise<MerchantNegotiatedRateDto> {
+    return this.http.request<MerchantNegotiatedRateDto>(
+      `/admin/merchant-settlement/commission/${merchantProfileId}/rate`,
+      { method: 'POST', body, auth: true },
+    );
+  }
 
   public listMerchants(query?: ListMerchantsQuery): Promise<PaginatedMerchantsResult> {
     return this.http.request<PaginatedMerchantsResult>(`/admin/merchants${toQuery(query)}`, {

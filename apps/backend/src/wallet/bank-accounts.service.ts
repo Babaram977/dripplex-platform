@@ -26,11 +26,12 @@ export interface CustomerBankAccountDto {
   accountNumber: string;
   isDefault: boolean;
   /** True when the name was confirmed with the bank rather than typed by the
-   * customer. False on rows saved before name enquiry existed, or added while
-   * no resolver was configured — never "verification failed", because a
-   * rejected account is not saved. Operations shows this on the withdrawal
-   * queue so a manual transfer to an unconfirmed destination is a visible
-   * choice rather than an invisible default. */
+   * customer. Always true for anything linked since verification became
+   * mandatory (2026-09-11); false only on historical rows saved before that.
+   * Never "verification failed" — a rejected account is not saved at all.
+   * Operations shows this on the withdrawal queue, so paying out by hand to one
+   * of those older unconfirmed destinations stays a visible choice rather than
+   * an invisible default. */
   accountNameVerified: boolean;
   createdAt: string;
 }
@@ -49,14 +50,6 @@ function toDto(row: CustomerBankAccount): CustomerBankAccountDto {
 }
 
 /**
- * Keep the partner payout flow compatible with the existing app while the
- * bank picker is being rolled out. Drivers and riders currently send a bank
- * name, not a bank code. When verification is configured, translate that
- * name to the canonical Paystack bank option server-side before resolving the
- * account. This preserves the verification guarantee instead of falling back
- * to an unverified account.
- */
-/**
  * Customer-owned withdrawal destinations.
  *
  * These were self-attested until DPX-WALLET-001 Phase 0: the customer typed a
@@ -66,9 +59,14 @@ function toDto(row: CustomerBankAccount): CustomerBankAccountDto {
  * operator eyeballing the row before making a manual transfer — a safeguard
  * Phase 4 deletes when it automates payouts.
  *
- * So `add` now performs name enquiry when a resolver is configured, and the
- * bank's answer overwrites whatever the customer typed. An account the bank
- * will not confirm is refused rather than saved unverified.
+ * So `add` performs name enquiry — always, as of the founder decision of
+ * 2026-09-11 — and the bank's answer overwrites whatever the customer typed. An
+ * account the bank will not confirm is refused rather than saved unverified,
+ * and an environment that cannot ask is refused too.
+ *
+ * This service backs three personas: customers, riders and drivers. They were
+ * the last ones able to self-attest a payout destination; merchants and fleets
+ * had already been tightened.
  */
 @Injectable()
 export class BankAccountsService {
@@ -79,9 +77,12 @@ export class BankAccountsService {
     private readonly resolver: BankAccountResolver,
   ) {}
 
-  /** The banks name enquiry can run against. Empty when no resolver is
-   * configured, which the client reads as "ask for the bank name as text"
-   * rather than as an error. */
+  /** The banks name enquiry can run against.
+   *
+   * Empty when no resolver is configured. That used to mean "fall back to a
+   * free-text bank name"; it now means the form has nothing to offer and should
+   * say so, because `add` refuses outright in that state. A client that still
+   * falls back to free text is building a form that cannot succeed. */
   public async listBanks(): Promise<BankOption[]> {
     if (!this.resolver.configured) {
       return [];
@@ -129,13 +130,44 @@ export class BankAccountsService {
     return { accountName: resolved.accountName, bankName: bank.name, bankCode: bank.code };
   }
 
+  /**
+   * Link a withdrawal destination.
+   *
+   * Founder decision 2026-09-11, overriding the Phase 0 compromise: **every
+   * bank input is verified with the payout provider.** There is no
+   * self-attested path any more, for any persona.
+   *
+   * What that replaced: when no resolver was configured this stored the
+   * customer's own typing with `accountNameVerifiedAt: null`, on the reasoning
+   * that degrading was kinder than refusing. It was not. `PayoutFulfillment`
+   * already refuses an unverified destination, so such a row was never a
+   * working account — it was a withdrawal that failed late, or one an operator
+   * paid out by hand to a name nobody had checked. The merchant and fleet paths
+   * had already been tightened; customers, riders and drivers were the three
+   * personas still on the lenient one.
+   *
+   * An unconfigured resolver is now a refusal, and a loud one. That is the
+   * intended behaviour: an environment that cannot verify a payout destination
+   * must not be collecting them.
+   */
   public async add(
     userId: string,
-    input: { bankName: string; bankCode?: string; accountName: string; accountNumber: string },
+    input: { bankName: string; bankCode?: string; accountName?: string; accountNumber: string },
     context?: AuditContext,
   ): Promise<CustomerBankAccountDto> {
+    if (!this.resolver.configured) {
+      throw new ValidationDomainException('Bank verification is not configured');
+    }
+
+    const accountNumber = input.accountNumber.trim();
+    // NUBAN is exactly ten digits. Anything else cannot be resolved, so
+    // accepting it only defers the failure to somewhere less helpful.
+    if (!/^\d{10}$/.test(accountNumber)) {
+      throw new ValidationDomainException('Nigerian bank account number must contain 10 digits');
+    }
+
     const existing = await this.prisma.customerBankAccount.findFirst({
-      where: { userId, accountNumber: input.accountNumber, deletedAt: null },
+      where: { userId, accountNumber, deletedAt: null },
     });
     if (existing) {
       throw new ConflictDomainException('This account is already linked');
@@ -144,25 +176,22 @@ export class BankAccountsService {
     const isFirst =
       (await this.prisma.customerBankAccount.count({ where: { userId, deletedAt: null } })) === 0;
 
-    const verified = await this.verifyAccountName(input);
+    // Throws when the bank does not recognise the account. Nothing is stored.
+    const verified = await this.verifyAccountName({ ...input, accountNumber });
 
     const created = await this.prisma.customerBankAccount.create({
       data: {
         userId,
-        // Store the canonical bank name when we resolved a free-text partner
-        // submission. This keeps Operations' payout queue consistent.
-        bankName: verified?.bankName ?? input.bankName,
-        bankCode: verified?.bankCode ?? input.bankCode ?? null,
+        // All three of these are the bank's answer, not the customer's typing.
+        bankName: verified.bankName,
+        bankCode: verified.bankCode,
         // Records which rail issued this code. Codes are provider-specific, and
         // the payout path refuses to hand one rail's code to the other without
         // re-confirming it first.
         bankCodeProvider: 'PAYSTACK',
-        // The bank's answer wins. Storing the customer's own spelling next to
-        // a number the bank says belongs to someone else is the failure this
-        // whole phase exists to prevent.
-        accountName: verified?.accountName ?? input.accountName,
-        accountNumber: input.accountNumber,
-        accountNameVerifiedAt: verified === null ? null : new Date(),
+        accountName: verified.accountName,
+        accountNumber,
+        accountNameVerifiedAt: new Date(),
         isDefault: isFirst,
       },
     });
@@ -173,7 +202,7 @@ export class BankAccountsService {
       {
         resource: 'customer_bank_account',
         resourceId: created.id,
-        metadata: { accountNameVerified: verified !== null },
+        metadata: { accountNameVerified: true },
       },
     );
 
@@ -181,39 +210,32 @@ export class BankAccountsService {
   }
 
   /**
-   * Ask the bank who owns this number. Null means nobody asked — not that the
-   * answer was no.
+   * Ask the bank who owns this number, or throw.
    *
-   * When the resolver is live, older partner clients may still send only the
-   * bank name. We resolve that name against the provider's canonical bank list
-   * here, then always perform the same account-name enquiry. No verified
-   * account can bypass the resolver merely because the UI has not yet shipped
-   * the bank-code picker.
+   * Older partner clients may still send only a bank name. That name is
+   * resolved against the provider's canonical list here, and then the same
+   * account-name enquiry runs either way — so an account cannot skip the
+   * resolver merely because a client has not shipped the bank-code picker yet.
+   *
+   * There is no longer a null return. Not asking is not an outcome.
    */
   private async verifyAccountName(input: {
     bankName: string;
     bankCode?: string;
     accountNumber: string;
-  }): Promise<{ accountName: string; bankCode: string; bankName: string } | null> {
-    if (!this.resolver.configured) {
-      return null;
-    }
-
-    let bankCode = input.bankCode?.trim();
-    let bankName = input.bankName.trim();
-
-    if (!bankCode) {
-      const match = requireBank(await this.resolver.listBanks(), { bankName });
-      bankCode = match.code;
-      bankName = match.name;
-    }
+  }): Promise<{ accountName: string; bankCode: string; bankName: string }> {
+    const requestedCode = input.bankCode?.trim();
+    const bank = requireBank(await this.resolver.listBanks(), {
+      ...(requestedCode === undefined || requestedCode === '' ? {} : { bankCode: requestedCode }),
+      bankName: input.bankName.trim(),
+    });
 
     const resolved = await this.resolver.resolveAccountName({
       accountNumber: input.accountNumber,
-      bankCode,
+      bankCode: bank.code,
     });
 
-    return { ...resolved, bankCode, bankName };
+    return { ...resolved, bankCode: bank.code, bankName: bank.name };
   }
 
   public async setDefault(userId: string, bankAccountId: string): Promise<CustomerBankAccountDto> {

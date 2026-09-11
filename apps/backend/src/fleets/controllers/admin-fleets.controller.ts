@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -6,12 +6,17 @@ import {
   AddFleetMemberDto,
   CreateFleetDto,
   DeactivateFleetMemberDto,
+  ReconstructFleetCommissionDto,
   RejectFleetDto,
   ReplaceFleetCommissionTiersDto,
   SetFleetNegotiatedRateDto,
   SettleFleetPeriodDto,
   SuspendFleetDto,
 } from '../dto/fleet.dto';
+import {
+  FleetCommissionBackfillService,
+  type FleetMonthReconstructionDto,
+} from '../fleet-commission-backfill.service';
 import { FleetCommissionService } from '../fleet-commission.service';
 import { FleetOverviewService } from '../fleet-overview.service';
 import { FLEET_PERMISSIONS } from '../fleet.constants';
@@ -61,7 +66,47 @@ export class AdminFleetsController {
     private readonly fleets: FleetsService,
     private readonly overview: FleetOverviewService,
     private readonly commission: FleetCommissionService,
+    private readonly backfill: FleetCommissionBackfillService,
   ) {}
+
+  /**
+   * What every fleet actually owes for the months that were never counted.
+   *
+   * DPX-AUDIT-001 §3.1: the subscriber that should have counted fleet work read
+   * the wrong object off the event bus for its whole life, so every
+   * `FleetCommissionPeriod` holds zero and no fleet has ever been billed. The
+   * counts are gone; the rides and delivery jobs are not, so the months are
+   * recomputable from source.
+   *
+   * Reporting by default. `apply: true` writes the recomputed totals back —
+   * never over a settled month, and setting rather than incrementing so
+   * re-running it lands on the same number.
+   *
+   * **POST, not GET, even for the reporting form.** The applied form rewrites
+   * `FleetCommissionPeriod` across every fleet, and a GET is safe by
+   * convention — browser prefetch, link unfurling, proxy caches and
+   * retry-on-timeout all rely on that. None of them should be able to start a
+   * platform-wide financial write. Splitting the verb by `apply` would put the
+   * safety back on a query parameter, which is the thing that was wrong.
+   *
+   * Guarded by `ADMIN_COMMISSION_MANAGE` rather than the controller's default
+   * `ADMIN_MANAGE`, matching every other commission route here. Rewriting what
+   * every fleet is billed is not the same privilege as listing fleets.
+   */
+  @Post('commission/reconstruction')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(FLEET_PERMISSIONS.ADMIN_COMMISSION_MANAGE)
+  public async reconstructCommission(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReconstructFleetCommissionDto,
+  ): Promise<ApiSuccessResponse<FleetMonthReconstructionDto[]>> {
+    const data = await this.backfill.reconstructAll({
+      apply: dto.apply === true,
+      adminUserId: user.id,
+      context: { userId: user.id },
+    });
+    return { success: true, data };
+  }
 
   /**
    * Operations' fleet dashboard.

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { CommissionOwnerType, PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { FleetsService } from '../fleets/fleets.service';
 import { MerchantCommissionSettingsService } from '../orders/merchant-commission-settings.service';
@@ -18,6 +19,7 @@ import {
   DEFAULT_PLATFORM_COMMISSION_RATE,
 } from './commercial.constants';
 import { CommissionAccountService } from './commission-account.service';
+import { CommissionRateResolverService } from './commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from './platform-commission-settings.service';
 
 // Ride settlement uses the Ops-configurable platform commission (default 10%);
@@ -102,6 +104,7 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       auditService,
       commissionSettings,
       commissionAccounts,
+      new CommissionRateResolverService(prisma),
     );
 
     const notifications: jest.Mocked<NotificationService> = {
@@ -138,6 +141,15 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       // DPX-FLEET — resolves whether a driver rides for a fleet, which is
       // what decides between the platform rate and zero.
       new FleetsService(prisma, auditService),
+      // DPX-COMMISSION-001 — a real resolver against the real database. With
+      // no campaigns stored it returns the standing rate, which is exactly the
+      // fallback these tests rely on and is worth exercising rather than
+      // stubbing away.
+      new CommissionRateResolverService(prisma),
+      // DPX-TIER-001 — likewise a real tier service. The tier table is seeded
+      // by migration with STANDARD at the platform rate, so a driver who has
+      // earned nothing is charged exactly what they were before.
+      new DriverTierService(prisma, auditService),
     );
 
     // Reset the singleton commission settings to their known 10% defaults

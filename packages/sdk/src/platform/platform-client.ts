@@ -39,6 +39,11 @@ import type {
   ListReferralCampaignsQuery,
   ListReferralFraudChecksQuery,
   LoyaltyAccountOverviewDto,
+  LoyaltyEarnerPersona,
+  LoyaltyEarningImpactDto,
+  LoyaltyEarningProgrammeDto,
+  LoyaltySettingDto,
+  UpdateLoyaltyEarningProgrammeRequest,
   LoyaltyLedgerEntryDto,
   MerchantAnalyticsOverviewDto,
   MerchantAnalyticsOverviewQuery,
@@ -58,13 +63,25 @@ import type {
   PromotionRedemptionDto,
   RecentSearchDto,
   RedeemPromotionRequest,
+  IssueRedemptionCodeRequest,
+  IssuedRedemptionCodeDto,
+  LoyaltyRedemptionResultDto,
+  RedeemStoreCodeRequest,
+  SettleCommissionRequest,
+  CommissionSettlementResultDto,
+  RedemptionCodePreviewDto,
+  StoreRedemptionResultDto,
   RedeemLoyaltyPointsRequest,
   ReferralCampaignDto,
   ReferralDto,
+  ReferralProgrammeDto,
+  ReferralRefereeType,
+  ReferralRejectionReason,
   ReferralFraudCheckDto,
   ReferralFraudCheckStatus,
   ReferralRedemptionDto,
   ReferralStatsDto,
+  UpdateReferralProgrammeRequest,
   RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewDto,
@@ -525,6 +542,26 @@ export class ReferralsClient {
   }
 }
 
+/**
+ * DPX-REFERRAL-002 — a merchant's own referral code.
+ *
+ * Separate from `ReferralsClient` because the endpoint is separate: a code's
+ * owner type is fixed when it is created and decides which wallet the reward
+ * lands in, so a merchant asking on the customer route would be issued a
+ * customer's code and paid into a wallet their portal does not show.
+ */
+export class MerchantReferralsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public me(): Promise<ReferralDto> {
+    return this.http.request<ReferralDto>('/merchant/referrals/me');
+  }
+
+  public stats(): Promise<ReferralStatsDto> {
+    return this.http.request<ReferralStatsDto>('/merchant/referrals/stats');
+  }
+}
+
 export class AdminReferralsClient {
   public constructor(private readonly http: HttpClient) {}
 
@@ -537,6 +574,55 @@ export class AdminReferralsClient {
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+
+  // DPX-REFERRAL-003 — the decisions that move money. Deliberately here rather
+  // than on the read-only `operations/finance/referrals` surface: an operator
+  // can be given the review queue without being given the ability to pay
+  // anybody, which is the split the payout queue already runs on. Everything
+  // below carries `admin:referrals:manage`.
+
+  public programmes(): Promise<ReferralProgrammeDto[]> {
+    return this.http.request<ReferralProgrammeDto[]>('/admin/referrals/programmes');
+  }
+
+  public updateProgramme(
+    refereeType: ReferralRefereeType,
+    body: UpdateReferralProgrammeRequest,
+  ): Promise<ReferralProgrammeDto> {
+    return this.http.request<ReferralProgrammeDto>(
+      `/admin/referrals/programmes/${enc(refereeType)}`,
+      { method: 'PATCH', body },
+    );
+  }
+
+  /** Release a held referral — usually one the shared-device check flagged,
+   *  where an operator can see it is a household rather than one person twice. */
+  public approve(redemptionId: string, note?: string): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/approve`,
+      { method: 'POST', body: note === undefined ? {} : { note } },
+    );
+  }
+
+  public reject(
+    redemptionId: string,
+    reason: ReferralRejectionReason,
+    note?: string,
+  ): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/reject`,
+      { method: 'POST', body: note === undefined ? { reason } : { reason, note } },
+    );
+  }
+
+  /** Take a paid reward back. Fails rather than overdrawing a wallet that has
+   *  already spent it. */
+  public reverse(redemptionId: string, reason: string): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/reverse`,
+      { method: 'POST', body: { reason } },
     );
   }
 }
@@ -664,6 +750,66 @@ export class AdminDriverCampaignClient {
   }
 }
 
+/**
+ * DPX-LOYALTY-005 / 007 — the Operations side of DX Points.
+ *
+ * Separate from `LoyaltyClient`, which is a customer looking at their own
+ * balance. Everything here carries `admin:loyalty:manage` and every method
+ * changes, or explains, what the platform pays.
+ */
+export class AdminLoyaltyClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  /** Whether a partner persona earns DX Points, and for what. */
+  public earningProgrammes(): Promise<LoyaltyEarningProgrammeDto[]> {
+    return this.http.request<LoyaltyEarningProgrammeDto[]>('/admin/loyalty/earning-programmes');
+  }
+
+  /**
+   * What switching each programme on would commit DrippleX to.
+   *
+   * Read before offering the switch, not after — turning DRIVER on starts
+   * paying every approved driver on their next trip.
+   */
+  public earningProgrammeImpact(): Promise<LoyaltyEarningImpactDto[]> {
+    return this.http.request<LoyaltyEarningImpactDto[]>('/admin/loyalty/earning-programmes/impact');
+  }
+
+  public updateEarningProgramme(
+    persona: LoyaltyEarnerPersona,
+    body: UpdateLoyaltyEarningProgrammeRequest,
+  ): Promise<LoyaltyEarningProgrammeDto> {
+    return this.http.request<LoyaltyEarningProgrammeDto>(
+      `/admin/loyalty/earning-programmes/${enc(persona)}`,
+      { method: 'PATCH', body },
+    );
+  }
+
+  /** The terms on which DX Points convert — the rate, the cash-out switch, the
+   *  in-store switch, the daily cap. */
+  public settings(): Promise<LoyaltySettingDto> {
+    return this.http.request<LoyaltySettingDto>('/admin/loyalty/settings');
+  }
+
+  public updateSettings(body: Partial<LoyaltySettingDto>): Promise<LoyaltySettingDto> {
+    return this.http.request<LoyaltySettingDto>('/admin/loyalty/settings', {
+      method: 'PATCH',
+      body,
+    });
+  }
+
+  /** Move a holder's balance by hand. Always with a reason. */
+  public adjustPoints(
+    userId: string,
+    body: { points: number; reason: string },
+  ): Promise<{ applied: number; balance: number }> {
+    return this.http.request<{ applied: number; balance: number }>(
+      `/admin/loyalty/accounts/${enc(userId)}/adjust`,
+      { method: 'POST', body },
+    );
+  }
+}
+
 export class LoyaltyClient {
   public constructor(private readonly http: HttpClient) {}
 
@@ -679,8 +825,60 @@ export class LoyaltyClient {
     );
   }
 
-  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyAccountOverviewDto> {
-    return this.http.request<LoyaltyAccountOverviewDto>('/customer/loyalty/redeem', {
+  /**
+   * Redeems points into the customer's wallet at the platform rate. The result
+   * carries the naira credited and the wallet's new balance, not just the
+   * loyalty account — redemption pays out, it is not only a deduction.
+   */
+  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyRedemptionResultDto> {
+    return this.http.request<LoyaltyRedemptionResultDto>('/customer/loyalty/redeem', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /**
+   * DPX-LOYALTY-002 — a one-time code authorising a merchant to take this many
+   * points at their counter.
+   *
+   * The code is returned once and never again: only its hash is stored. Any
+   * outstanding code is cancelled, so a holder has at most one live
+   * authorisation against their balance.
+   */
+  public issueRedemptionCode(body: IssueRedemptionCodeRequest): Promise<IssuedRedemptionCodeDto> {
+    return this.http.request<IssuedRedemptionCodeDto>('/customer/loyalty/redemption-code', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /** Revokes the outstanding counter code. */
+  public cancelRedemptionCode(): Promise<{ cancelled: number }> {
+    return this.http.request<{ cancelled: number }>('/customer/loyalty/redemption-code', {
+      method: 'DELETE',
+    });
+  }
+}
+
+/**
+ * DPX-LOYALTY-002 — the merchant side of the counter.
+ *
+ * Always preview before redeeming. Finding out after handing over goods that a
+ * code was worth NGN 2 rather than NGN 200 is the merchant's loss, and the
+ * preview costs one call.
+ */
+export class MerchantLoyaltyClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public preview(body: RedeemStoreCodeRequest): Promise<RedemptionCodePreviewDto> {
+    return this.http.request<RedemptionCodePreviewDto>('/merchant/loyalty/redemptions/preview', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public redeem(body: RedeemStoreCodeRequest): Promise<StoreRedemptionResultDto> {
+    return this.http.request<StoreRedemptionResultDto>('/merchant/loyalty/redemptions', {
       method: 'POST',
       body,
     });
@@ -855,6 +1053,24 @@ export class WalletClient {
 
   public merchantWallet(): Promise<WalletDto> {
     return this.http.request<WalletDto>('/merchant/wallet');
+  }
+
+  /**
+   * DPX-LOYALTY-002 — a merchant paying down what they owe DrippleX out of
+   * their wallet balance, because they chose to.
+   *
+   * Merchant commission is normally deducted at settlement, so nothing is taken
+   * from a merchant's balance automatically. This is what makes value earned by
+   * redeeming DX points in store useful for something other than a payout.
+   * Never takes more than is owed, whatever is asked for.
+   */
+  public settleMerchantCommission(
+    body: SettleCommissionRequest,
+  ): Promise<CommissionSettlementResultDto> {
+    return this.http.request<CommissionSettlementResultDto>(
+      '/merchant/wallet/commission-settlements',
+      { method: 'POST', body },
+    );
   }
 
   public riderWallet(): Promise<WalletDto> {

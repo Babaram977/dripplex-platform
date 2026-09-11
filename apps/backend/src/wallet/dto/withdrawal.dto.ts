@@ -27,12 +27,23 @@ export class AddBankAccountDto {
   @MaxLength(20)
   public bankCode?: string;
 
+  /**
+   * Accepted but **not stored**. The account name written to the row is the
+   * one name enquiry returns, because the whole point of asking the bank is
+   * that the answer beats anyone's typing.
+   *
+   * Kept optional rather than removed so existing app builds, which still send
+   * it, keep working — a client that omits it is the correct one.
+   */
+  @IsOptional()
   @IsString()
   @MaxLength(150)
-  public accountName!: string;
+  public accountName?: string;
 
+  /** NUBAN is exactly ten digits. This used to accept 6-20, which let a
+   * client submit numbers name enquiry could never resolve. */
   @IsString()
-  @Matches(/^[0-9]{6,20}$/, { message: 'accountNumber must be 6-20 digits' })
+  @Matches(/^[0-9]{10}$/, { message: 'accountNumber must be 10 digits' })
   public accountNumber!: string;
 }
 
@@ -125,4 +136,16 @@ export class AdminWithdrawalFailDto {
   @IsString()
   @MaxLength(500)
   public reason!: string;
+}
+
+export class SettleCommissionDto {
+  /**
+   * How much of the outstanding commission to pay off. Capped at what is
+   * actually owed by the service — overpaying a commission account has no
+   * meaning and would only have to be refunded.
+   */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? Number(value) : value))
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public amount!: number;
 }

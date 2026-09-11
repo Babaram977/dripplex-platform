@@ -12,6 +12,7 @@ import { AdminDriverIdentityVerificationController } from './controllers/admin-d
 import { AdminDriverPlannedAvailabilityController } from './controllers/admin-driver-planned-availability.controller';
 import { AdminDriverSecuritySettingsController } from './controllers/admin-driver-security-settings.controller';
 import { AdminDriverShiftsController } from './controllers/admin-driver-shifts.controller';
+import { AdminDriverTiersController } from './controllers/admin-driver-tiers.controller';
 import { AdminDriverVehiclesController } from './controllers/admin-driver-vehicles.controller';
 import { AdminDriversController } from './controllers/admin-drivers.controller';
 import { AdminInspectionCentresController } from './controllers/admin-inspection-centres.controller';
@@ -29,6 +30,7 @@ import { DriverVehiclesController } from './controllers/driver-vehicles.controll
 import { DriverController } from './controllers/driver.controller';
 import { OperationsInspectionsController } from './controllers/operations-inspections.controller';
 import { PublicDriversController } from './controllers/public-drivers.controller';
+import { DriverTierService } from './driver-tier.service';
 import { DriversService } from './drivers.service';
 import { AccountRecoverySubscriber } from './identity-verification/account-recovery.subscriber';
 import { CredentialChangeSubscriber } from './identity-verification/credential-change.subscriber';
@@ -59,6 +61,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
     UploadsModule,
   ],
   controllers: [
+    AdminDriverTiersController,
     DriverController,
     DriverHelpController,
     AdminDriversController,
@@ -83,6 +86,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
   ],
   providers: [
     DriversService,
+    DriverTierService,
     DriverActivationService,
     DriverIdentityVerificationService,
     DriverSecuritySettingsService,
@@ -104,6 +108,7 @@ import { VehiclesService } from './vehicles/vehicles.service';
   ],
   exports: [
     DriversService,
+    DriverTierService,
     DriverActivationService,
     DriverIdentityVerificationService,
     DriverSecuritySettingsService,

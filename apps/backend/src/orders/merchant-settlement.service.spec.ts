@@ -5,6 +5,8 @@ import { OrderSettlementStatus, PrismaClient, WalletOwnerType } from '@prisma/cl
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
+import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -94,6 +96,7 @@ describe('MerchantSettlementService', () => {
       auditService,
       commissionSettings,
       commissionAccounts,
+      new CommissionRateResolverService(prisma),
     );
 
     // Reset the singleton commission setting to a known 10% before every
@@ -774,6 +777,531 @@ describe('MerchantSettlementService', () => {
       // level here since CheckoutService itself is out of Slice 3's scope.
       const account = await commissionAccounts.getOrCreateAccount('MERCHANT', merchantUserId);
       expect(typeof account.blocked).toBe('boolean');
+    });
+  });
+
+  // Saeed, 2026-09-11: "connect to negotiated approved value from ops console".
+  // The super-app printed a hardcoded "Commission 10% / Net to merchant 90%".
+  // That is only true for a merchant on the default standing rate with no
+  // campaign running, and Ops can change both without a redeploy — so the
+  // number a merchant read could differ from the one being deducted, with no
+  // way for them to tell.
+  describe('getCommissionTerms', () => {
+    it('reports the rate Ops has approved, not a number compiled into the app', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.update(0.125, merchantUserId, {});
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      expect(terms.commissionRate).toBe(0.125);
+      // Returned rather than left to each client to subtract, so every surface
+      // shows the merchant the same share.
+      expect(terms.merchantShareRate).toBe(0.875);
+      expect(terms.standingRate).toBe(0.125);
+      expect(terms.campaignId).toBeNull();
+
+      await commissionSettings.update(0.1, merchantUserId, {});
+    });
+
+    it('agrees with what settlement actually charges', async () => {
+      if (!databaseAvailable) return;
+      // The whole point: two code paths reading one rate is how they drift.
+      // This pins the displayed figure to the deducted one.
+      await commissionSettings.update(0.075, merchantUserId, {});
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement).not.toBeNull();
+      expect(Number(settlement?.commissionRate)).toBe(terms.commissionRate);
+      expect(Number(settlement?.commissionAmount)).toBe(10_000 * terms.commissionRate);
+      expect(Number(settlement?.merchantAmount)).toBe(10_000 * terms.merchantShareRate);
+
+      await commissionSettings.update(0.1, merchantUserId, {});
+    });
+
+    // Without this, nothing distinguishes the merchant's profile id from their
+    // user id — both resolve to the standing rate while no campaign is running,
+    // so passing the wrong one is invisible. A campaign aimed at named
+    // merchants is keyed on the profile id, because that is what
+    // `OrderSettlement.merchantId` holds and what `settleOrder` passes.
+    it('picks up a campaign aimed at this merchant, keyed the way settlement keys it', async () => {
+      if (!databaseAvailable) return;
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: 'Ramadan partner rate',
+          scope: 'MERCHANT_ORDER',
+          commissionRate: 0.05,
+          status: 'ACTIVE',
+          priority: 10,
+          startsAt: new Date(Date.now() - 60 * 60 * 1000),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000),
+          rules: { eligibleMerchantIds: [merchantProfileId] },
+        },
+        select: { id: true },
+      });
+
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+
+        expect(terms.commissionRate).toBe(0.05);
+        expect(terms.merchantShareRate).toBe(0.95);
+        // The standing rate is still reported beside it, so a merchant can see
+        // the cut is a campaign rather than their new normal.
+        expect(terms.standingRate).toBe(0.1);
+        expect(terms.campaignId).toBe(campaign.id);
+        expect(terms.campaignName).toBe('Ramadan partner rate');
+
+        // And it is the rate actually charged, not a second opinion.
+        const order = await createOrder({ subtotal: 20_000, total: 20_000 });
+        const settlement = await service.settleOrder(order.id);
+        expect(Number(settlement?.commissionRate)).toBe(0.05);
+        expect(Number(settlement?.commissionAmount)).toBe(1_000);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('refuses rather than guessing when the caller has no merchant profile', async () => {
+      if (!databaseAvailable) return;
+      await expect(service.getCommissionTerms(customerId)).rejects.toThrow(/not found/i);
+    });
+  });
+
+  // DPX-MERCHANT-016 — a rate agreed with one merchant, the instrument Fleet
+  // already had. Founder decision 2026-09-11: "Add per-merchant negotiated rate
+  // column like fleet has."
+  describe('a negotiated merchant rate', () => {
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.merchantProfile.update({
+        where: { id: merchantProfileId },
+        data: {
+          negotiatedRate: null,
+          negotiatedBy: null,
+          negotiatedAt: null,
+          negotiationNote: null,
+        },
+      });
+    });
+
+    it('takes the place of the platform rate when settling an order', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        note: 'High volume, agreed with owner',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const order = await createOrder({ subtotal: 50_000, total: 50_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      // The platform singleton is 10%; this merchant agreed 6%.
+      expect(Number(settlement?.commissionRate)).toBe(0.06);
+      expect(Number(settlement?.commissionAmount)).toBe(3_000);
+      expect(Number(settlement?.merchantAmount)).toBe(47_000);
+    });
+
+    it('is reported to the merchant as an agreement, beside the platform rate', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      expect(terms.commissionRate).toBe(0.06);
+      expect(terms.merchantShareRate).toBe(0.94);
+      expect(terms.negotiatedRate).toBe(0.06);
+      // Both are reported, so an agreed rate reads as an agreement rather than
+      // as an unexplained number the merchant has to take on trust.
+      expect(terms.platformRate).toBe(0.1);
+      expect(terms.standingRate).toBe(0.06);
+    });
+
+    it('reports no agreement as null rather than as the platform rate', async () => {
+      if (!databaseAvailable) return;
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      // Null and 0.1 are different statements: "no agreement exists" versus
+      // "we agreed the default". Collapsing them would make a cleared
+      // agreement indistinguishable from one that was never made.
+      expect(terms.negotiatedRate).toBeNull();
+      expect(terms.commissionRate).toBe(0.1);
+      expect(terms.platformRate).toBe(0.1);
+    });
+
+    // The precedence question, and the one worth being explicit about: a
+    // campaign is a time-boxed instrument and an agreement is a standing one,
+    // so the campaign wins for its window — exactly as it outranks a fleet's
+    // banded rate. An agreed rate is what a merchant pays normally, not a
+    // promise that no promotion will ever beat it.
+    it('yields to a campaign for the window the campaign covers', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: 'Launch week',
+          scope: 'MERCHANT_ORDER',
+          commissionRate: 0.03,
+          status: 'ACTIVE',
+          priority: 10,
+          startsAt: new Date(Date.now() - 60 * 60 * 1000),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000),
+          rules: { eligibleMerchantIds: [merchantProfileId] },
+        },
+        select: { id: true },
+      });
+
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+        expect(terms.commissionRate).toBe(0.03);
+        // The agreement is still reported: it is what they go back to.
+        expect(terms.negotiatedRate).toBe(0.06);
+        expect(terms.standingRate).toBe(0.06);
+        expect(terms.campaignName).toBe('Launch week');
+
+        const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+        const settlement = await service.settleOrder(order.id);
+        expect(Number(settlement?.commissionRate)).toBe(0.03);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('clears back to the platform rate, taking the note with it', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        note: 'Agreed with owner',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: null,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      expect(profile.negotiatedRate).toBeNull();
+      // A note left behind would describe terms that no longer apply.
+      expect(profile.negotiationNote).toBeNull();
+      expect(profile.negotiatedBy).toBeNull();
+      expect(profile.negotiatedAt).toBeNull();
+      expect((await service.getCommissionTerms(merchantUserId)).commissionRate).toBe(0.1);
+    });
+
+    it('records who agreed it and on what terms', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.085,
+        note: 'Pilot pricing, review in March',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      // A commercial commitment carries its terms rather than living only in
+      // the audit log, the same shape Fleet.negotiatedRate uses.
+      expect(profile.negotiatedBy).toBe(merchantUserId);
+      expect(profile.negotiatedAt).not.toBeNull();
+      expect(profile.negotiationNote).toBe('Pilot pricing, review in March');
+    });
+
+    it('refuses a rate outside a fraction, rather than storing a percent', async () => {
+      if (!databaseAvailable) return;
+      // 7.5 instead of 0.075 would bill 750% — the kind of typo that has to
+      // fail loudly at the boundary rather than reach a Decimal(5,4) column.
+      await expect(
+        commissionSettings.setNegotiatedRate({
+          merchantProfileId,
+          rate: 7.5,
+          adminUserId: merchantUserId,
+          context: {},
+        }),
+      ).rejects.toThrow(/fraction/i);
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      expect(profile.negotiatedRate).toBeNull();
+    });
+
+    it('refuses an unknown merchant with a domain error, not a raw Prisma one', async () => {
+      if (!databaseAvailable) return;
+      // Asserting the *type*, not the message: Prisma's own P2025 text also
+      // reads "...required but not found", so a message match cannot tell a
+      // handled refusal from an unhandled 500 leaking out of the ORM.
+      await expect(
+        commissionSettings.setNegotiatedRate({
+          merchantProfileId: '00000000-0000-4000-8000-0000000000ff',
+          rate: 0.06,
+          adminUserId: merchantUserId,
+          context: {},
+        }),
+      ).rejects.toBeInstanceOf(NotFoundDomainException);
+    });
+
+    it('changing the platform rate never disturbs an agreed one', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      // The whole point of an agreement: it survives the default moving.
+      await commissionSettings.update(0.2, merchantUserId, {});
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+        expect(terms.commissionRate).toBe(0.06);
+        expect(terms.platformRate).toBe(0.2);
+      } finally {
+        await commissionSettings.update(0.1, merchantUserId, {});
+      }
+    });
+  });
+
+  /**
+   * The financial precedence, LOCKED by founder/architecture decision
+   * 2026-09-11:
+   *
+   *     Campaign  >  Negotiated merchant rate  >  Platform rate
+   *
+   * A negotiated rate is the merchant's standing commercial rate. A campaign is
+   * exceptional promotional pricing that overrides it for the campaign's
+   * eligible window, after which resolution returns to the agreement
+   * automatically. These tests exist to make reordering that a failing build
+   * rather than a discovery on somebody's invoice — do not relax them without
+   * explicit founder approval.
+   */
+  describe('LOCKED precedence: campaign > negotiated > platform', () => {
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.merchantProfile.update({
+        where: { id: merchantProfileId },
+        data: {
+          negotiatedRate: null,
+          negotiatedBy: null,
+          negotiatedAt: null,
+          negotiationNote: null,
+        },
+      });
+    });
+
+    async function agree(rate: number): Promise<void> {
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+    }
+
+    async function runCampaign(rate: number): Promise<{ id: string }> {
+      return await prisma.commissionCampaign.create({
+        data: {
+          name: 'Precedence campaign',
+          scope: 'MERCHANT_ORDER',
+          commissionRate: rate,
+          status: 'ACTIVE',
+          priority: 10,
+          startsAt: new Date(Date.now() - 60 * 60 * 1000),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000),
+          rules: { eligibleMerchantIds: [merchantProfileId] },
+        },
+        select: { id: true },
+      });
+    }
+
+    it('rung 3 — platform rate applies when there is no agreement and no campaign', async () => {
+      if (!databaseAvailable) return;
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      expect(Number(settlement?.commissionRate)).toBe(0.1);
+      expect(settlement?.commissionCampaignId).toBeNull();
+      // Null, not 0.1: "no agreement existed" rather than "we agreed the
+      // default". Collapsing the two would make the row unable to say which.
+      expect(settlement?.negotiatedRate).toBeNull();
+    });
+
+    it('rung 2 — a negotiated rate beats the platform rate', async () => {
+      if (!databaseAvailable) return;
+      await agree(0.08);
+
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      expect(Number(settlement?.commissionRate)).toBe(0.08);
+      expect(Number(settlement?.negotiatedRate)).toBe(0.08);
+      expect(settlement?.commissionCampaignId).toBeNull();
+    });
+
+    it('rung 1 — a campaign beats a negotiated rate, and the row records both', async () => {
+      if (!databaseAvailable) return;
+      // Nora's worked example: agreed 8%, campaign 5%. During the campaign, 5%.
+      await agree(0.08);
+      const campaign = await runCampaign(0.05);
+
+      try {
+        const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+        const settlement = await service.settleOrder(order.id);
+
+        expect(Number(settlement?.commissionRate)).toBe(0.05);
+        expect(Number(settlement?.commissionAmount)).toBe(500);
+        expect(settlement?.commissionCampaignId).toBe(campaign.id);
+        // The agreement the campaign displaced, so an auditor can see what this
+        // merchant would otherwise have paid without reconstructing it from
+        // timestamps against a campaign table.
+        expect(Number(settlement?.negotiatedRate)).toBe(0.08);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('returns to the agreed rate the moment the campaign stops applying', async () => {
+      if (!databaseAvailable) return;
+      // "Once it ends, the merchant automatically returns to 8%." Nothing
+      // re-applies the agreement: it is what resolution falls back to.
+      await agree(0.08);
+      const campaign = await runCampaign(0.05);
+
+      const during = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settledDuring = await service.settleOrder(during.id);
+      expect(Number(settledDuring?.commissionRate)).toBe(0.05);
+
+      await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+
+      const after = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settledAfter = await service.settleOrder(after.id);
+      expect(Number(settledAfter?.commissionRate)).toBe(0.08);
+      expect(settledAfter?.commissionCampaignId).toBeNull();
+    });
+  });
+
+  /**
+   * "Preserve the negotiated rate as a historical snapshot on financially
+   * settled transactions so changing a merchant's agreement later cannot alter
+   * historical settlements." — founder/architecture decision 2026-09-11.
+   */
+  describe('a settled sale is history, not a view', () => {
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.merchantProfile.update({
+        where: { id: merchantProfileId },
+        data: { negotiatedRate: null, negotiatedBy: null, negotiatedAt: null },
+      });
+    });
+
+    it('renegotiating later leaves an already-settled sale exactly as it was', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.08,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      await service.settleOrder(order.id);
+
+      // The agreement moves, twice, in both directions.
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.02,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.3,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const reread = await prisma.orderSettlement.findUniqueOrThrow({
+        where: { orderId: order.id },
+      });
+      expect(Number(reread.commissionRate)).toBe(0.08);
+      expect(Number(reread.commissionAmount)).toBe(800);
+      expect(Number(reread.merchantAmount)).toBe(9_200);
+      // The snapshot is the point: the row still says which agreement produced
+      // that charge, even though the agreement itself is now something else.
+      expect(Number(reread.negotiatedRate)).toBe(0.08);
+    });
+
+    it('clearing the agreement entirely does not erase it from a settled sale', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.08,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      await service.settleOrder(order.id);
+
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: null,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const reread = await prisma.orderSettlement.findUniqueOrThrow({
+        where: { orderId: order.id },
+      });
+      // Reading the agreement live would now return null and make this sale
+      // look like it had been charged the platform rate all along.
+      expect(Number(reread.negotiatedRate)).toBe(0.08);
+      expect(Number(reread.commissionRate)).toBe(0.08);
+    });
+  });
+
+  describe('negotiated rate bounds are strict', () => {
+    // "Keep negotiated rates strictly greater than 0% and less than 100%. Do
+    // not introduce zero-commission through this normal control."
+    it.each([
+      ['zero commission', 0],
+      ['the whole order', 1],
+      ['a negative rate', -0.05],
+      ['a percent mistaken for a fraction', 8],
+    ])('refuses %s', async (_label, rate) => {
+      if (!databaseAvailable) return;
+      await expect(
+        commissionSettings.setNegotiatedRate({
+          merchantProfileId,
+          rate,
+          adminUserId: merchantUserId,
+          context: {},
+        }),
+      ).rejects.toThrow(/fraction/i);
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      expect(profile.negotiatedRate).toBeNull();
     });
   });
 });
