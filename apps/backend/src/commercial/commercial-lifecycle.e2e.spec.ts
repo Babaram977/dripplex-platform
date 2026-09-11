@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { CommissionOwnerType, PrismaClient, WalletOwnerType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { FleetsService } from '../fleets/fleets.service';
 import { MerchantCommissionSettingsService } from '../orders/merchant-commission-settings.service';
@@ -145,6 +146,10 @@ describe('DPX-COMMERCIAL-001 Slice 6 — Full Commercial Lifecycle E2E', () => {
       // fallback these tests rely on and is worth exercising rather than
       // stubbing away.
       new CommissionRateResolverService(prisma),
+      // DPX-TIER-001 — likewise a real tier service. The tier table is seeded
+      // by migration with STANDARD at the platform rate, so a driver who has
+      // earned nothing is charged exactly what they were before.
+      new DriverTierService(prisma, auditService),
     );
 
     // Reset the singleton commission settings to their known 10% defaults

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   CommissionOwnerType,
   CommissionScope,
+  DriverTier,
   RidePaymentMethod,
   RidePaymentStatus,
   RideStatus,
@@ -24,6 +25,7 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { FleetsService } from '../fleets/fleets.service';
@@ -71,6 +73,8 @@ interface FareSplit {
   platformCommissionRate: number;
   /** The commission campaign that set the rate, or null for the standing one. */
   commissionCampaignId: string | null;
+  /** The tier the driver held when this settled, or null for a fleet trip. */
+  driverTier: DriverTier | null;
   /**
    * The fare before any coupon — `ride.totalFare + ride.promoDiscount`. This,
    * not the discounted fare, is what the driver is paid on and what commission
@@ -107,6 +111,7 @@ export class RidePaymentService {
     private readonly platformCommissionSettings: PlatformCommissionSettingsService,
     private readonly fleets: FleetsService,
     private readonly commissionRates: CommissionRateResolverService,
+    private readonly driverTiers: DriverTierService,
   ) {}
 
   public async initiatePayment(
@@ -215,8 +220,8 @@ export class RidePaymentService {
       return toRideDto(await this.prisma.ride.findUniqueOrThrow({ where: { id: ride.id } }));
     }
 
-    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate, campaignId);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
     await this.captureIntoPlatformWallet(ride, context);
     await this.payoutDriver(ride, split, context);
     return await this.markPaid(ride, ride.paymentMethod, split, context);
@@ -238,18 +243,36 @@ export class RidePaymentService {
    */
   private async effectiveCommissionRate(
     ride: Ride,
-  ): Promise<{ rate: number; campaignId: string | null }> {
+  ): Promise<{ rate: number; campaignId: string | null; tier: DriverTier | null }> {
     if (ride.driverId !== null) {
       const membership = await this.fleets.fleetForUser(ride.driverId);
       // A fleet trip charges the fleet, not the driver. No commission campaign
-      // applies here — overriding zero would charge the driver on a trip
-      // DrippleX already bills the fleet for, taking twice from one fare.
-      if (membership !== null) return { rate: 0, campaignId: null };
+      // and no tier apply here — overriding zero would charge the driver on a
+      // trip DrippleX already bills the fleet for, taking twice from one fare.
+      if (membership !== null) return { rate: 0, campaignId: null, tier: null };
     }
 
-    // DPX-COMMISSION-001 — a campaign can override the standing rate for a
+    // DPX-TIER-001 — the driver's earned tier is recorded on the ride, but it
+    // does NOT yet set the rate.
+    //
+    // Nora's specification gives each tier an absolute commission rate
+    // (STANDARD 10%, SILVER 9.5%, GOLD 9%, PLATINUM 8.5%). DrippleX already has
+    // a second Ops-configurable control over the same number — the standing
+    // PlatformCommissionSetting — and letting the tier table set the rate makes
+    // that one silently dead for rides: an operator could change the platform
+    // rate and nothing would move. Two live controls over one figure, one of
+    // them quietly ignored, is not something to introduce into settled money on
+    // an assumption. Reported for a decision; see docs/DPX-TIER-001.
+    //
+    // Until then the platform rate governs, exactly as it did before, and the
+    // tier is captured alongside it so no history is lost while the question is
+    // open.
+    const standing =
+      ride.driverId === null ? null : await this.driverTiers.commissionRateFor(ride.driverId);
+
+    // DPX-COMMISSION-001 — a campaign can override that standing rate for a
     // window, under conditions. The resolved rate is snapshotted onto the ride
-    // exactly as before, now alongside which campaign produced it.
+    // exactly as before, now alongside the tier and campaign that produced it.
     const resolved = await this.commissionRates.resolve(
       CommissionScope.RIDE,
       await this.platformCommissionSettings.getEffectiveRate(),
@@ -259,7 +282,11 @@ export class RidePaymentService {
         ...(ride.paymentMethod === null ? {} : { paymentMethod: ride.paymentMethod }),
       },
     );
-    return { rate: resolved.rate, campaignId: resolved.campaignId };
+    return {
+      rate: resolved.rate,
+      campaignId: resolved.campaignId,
+      tier: standing?.tier ?? null,
+    };
   }
 
   public async confirmCash(
@@ -268,8 +295,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requireCashConfirmableRide(driverId, rideId);
-    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate, campaignId);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
 
     // DPX-COMMERCIAL-001 Slice 4 — cash never enters the digital ledger,
     // the driver already holds it physically, so there is nothing to
@@ -501,8 +528,8 @@ export class RidePaymentService {
     context: AuditContext,
   ): Promise<RideDto> {
     const ride = await this.requirePayableRide(customerId, rideId);
-    const { rate, campaignId } = await this.effectiveCommissionRate(ride);
-    const split = this.computeSplit(ride, rate, campaignId);
+    const { rate, campaignId, tier } = await this.effectiveCommissionRate(ride);
+    const split = this.computeSplit(ride, rate, campaignId, tier);
 
     try {
       await this.walletService.debit({
@@ -641,6 +668,7 @@ export class RidePaymentService {
     ride: Ride,
     rate: number,
     commissionCampaignId: string | null = null,
+    driverTier: DriverTier | null = null,
   ): FareSplit {
     const charged = Number(ride.totalFare);
     const promoDiscount = Number(ride.promoDiscount);
@@ -652,6 +680,7 @@ export class RidePaymentService {
       driverEarning,
       platformCommissionRate: rate,
       commissionCampaignId,
+      driverTier,
       grossFare,
       promoDiscount,
     };
@@ -1098,6 +1127,7 @@ export class RidePaymentService {
         platformCommission: split.platformCommission,
         platformCommissionRate: split.platformCommissionRate,
         commissionCampaignId: split.commissionCampaignId,
+        driverTier: split.driverTier,
         driverEarning: split.driverEarning,
       },
     });

@@ -12,6 +12,7 @@ import { CommissionAccountService } from '../commercial/commission-account.servi
 import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import { PlatformCommissionSettingsService } from '../commercial/platform-commission-settings.service';
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
+import { DriverTierService } from '../drivers/driver-tier.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { FleetsService } from '../fleets/fleets.service';
@@ -129,6 +130,10 @@ describe('RidePaymentService', () => {
       // fallback these tests rely on and is worth exercising rather than
       // stubbing away.
       new CommissionRateResolverService(prisma),
+      // DPX-TIER-001 — a real tier service against the real database. The tier
+      // table is seeded by migration with STANDARD at the platform rate, so
+      // these tests exercise the real resolution rather than stubbing it.
+      new DriverTierService(prisma, auditService),
     );
 
     const customer = await prisma.user.create({
