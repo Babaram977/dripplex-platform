@@ -880,6 +880,8 @@ model BankAccount {
   createdAt     DateTime  @default(now()) @map("created_at")
   merchant      User      @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
+  settlementTransfers MerchantSettlementTransfer[]
+
   @@unique([merchantId, accountNumber])
   @@index([merchantId])
   @@index([merchantId, isDefault])
@@ -1701,6 +1703,8 @@ model OrderSettlement {
   createdAt             DateTime              @default(now()) @map("created_at")
   updatedAt             DateTime              @updatedAt @map("updated_at")
   order                 Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  settlementTransfer MerchantSettlementTransfer?
 
   @@index([merchantId])
   @@index([status])
@@ -3602,26 +3606,26 @@ model WalletTopUpTransaction {
  * the platform yet (see docs/WALLET-004-WITHDRAW-DESIGN.md).
  */
 model CustomerBankAccount {
-  id            String              @id @default(uuid()) @db.Uuid
-  userId        String              @map("user_id") @db.Uuid
-  bankName      String              @map("bank_name") @db.VarChar(150)
-  bankCode      String?             @map("bank_code") @db.VarChar(20)
+  id                    String              @id @default(uuid()) @db.Uuid
+  userId                String              @map("user_id") @db.Uuid
+  bankName              String              @map("bank_name") @db.VarChar(150)
+  bankCode              String?             @map("bank_code") @db.VarChar(20)
   /// What the bank says, when name enquiry ran — not what the customer
   /// typed. See `accountNameVerifiedAt`.
-  accountName   String              @map("account_name") @db.VarChar(150)
-  accountNumber String              @map("account_number") @db.VarChar(20)
+  accountName           String              @map("account_name") @db.VarChar(150)
+  accountNumber         String              @map("account_number") @db.VarChar(20)
   /// When the account holder's name was confirmed with the bank.
   ///
   /// Null means the name is self-attested: either the row predates name
   /// enquiry (DPX-WALLET-001 Phase 0) or no resolver was configured when it
   /// was added. Null is **not** "failed verification" — a rejected account is
   /// never saved at all.
-  accountNameVerifiedAt DateTime?   @map("account_name_verified_at")
-  isDefault     Boolean             @default(false) @map("is_default")
-  createdAt     DateTime            @default(now()) @map("created_at")
-  deletedAt     DateTime?           @map("deleted_at")
-  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  withdrawals   WithdrawalRequest[]
+  accountNameVerifiedAt DateTime?           @map("account_name_verified_at")
+  isDefault             Boolean             @default(false) @map("is_default")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  deletedAt             DateTime?           @map("deleted_at")
+  user                  User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  withdrawals           WithdrawalRequest[]
 
   @@unique([userId, accountNumber])
   @@index([userId])
@@ -4454,6 +4458,11 @@ model Fleet {
   members FleetMember[]
   periods FleetCommissionPeriod[]
 
+  bankAccounts          FleetBankAccount[]
+  settlementReceivables FleetSettlementReceivable[]
+  settlementRequests    FleetSettlementRequest[]
+  settlementTransfers   FleetSettlementTransfer[]
+
   @@index([status])
   @@index([deletedAt])
   @@map("fleets")
@@ -4626,41 +4635,41 @@ model FleetCommissionPeriod {
 /// Soft-delete only — archived_at is set when the integration is retired,
 /// never destructively deleted.
 model MerchantIntegration {
-  id                     String    @id @default(uuid()) @db.Uuid
+  id                   String    @id @default(uuid()) @db.Uuid
   /// The merchant this integration belongs to. Multi-tenant isolation scoping.
-  merchantId             String    @map("merchant_id") @db.Uuid
+  merchantId           String    @map("merchant_id") @db.Uuid
   /// Human-readable name for this integration (e.g., "Branch A POS", "Main Inventory System")
-  integrationName        String    @map("integration_name") @db.VarChar(150)
+  integrationName      String    @map("integration_name") @db.VarChar(150)
   /// POS system provider (e.g., "TALABAT", "JUMIA", "CUSTOM_POS")
-  posProvider            String    @map("pos_provider") @db.VarChar(100)
+  posProvider          String    @map("pos_provider") @db.VarChar(100)
   /// Integration status: ACTIVE (operational), PAUSED (temporarily disabled), or ARCHIVED (retired)
-  status                 String    @default("ACTIVE") @map("status") @db.VarChar(50)
+  status               String    @default("ACTIVE") @map("status") @db.VarChar(50)
   /// Webhook endpoint where DrippleX sends events (order status, inventory updates, etc)
-  webhookUrl             String?   @map("webhook_url") @db.VarChar(2048)
+  webhookUrl           String?   @map("webhook_url") @db.VarChar(2048)
   /// Reference to the stored API credential
-  credentialId           String?   @map("credential_id") @db.Uuid
+  credentialId         String?   @map("credential_id") @db.Uuid
   /// When was this integration last synchronized
-  lastSyncedAt           DateTime? @map("last_synced_at")
+  lastSyncedAt         DateTime? @map("last_synced_at")
   /// Soft-delete timestamp (null = active)
-  archivedAt             DateTime? @map("archived_at")
+  archivedAt           DateTime? @map("archived_at")
   /// MKT-INT-001-C: Vendor name (required by C API contract, defaults to integrationName for backward compatibility)
-  vendorName             String    @default("") @map("vendor_name") @db.VarChar(100)
+  vendorName           String    @default("") @map("vendor_name") @db.VarChar(100)
   /// MKT-INT-001-C: Vendor version (optional by C API contract)
-  vendorVersion          String?   @map("vendor_version") @db.VarChar(100)
+  vendorVersion        String?   @map("vendor_version") @db.VarChar(100)
   /// MKT-INT-001-C: Merchant contact email (optional by C API contract)
-  merchantContactEmail   String?   @map("merchant_contact_email") @db.VarChar(255)
+  merchantContactEmail String?   @map("merchant_contact_email") @db.VarChar(255)
   /// MKT-INT-001-C: Integration metadata (JSON-serializable by C API contract)
-  metadata               Json?     @map("metadata")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
+  metadata             Json?     @map("metadata")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  credential             IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
-  logs                   IntegrationLog[]
-  conflicts              IntegrationConflict[]
-  catalogSyncJobs        CatalogSyncJob[]
-  productSyncs           ProductSync[]
-  inventoryUpdates       InventoryUpdate[]
-  orderStatusUpdates     OrderStatusUpdate[]
+  credential         IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  logs               IntegrationLog[]
+  conflicts          IntegrationConflict[]
+  catalogSyncJobs    CatalogSyncJob[]
+  productSyncs       ProductSync[]
+  inventoryUpdates   InventoryUpdate[]
+  orderStatusUpdates OrderStatusUpdate[]
 
   @@index([merchantId])
   @@index([status])
@@ -4672,25 +4681,25 @@ model MerchantIntegration {
 /// MKT-INT-001 — API credentials for POS→DrippleX authentication.
 /// Stored hashed and encrypted. Scoped credentials with fine-grained permissions.
 model IntegrationCredential {
-  id              String    @id @default(uuid()) @db.Uuid
-  integrationId   String    @map("integration_id") @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  integrationId  String    @map("integration_id") @db.Uuid
   /// Credential type: INCOMING_API_KEY, INCOMING_SIGNATURE, OUTGOING_API_KEY, OUTGOING_OAUTH_TOKEN, OUTGOING_OAUTH_REFRESH
-  credentialType  String    @map("credential_type") @db.VarChar(50)
+  credentialType String    @map("credential_type") @db.VarChar(50)
   /// For incoming: BCRYPT hash. For outgoing: AES-256-GCM encrypted secret (base64).
   /// Pattern: base64(IV || ciphertext || authTag) for encrypted values.
-  credentialHash  String    @map("credential_hash") @db.Text
+  credentialHash String    @map("credential_hash") @db.Text
   /// Scopes: integrations:read, integrations:write, catalog:read, catalog:write, inventory:read, inventory:write, orders:read, orders:write
-  scopes          String[]  @default([]) @map("scopes")
+  scopes         String[]  @default([]) @map("scopes")
   /// When this credential expires (for OAuth2 tokens, etc). Null = doesn't expire.
-  expiresAt       DateTime? @map("expires_at")
+  expiresAt      DateTime? @map("expires_at")
   /// When this credential was last rotated
-  rotatedAt       DateTime? @map("rotated_at")
+  rotatedAt      DateTime? @map("rotated_at")
   /// Soft-delete timestamp
-  archivedAt      DateTime? @map("archived_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  archivedAt     DateTime? @map("archived_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  integrations    MerchantIntegration[]
+  integrations MerchantIntegration[]
 
   @@unique([integrationId, credentialType])
   @@index([integrationId])
@@ -4703,29 +4712,29 @@ model IntegrationCredential {
 /// MKT-INT-001 — Audit trail of all integration API activity.
 /// Append-only: never updated or deleted. Every request/response logged for compliance.
 model IntegrationLog {
-  id              String    @id @default(uuid()) @db.Uuid
-  integrationId   String    @map("integration_id") @db.Uuid
+  id             String   @id @default(uuid()) @db.Uuid
+  integrationId  String   @map("integration_id") @db.Uuid
   /// API endpoint called (e.g., "/api/v1/catalog/sync", "/webhooks/order-status")
-  endpoint        String    @map("endpoint") @db.VarChar(255)
+  endpoint       String   @map("endpoint") @db.VarChar(255)
   /// HTTP method (GET, POST, PUT, PATCH, DELETE)
-  method          String    @map("method") @db.VarChar(10)
+  method         String   @map("method") @db.VarChar(10)
   /// Request body (truncated if very large)
-  requestBody     String?   @map("request_body") @db.Text
+  requestBody    String?  @map("request_body") @db.Text
   /// HTTP status code (200, 400, 401, 403, 500, etc)
-  responseStatus  Int?      @map("response_status")
+  responseStatus Int?     @map("response_status")
   /// Response body (truncated if very large)
-  responseBody    String?   @map("response_body") @db.Text
+  responseBody   String?  @map("response_body") @db.Text
   /// Error message if request failed
-  errorMessage    String?   @map("error_message") @db.Text
+  errorMessage   String?  @map("error_message") @db.Text
   /// Caller's IP address
-  ipAddress       String?   @map("ip_address") @db.VarChar(45)
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
   /// Correlation ID for tracing across distributed calls
-  correlationId   String?   @map("correlation_id") @db.VarChar(64)
-  createdAt       DateTime  @default(now()) @map("created_at")
+  correlationId  String?  @map("correlation_id") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at")
 
   /// RESTRICT delete: audit logs must never be deleted when integration disconnects.
   /// History is immutable; soft-delete via archivedAt is the only removal mechanism.
-  integration     MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, createdAt(sort: Desc)])
   @@index([responseStatus])
@@ -4735,30 +4744,30 @@ model IntegrationLog {
 /// MKT-INT-001 — Reconciliation conflicts that require manual review.
 /// Records catalog mismatches, inventory discrepancies, order state conflicts.
 model IntegrationConflict {
-  id               String    @id @default(uuid()) @db.Uuid
-  integrationId    String    @map("integration_id") @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  integrationId String    @map("integration_id") @db.Uuid
   /// Type of conflict: CATALOG_PRICE_DIFF, INVENTORY_MISMATCH, ORDER_STATE_MISMATCH, PRODUCT_ARCHIVED, etc.
-  conflictType     String    @map("conflict_type") @db.VarChar(100)
+  conflictType  String    @map("conflict_type") @db.VarChar(100)
   /// ID of the source item (product, order, etc.)
-  sourceId         String?   @map("source_id") @db.Uuid
+  sourceId      String?   @map("source_id") @db.Uuid
   /// External identifier from POS system
-  externalId       String?   @map("external_id") @db.VarChar(255)
+  externalId    String?   @map("external_id") @db.VarChar(255)
   /// What DrippleX has
-  dripplexValue    String?   @map("dripplex_value") @db.Text
+  dripplexValue String?   @map("dripplex_value") @db.Text
   /// What the external system has
-  externalValue    String?   @map("external_value") @db.Text
+  externalValue String?   @map("external_value") @db.Text
   /// Status: OPEN (needs review), RESOLVED (fixed), ESCALATED (requires ops intervention)
-  status           String    @default("OPEN") @map("status") @db.VarChar(50)
+  status        String    @default("OPEN") @map("status") @db.VarChar(50)
   /// How the conflict was resolved (null if still OPEN)
-  resolution       String?   @map("resolution") @db.VarChar(1000)
+  resolution    String?   @map("resolution") @db.VarChar(1000)
   /// When the conflict was resolved
-  resolvedAt       DateTime? @map("resolved_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
+  resolvedAt    DateTime? @map("resolved_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   /// RESTRICT delete: conflicts are audit records and must survive integration disconnect.
   /// Merchants need the history to understand past issues and reconciliations.
-  integration      MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, status])
   @@index([conflictType])
@@ -4787,7 +4796,7 @@ model CatalogSyncJob {
 
   /// RESTRICT delete: sync job history documents what was synchronized and when.
   /// Disconnecting an integration must not erase this historical record.
-  integration   MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@index([integrationId, jobStatus])
   @@index([jobStatus])
@@ -4799,25 +4808,25 @@ model CatalogSyncJob {
 /// Maps external POS SKU to internal DrippleX Product for catalog synchronization.
 /// This is the bridge that enables product-level operations between systems.
 model ProductSync {
-  id                   String    @id @default(uuid()) @db.Uuid
-  integrationId        String    @map("integration_id") @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  integrationId     String    @map("integration_id") @db.Uuid
   /// External SKU from the POS system (e.g., "SKU-12345")
-  externalSku          String    @map("external_sku") @db.VarChar(100)
+  externalSku       String    @map("external_sku") @db.VarChar(100)
   /// Internal DrippleX Product ID
-  productId            String?   @map("product_id") @db.Uuid
+  productId         String?   @map("product_id") @db.Uuid
   /// When this mapping was last synchronized
-  lastSyncedAt         DateTime? @map("last_synced_at")
+  lastSyncedAt      DateTime? @map("last_synced_at")
   /// Status: ACTIVE (mapped and in use), ARCHIVED (soft-deleted), FAILED (mapping error)
-  mappingStatus        String    @default("ACTIVE") @map("mapping_status") @db.VarChar(50)
+  mappingStatus     String    @default("ACTIVE") @map("mapping_status") @db.VarChar(50)
   /// External catalog ID or collection this product belongs to (for reporting)
-  externalCatalogId    String?   @map("external_catalog_id") @db.VarChar(100)
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  externalCatalogId String?   @map("external_catalog_id") @db.VarChar(100)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   /// RESTRICT delete: SKU mappings are audit records that child inventory updates depend on.
   /// When an integration disconnects, mappings should be archived, not deleted.
-  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
-  inventoryUpdates     InventoryUpdate[]
+  integration      MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  inventoryUpdates InventoryUpdate[]
 
   @@unique([integrationId, externalSku])
   @@index([integrationId, mappingStatus])
@@ -4829,36 +4838,36 @@ model ProductSync {
 /// Tracks webhook deliveries and API polls for inventory changes.
 /// Uses idempotencyKey to prevent duplicate quantity updates.
 model InventoryUpdate {
-  id                String    @id @default(uuid()) @db.Uuid
-  integrationId     String    @map("integration_id") @db.Uuid
-  productSyncId     String    @map("product_sync_id") @db.Uuid
+  id               String    @id @default(uuid()) @db.Uuid
+  integrationId    String    @map("integration_id") @db.Uuid
+  productSyncId    String    @map("product_sync_id") @db.Uuid
   /// External SKU (denormalized for query efficiency)
-  externalSku       String    @map("external_sku") @db.VarChar(100)
+  externalSku      String    @map("external_sku") @db.VarChar(100)
   /// Previous quantity (before this update)
-  previousQuantity  Int       @map("previous_quantity")
+  previousQuantity Int       @map("previous_quantity")
   /// New quantity (after this update)
-  newQuantity       Int       @map("new_quantity")
+  newQuantity      Int       @map("new_quantity")
   /// Whether this is a soft-delete (product archived in POS)
-  isSoftDelete      Boolean   @default(false) @map("is_soft_delete")
+  isSoftDelete     Boolean   @default(false) @map("is_soft_delete")
   /// Source: WEBHOOK (pushed by POS) or API_POLL (pulled by DrippleX)
-  sourceType        String    @map("source_type") @db.VarChar(50)
+  sourceType       String    @map("source_type") @db.VarChar(50)
   /// Delivery status: PENDING, DELIVERED, FAILED
-  deliveryStatus    String    @default("PENDING") @map("delivery_status") @db.VarChar(50)
+  deliveryStatus   String    @default("PENDING") @map("delivery_status") @db.VarChar(50)
   /// How many delivery attempts made
-  attemptCount      Int       @default(0) @map("attempt_count")
+  attemptCount     Int       @default(0) @map("attempt_count")
   /// When the last delivery attempt was made
-  lastAttemptAt     DateTime? @map("last_attempt_at")
+  lastAttemptAt    DateTime? @map("last_attempt_at")
   /// Idempotency key (UUID from external system) — prevents duplicate updates
-  idempotencyKey    String    @map("idempotency_key") @db.VarChar(100)
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  idempotencyKey   String    @map("idempotency_key") @db.VarChar(100)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   /// RESTRICT delete: inventory events are audit records essential for reconciliation.
   /// Disconnecting an integration must preserve this audit trail.
-  integration       MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
   /// RESTRICT delete: inventory updates depend on product mappings.
   /// When mapping changes, updates referencing it must be retained.
-  productSync       ProductSync         @relation(fields: [productSyncId], references: [id], onDelete: Restrict)
+  productSync ProductSync         @relation(fields: [productSyncId], references: [id], onDelete: Restrict)
 
   @@unique([integrationId, idempotencyKey])
   @@index([integrationId, deliveryStatus])
@@ -4870,33 +4879,197 @@ model InventoryUpdate {
 /// Tracks when POS notifies DrippleX of order state changes.
 /// Uses idempotencyKey to prevent duplicate state transitions.
 model OrderStatusUpdate {
-  id                    String    @id @default(uuid()) @db.Uuid
-  integrationId         String    @map("integration_id") @db.Uuid
+  id                   String    @id @default(uuid()) @db.Uuid
+  integrationId        String    @map("integration_id") @db.Uuid
   /// External order ID from POS system
-  externalOrderId       String    @map("external_order_id") @db.VarChar(255)
+  externalOrderId      String    @map("external_order_id") @db.VarChar(255)
   /// Internal DrippleX Order ID (may be null if not yet matched)
-  internalOrderId       String?   @map("internal_order_id") @db.Uuid
+  internalOrderId      String?   @map("internal_order_id") @db.Uuid
   /// Previous order status
-  previousStatus        String?   @map("previous_status") @db.VarChar(50)
+  previousStatus       String?   @map("previous_status") @db.VarChar(50)
   /// New order status
-  newStatus             String    @map("new_status") @db.VarChar(50)
+  newStatus            String    @map("new_status") @db.VarChar(50)
   /// Timestamp from the external system (for conflict detection)
-  sourceTimestamp       DateTime  @map("source_timestamp")
+  sourceTimestamp      DateTime  @map("source_timestamp")
   /// When DrippleX processed this update
-  processedAt           DateTime? @map("processed_at")
+  processedAt          DateTime? @map("processed_at")
   /// Reconciliation status: ACCEPTED (matched and processed), CONFLICT (state mismatch), PENDING (awaiting order creation)
-  reconciliationStatus  String    @default("PENDING") @map("reconciliation_status") @db.VarChar(50)
+  reconciliationStatus String    @default("PENDING") @map("reconciliation_status") @db.VarChar(50)
   /// Idempotency key (prevents duplicate state transitions)
-  idempotencyKey        String    @map("idempotency_key") @db.VarChar(100)
-  createdAt             DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @updatedAt @map("updated_at")
+  idempotencyKey       String    @map("idempotency_key") @db.VarChar(100)
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   /// RESTRICT delete: order status updates are audit records critical for order reconciliation.
   /// Integration disconnection must not erase this historical record.
-  integration           MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
 
   @@unique([integrationId, idempotencyKey])
   @@index([integrationId, reconciliationStatus])
   @@index([internalOrderId])
   @@map("order_status_updates")
+}
+
+/// DPX-FLEET / merchant settlement — the five tables that money actually moves
+/// through, modelled rather than left as migrations only.
+///
+/// They existed solely as migrations and raw SQL, so `prisma migrate dev`
+/// diffed them against a schema that never mentioned them and generated
+/// DROP TABLE for every one — live merchant settlement transfers and every
+/// fleet bank account included. That is a routine developer command, which is
+/// what made it dangerous. schema-migration-parity.spec.ts now fails if the
+/// schema and the migration history ever drift apart again.
+///
+/// Columns, types and indexes are exactly what the migration history builds,
+/// taken by introspecting a database replayed from it rather than written from
+/// memory, so declaring them changes nothing. The services still read these
+/// through raw SQL; @map keeps every column name as it was.
+
+model FleetBankAccount {
+  id                    String    @id @db.Uuid
+  fleetId               String    @map("fleet_id") @db.Uuid
+  bankName              String    @map("bank_name") @db.VarChar(150)
+  bankCode              String    @map("bank_code") @db.VarChar(32)
+  accountName           String    @map("account_name") @db.VarChar(160)
+  accountNumber         String    @map("account_number") @db.VarChar(32)
+  currency              String    @default("NGN") @db.VarChar(3)
+  isDefault             Boolean   @default(false) @map("is_default")
+  /// Set only once the bank has confirmed who owns the account. Settlement
+  /// refuses to pay a default account that does not have it.
+  verifiedAt            DateTime? @map("verified_at")
+  providerRecipientCode String?   @map("provider_recipient_code") @db.VarChar(120)
+  provider              String    @default("PAYSTACK") @db.VarChar(32)
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @map("updated_at")
+
+  fleet     Fleet                     @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  transfers FleetSettlementTransfer[]
+
+  @@index([fleetId])
+  @@index([fleetId, verifiedAt])
+  @@map("fleet_bank_accounts")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model FleetSettlementReceivable {
+  id              String   @id @db.Uuid
+  fleetId         String   @map("fleet_id") @db.Uuid
+  amount          Decimal  @db.Decimal(14, 2)
+  remainingAmount Decimal  @map("remaining_amount") @db.Decimal(14, 2)
+  currency        String   @default("NGN") @db.VarChar(3)
+  status          String   @default("APPROVED") @db.VarChar(16)
+  referenceType   String   @map("reference_type") @db.VarChar(80)
+  referenceId     String   @map("reference_id") @db.VarChar(160)
+  description     String?  @db.VarChar(500)
+  approvedBy      String   @map("approved_by") @db.Uuid
+  approvedAt      DateTime @default(now()) @map("approved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @default(now()) @map("updated_at")
+
+  fleet    Fleet                    @relation(fields: [fleetId], references: [id])
+  requests FleetSettlementRequest[]
+
+  @@unique([fleetId, referenceType, referenceId], map: "fleet_settlement_receivables_reference_unique")
+  @@index([fleetId, status], map: "fleet_settlement_receivables_fleet_status_idx")
+  @@map("fleet_settlement_receivables")
+}
+
+model FleetSettlementRequest {
+  id String @id @db.Uuid
+
+  fleetId      String @map("fleet_id") @db.Uuid
+  /// Required, and that is the financial control: a settlement request has to
+  /// be backed by an Ops-approved receivable. Production carried this column
+  /// nullable until 20260910060000 converged the two definitions of the table.
+  receivableId String @map("receivable_id") @db.Uuid
+
+  amount   Decimal                      @db.Decimal(18, 2)
+  currency String                       @default("NGN")
+  status   FleetSettlementRequestStatus @default(PENDING)
+
+  requestedBy     String    @map("requested_by") @db.Uuid
+  requestedAt     DateTime  @default(now()) @map("requested_at")
+  approvedBy      String?   @map("approved_by") @db.Uuid
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  transferId      String?   @map("transfer_id") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @default(now()) @map("updated_at")
+
+  fleet      Fleet                     @relation(fields: [fleetId], references: [id])
+  receivable FleetSettlementReceivable @relation(fields: [receivableId], references: [id])
+  transfers  FleetSettlementTransfer[]
+
+  /// Indexed twice on the same pair because both migrations that created this
+  /// table added one under a different name, and the database has both.
+  @@index([fleetId, status])
+  @@index([fleetId, status], map: "fleet_settlement_requests_fleet_status_idx")
+  @@index([receivableId])
+  @@index([requestedBy])
+  @@map("fleet_settlement_requests")
+}
+
+model FleetSettlementTransfer {
+  id                  String                        @id @db.Uuid
+  fleetId             String                        @map("fleet_id") @db.Uuid
+  bankAccountId       String                        @map("bank_account_id") @db.Uuid
+  amount              Decimal                       @db.Decimal(14, 2)
+  currency            String                        @default("NGN") @db.VarChar(3)
+  provider            String                        @default("PAYSTACK") @db.VarChar(32)
+  status              FleetSettlementTransferStatus @default(PENDING)
+  providerReference   String?                       @map("provider_reference") @db.VarChar(120)
+  failureReason       String?                       @map("failure_reason") @db.VarChar(500)
+  createdAt           DateTime                      @default(now()) @map("created_at")
+  updatedAt           DateTime                      @default(now()) @map("updated_at")
+  completedAt         DateTime?                     @map("completed_at")
+  settlementRequestId String?                       @map("settlement_request_id") @db.Uuid
+
+  bankAccount       FleetBankAccount        @relation(fields: [bankAccountId], references: [id])
+  fleet             Fleet                   @relation(fields: [fleetId], references: [id])
+  settlementRequest FleetSettlementRequest? @relation(fields: [settlementRequestId], references: [id], onDelete: Restrict)
+
+  @@unique([fleetId, id], map: "fleet_settlement_transfers_idempotency_unique")
+  @@index([providerReference])
+  @@index([settlementRequestId])
+  @@index([status])
+  @@map("fleet_settlement_transfers")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model MerchantSettlementTransfer {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  settlementId      String    @unique @map("settlement_id") @db.Uuid
+  merchantId        String    @map("merchant_id") @db.Uuid
+  bankAccountId     String    @map("bank_account_id") @db.Uuid
+  amount            Decimal   @db.Decimal(12, 2)
+  currency          String    @default("NGN") @db.VarChar(3)
+  provider          String    @db.VarChar(32)
+  providerReference String?   @unique @map("provider_reference") @db.VarChar(100)
+  status            String    @default("PENDING") @db.VarChar(20)
+  failureReason     String?   @map("failure_reason") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @default(now()) @map("updated_at")
+  completedAt       DateTime? @map("completed_at")
+
+  bankAccount BankAccount     @relation(fields: [bankAccountId], references: [id], map: "merchant_settlement_transfers_bank_account_fk")
+  settlement  OrderSettlement @relation(fields: [settlementId], references: [id], map: "merchant_settlement_transfers_settlement_fk")
+
+  @@index([merchantId, status], map: "merchant_settlement_transfers_merchant_status_idx")
+  @@index([provider, status])
+  @@map("merchant_settlement_transfers")
+}
+
+enum FleetSettlementRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+  PROCESSING
+}
+
+enum FleetSettlementTransferStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
 }

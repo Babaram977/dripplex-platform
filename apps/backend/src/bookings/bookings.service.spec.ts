@@ -39,6 +39,28 @@ const databaseUrl =
 const day = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
 
 /**
+ * The stay dates are relative to today, deliberately.
+ *
+ * They used to be hardcoded (2026-09-10 through -13) and the whole suite began
+ * failing the moment the first of them became yesterday: `booking.dates.ts`
+ * refuses a check-in in the past, which is correct behaviour, so the test was a
+ * time bomb that turned CI red on every pull request because of the calendar
+ * rather than the code. Deriving them from today means the first night is
+ * always tomorrow and the suite cannot expire again.
+ */
+const isoDay = (offsetDays: number): string => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+};
+
+/** First night of the stay — always tomorrow. */
+const NIGHT_1 = isoDay(1);
+const NIGHT_2 = isoDay(2);
+const NIGHT_3 = isoDay(3);
+const NIGHT_4 = isoDay(4);
+
+/**
  * DPX-HOTEL-001, against a real Postgres.
  *
  * The behaviours pinned here are the ones whose failure a guest experiences at
@@ -144,7 +166,7 @@ describe('BookingsService', () => {
     });
   }
 
-  const stay = { checkIn: day('2026-09-10'), checkOut: day('2026-09-12') };
+  const stay = { checkIn: day(NIGHT_1), checkOut: day(NIGHT_3) };
 
   /** Open the two nights of `stay`, plus the checkout day, so a test can prove
    *  the checkout day is NOT held rather than merely absent. */
@@ -155,8 +177,8 @@ describe('BookingsService', () => {
   ): Promise<void> {
     await rooms.openNights(merchantUserId, {
       roomTypeId,
-      from: day('2026-09-10'),
-      to: day('2026-09-13'),
+      from: day(NIGHT_1),
+      to: day(NIGHT_4),
       roomsOpen,
     });
   }
@@ -266,8 +288,8 @@ describe('BookingsService', () => {
     // The Friday costs more, and the quote has to say so.
     await rooms.openNights(merchantUserId, {
       roomTypeId,
-      from: day('2026-09-11'),
-      to: day('2026-09-12'),
+      from: day(NIGHT_2),
+      to: day(NIGHT_3),
       roomsOpen: 3,
       priceOverride: 25_000,
     });
@@ -277,8 +299,8 @@ describe('BookingsService', () => {
     expect(quote.nights).toBe(2);
     expect(quote.totalAmount).toBe(45_000);
     expect(quote.perNight).toEqual([
-      { night: '2026-09-10', price: 20_000 },
-      { night: '2026-09-11', price: 25_000 },
+      { night: NIGHT_1, price: 20_000 },
+      { night: NIGHT_2, price: 25_000 },
     ]);
   });
 
@@ -288,24 +310,24 @@ describe('BookingsService', () => {
     // The 10th and the 12th are open; the 11th never was.
     await rooms.openNights(merchantUserId, {
       roomTypeId,
-      from: day('2026-09-10'),
-      to: day('2026-09-11'),
+      from: day(NIGHT_1),
+      to: day(NIGHT_2),
       roomsOpen: 3,
     });
     await rooms.openNights(merchantUserId, {
       roomTypeId,
-      from: day('2026-09-12'),
-      to: day('2026-09-13'),
+      from: day(NIGHT_3),
+      to: day(NIGHT_4),
       roomsOpen: 3,
     });
 
     const quote = await bookings.checkAvailability({
       roomTypeId,
-      checkIn: day('2026-09-10'),
-      checkOut: day('2026-09-13'),
+      checkIn: day(NIGHT_1),
+      checkOut: day(NIGHT_4),
     });
     expect(quote.available).toBe(false);
-    expect(quote.reason).toContain('2026-09-11');
+    expect(quote.reason).toContain(NIGHT_2);
   });
 
   it('does not invent availability for a calendar the hotel never touched', async () => {
@@ -344,9 +366,9 @@ describe('BookingsService', () => {
 
     // The nights slept are held; the departure day is untouched even though it
     // is open for sale.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
-    expect((await nightRow(roomTypeId, '2026-09-11'))?.roomsBooked).toBe(1);
-    expect((await nightRow(roomTypeId, '2026-09-12'))?.roomsBooked).toBe(0);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_2))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_3))?.roomsBooked).toBe(0);
   });
 
   /**
@@ -370,7 +392,7 @@ describe('BookingsService', () => {
     expect(booking.status).toBe(BookingStatus.PENDING_HOTEL);
     expect((await balances(pennilessGuest)).available).toBe(0);
     // The room really is held for them.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
   });
 
   // ── The invariant ───────────────────────────────────────────────────────────
@@ -399,7 +421,7 @@ describe('BookingsService', () => {
 
     expect(won).toHaveLength(1);
     expect(lost).toHaveLength(1);
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
 
     // And the loser was not charged a thing.
     const loserId = results[0].status === 'rejected' ? a : b;
@@ -509,7 +531,7 @@ describe('BookingsService', () => {
     expect(after.pending).toBe(0);
 
     // And the room is on sale again for the next guest.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(0);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(0);
     const quote = await bookings.checkAvailability({ roomTypeId, ...stay });
     expect(quote.available).toBe(true);
   });
@@ -541,7 +563,7 @@ describe('BookingsService', () => {
     const after = await balances(guestId);
     expect(after.available).toBe(100_000);
     expect(after.pending).toBe(0);
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(0);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(0);
   });
 
   it('leaves a booking still inside its window alone', async () => {
@@ -560,7 +582,7 @@ describe('BookingsService', () => {
 
     const untouched = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(untouched.status).toBe(BookingStatus.PENDING_HOTEL);
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
   });
 
   it('refuses to accept a booking whose window has already closed', async () => {
@@ -737,7 +759,7 @@ describe('BookingsService', () => {
       guestPhone: '+2348012345678',
     });
     await bookings.acceptBooking(merchantUserId, booking.id);
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
 
     // 24 hours later, with no payment.
     await prisma.booking.update({
@@ -751,7 +773,7 @@ describe('BookingsService', () => {
     expect(expired.status).toBe(BookingStatus.EXPIRED);
     expect(expired.pin).toBeNull();
     // Back on sale for the next guest.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(0);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(0);
     const quote = await bookings.checkAvailability({ roomTypeId, ...stay });
     expect(quote.available).toBe(true);
   });
@@ -773,7 +795,7 @@ describe('BookingsService', () => {
 
     const alive = await prisma.booking.findUniqueOrThrow({ where: { id: booking.id } });
     expect(alive.status).toBe(BookingStatus.AWAITING_PAYMENT);
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
   });
 
   // ── Guard rails ─────────────────────────────────────────────────────────────
@@ -873,8 +895,8 @@ describe('BookingsService', () => {
     await expect(
       rooms.openNights(rival.merchantUserId, {
         roomTypeId: theirs.roomTypeId,
-        from: day('2026-09-10'),
-        to: day('2026-09-11'),
+        from: day(NIGHT_1),
+        to: day(NIGHT_2),
         roomsOpen: 2,
       }),
     ).rejects.toThrow(NotFoundDomainException);
@@ -1041,13 +1063,13 @@ describe('BookingsService', () => {
     await expect(
       rooms.openNights(merchantUserId, {
         roomTypeId,
-        from: day('2026-09-10'),
-        to: day('2026-09-11'),
+        from: day(NIGHT_1),
+        to: day(NIGHT_2),
         roomsOpen: 0,
       }),
     ).rejects.toThrow(ConflictDomainException);
 
     // The guest's night is untouched.
-    expect((await nightRow(roomTypeId, '2026-09-10'))?.roomsBooked).toBe(1);
+    expect((await nightRow(roomTypeId, NIGHT_1))?.roomsBooked).toBe(1);
   });
 });
