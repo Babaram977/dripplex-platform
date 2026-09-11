@@ -1,68 +1,64 @@
 import { Injectable } from '@nestjs/common';
-import { NotificationCategory, NotificationChannel, NotificationType } from '@prisma/client';
+import { SupportPersona } from '@prisma/client';
 
-import { AuditService, type AuditContext } from '../../audit/audit.service';
-import {
-  ForbiddenDomainException,
-  NotFoundDomainException,
-} from '../../common/exceptions/domain.exception';
-import { NotificationCenterService } from '../../notification-center/notification-center.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { DRIVER_AUDIT_ACTIONS } from '../driver.constants';
+import { SupportService } from '../../support/support.service';
 
-import { toDriverSupportTicketDto } from './driver-support.mapper';
+import { toDriverSupportTicketDto, toSupportCategory } from './driver-support.mapper';
 
+import type { AuditContext } from '../../audit/audit.service';
+import type { AuthenticatedUser } from '../../auth/auth.types';
 import type { CreateDriverSupportTicketDto } from '../dto/create-driver-support-ticket.dto';
-import type { ListDriverSupportTicketsQueryDto } from '../dto/list-driver-support-tickets-query.dto';
-import type { UpdateDriverSupportTicketDto } from '../dto/update-driver-support-ticket.dto';
-import type { DriverSupportTicketDto, DriverSupportTicketListDto } from '@dripplex/types';
-import type { DriverSupportTicket } from '@prisma/client';
+import type { DriverSupportTicketDto } from '@dripplex/types';
 
-/** Driver Slice 2 item 3 — Driver Support (founder-approved 2026-08-04): "a
- * basic 'submit an issue, admin sees a queue' loop is a defensible v1, not
- * a full helpdesk platform" (from `docs/DRIVER-SLICE-2-AUDIT.md`). General
- * account/payout/app/KYC support — distinct from the ride-scoped
- * `RideProblemReport` and from the safety-relevant Incident Reporting item. */
+/**
+ * `/driver/support-tickets` — kept alive, no longer a separate system.
+ *
+ * Driver Slice 2 item 3 (founder-approved 2026-08-04) built this as "a basic
+ * 'submit an issue, admin sees a queue' loop". DPX-SUPPORT-001 replaced the
+ * queue underneath it with one that serves every persona, so this class became
+ * an adapter: same routes, same request and response shapes, writing into
+ * `SupportTicket` like everything else.
+ *
+ * It is an adapter and not a deletion because DrippleX is on the Play Store and
+ * driver builds already in people's hands call these routes. Removing them
+ * would break support for the drivers most likely to need it — the ones who
+ * have not updated.
+ *
+ * What it must never become again is a second writer. `driver_support_tickets`
+ * is now history only: the Operations queue reads `support_tickets`, so a
+ * ticket written to the old table would be one nobody ever sees. That is the
+ * regression this class exists to prevent, and `driver-support.adapter.db.spec`
+ * is what proves it has not returned.
+ */
 @Injectable()
 export class DriverSupportService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly auditService: AuditService,
-    private readonly notificationCenter: NotificationCenterService,
-  ) {}
+  constructor(private readonly support: SupportService) {}
 
   public async createTicket(
-    driverUserId: string,
+    user: AuthenticatedUser,
     dto: CreateDriverSupportTicketDto,
     context: AuditContext,
   ): Promise<DriverSupportTicketDto> {
-    const ticket = await this.prisma.driverSupportTicket.create({
-      data: {
-        driverId: driverUserId,
-        category: dto.category,
-        subject: dto.subject.trim(),
-        description: dto.description.trim(),
-      },
-    });
-
-    await this.auditService.record(
-      DRIVER_AUDIT_ACTIONS.SUPPORT_TICKET_SUBMITTED,
-      { ...context, userId: driverUserId },
+    const ticket = await this.support.createTicketFor(
+      user.id,
+      // Forced, not derived. These routes are the driver app's, whatever the
+      // session's portal claim happens to say.
+      SupportPersona.DRIVER,
       {
-        resource: 'driver_support_ticket',
-        resourceId: ticket.id,
-        metadata: { category: ticket.category },
+        category: toSupportCategory(dto.category),
+        subject: dto.subject,
+        description: dto.description,
       },
+      context,
     );
-
     return toDriverSupportTicketDto(ticket);
   }
 
+  /** Only the driver's own DRIVER-persona tickets. The same human's customer
+   *  tickets are their customer support history and belong in the customer
+   *  app, not in a list the driver app labels "driver support". */
   public async listOwnTickets(driverUserId: string): Promise<DriverSupportTicketDto[]> {
-    const tickets = await this.prisma.driverSupportTicket.findMany({
-      where: { driverId: driverUserId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const tickets = await this.support.listOwnTicketRows(driverUserId, SupportPersona.DRIVER);
     return tickets.map(toDriverSupportTicketDto);
   }
 
@@ -70,101 +66,6 @@ export class DriverSupportService {
     driverUserId: string,
     ticketId: string,
   ): Promise<DriverSupportTicketDto> {
-    const ticket = await this.requireOwnedTicket(driverUserId, ticketId);
-    return toDriverSupportTicketDto(ticket);
-  }
-
-  public async listTickets(
-    query: ListDriverSupportTicketsQueryDto,
-  ): Promise<DriverSupportTicketListDto> {
-    const where = query.status ? { status: query.status } : {};
-    const [tickets, total] = await Promise.all([
-      this.prisma.driverSupportTicket.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      this.prisma.driverSupportTicket.count({ where }),
-    ]);
-
-    return {
-      items: tickets.map(toDriverSupportTicketDto),
-      meta: {
-        page: query.page,
-        limit: query.limit,
-        total,
-        totalPages: Math.ceil(total / query.limit),
-      },
-    };
-  }
-
-  /** Admin-only. Any change (status and/or a response) notifies the driver
-   * in-app — a ticket a driver never hears back on is worse than no ticket
-   * system at all. */
-  public async updateTicket(
-    ticketId: string,
-    adminUserId: string,
-    dto: UpdateDriverSupportTicketDto,
-    context: AuditContext,
-  ): Promise<DriverSupportTicketDto> {
-    const existing = await this.requireTicket(ticketId);
-
-    const isResolving =
-      dto.status !== undefined &&
-      dto.status !== existing.status &&
-      (dto.status === 'RESOLVED' || dto.status === 'CLOSED');
-
-    const updated = await this.prisma.driverSupportTicket.update({
-      where: { id: ticketId },
-      data: {
-        ...(dto.status !== undefined ? { status: dto.status } : {}),
-        ...(dto.adminResponse !== undefined ? { adminResponse: dto.adminResponse.trim() } : {}),
-        ...(isResolving ? { resolvedBy: adminUserId, resolvedAt: new Date() } : {}),
-      },
-    });
-
-    await this.auditService.record(
-      DRIVER_AUDIT_ACTIONS.SUPPORT_TICKET_UPDATED,
-      { ...context, userId: adminUserId },
-      {
-        resource: 'driver_support_ticket',
-        resourceId: updated.id,
-        metadata: { status: updated.status, hasResponse: dto.adminResponse !== undefined },
-      },
-    );
-
-    await this.notificationCenter.send({
-      userId: updated.driverId,
-      category: NotificationCategory.SUPPORT,
-      channel: NotificationChannel.IN_APP,
-      type: NotificationType.DRIVER_SUPPORT_TICKET_UPDATED,
-      title: 'Support ticket updated',
-      body:
-        dto.adminResponse ??
-        `Your ticket is now ${updated.status.toLowerCase().replace('_', ' ')}.`,
-      payload: { ticketId: updated.id, status: updated.status },
-    });
-
-    return toDriverSupportTicketDto(updated);
-  }
-
-  private async requireTicket(ticketId: string): Promise<DriverSupportTicket> {
-    const ticket = await this.prisma.driverSupportTicket.findUnique({ where: { id: ticketId } });
-    if (!ticket) {
-      throw new NotFoundDomainException('Support ticket not found');
-    }
-    return ticket;
-  }
-
-  private async requireOwnedTicket(
-    driverUserId: string,
-    ticketId: string,
-  ): Promise<DriverSupportTicket> {
-    const ticket = await this.requireTicket(ticketId);
-    if (ticket.driverId !== driverUserId) {
-      throw new ForbiddenDomainException('You do not have access to this support ticket');
-    }
-    return ticket;
+    return toDriverSupportTicketDto(await this.support.getOwnTicketRow(driverUserId, ticketId));
   }
 }

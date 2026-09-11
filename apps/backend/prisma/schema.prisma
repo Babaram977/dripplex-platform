@@ -551,6 +551,8 @@ model User {
   driverVehicles              Vehicle[]
   driverInspections           Inspection[]
   driverSupportTickets        DriverSupportTicket[]        @relation("DriverSupportTicketDriver")
+  supportTickets              SupportTicket[]              @relation("SupportTicketUser")
+  resolvedSupportTickets      SupportTicket[]              @relation("SupportTicketResolver")
   driverSupportTicketsHandled DriverSupportTicket[]        @relation("DriverSupportTicketResolver")
   incidentReports             IncidentReport[]             @relation("IncidentReportDriver")
   incidentReportsAcknowledged IncidentReport[]             @relation("IncidentReportAcknowledger")
@@ -2699,6 +2701,101 @@ model DriverSupportTicket {
   @@map("driver_support_tickets")
 }
 
+/// DPX-SUPPORT-001 — who filed a support ticket, in the sense that matters for
+/// routing it. Derived server-side from the session's portal (and the
+/// fleet_owner role, which has no portal of its own); never accepted from the
+/// client, because a caller who can name their own persona can misroute their
+/// own ticket.
+enum SupportPersona {
+  CUSTOMER
+  RIDER
+  DRIVER
+  MERCHANT
+  FLEET_OWNER
+}
+
+/// The ten categories, locked by founder decision 2026-09-11. Do not extend
+/// without that decision being revisited: PAYMENT, WALLET and SAFETY carry a
+/// mandatory-human routing rule keyed on this enum, so a new value is a new
+/// routing question, not just a new label.
+enum SupportCategory {
+  PAYMENT
+  RIDE
+  FOOD_ORDER
+  MERCHANT
+  DRIVER_RIDER
+  WALLET
+  ACCOUNT
+  TECHNICAL
+  SAFETY
+  OTHER
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+/// DPX-SUPPORT-001 — one support channel for every persona.
+///
+/// Replaces `DriverSupportTicket`, which was keyed on `driverId` and left
+/// customers, merchants, riders and fleet owners with nothing but an email
+/// address that never reached the Operations queue. Existing driver tickets are
+/// copied in as `persona: DRIVER` by 20260913060000; the old table is left in
+/// place rather than dropped, so the migration is reversible and no history
+/// depends on this one going well.
+///
+/// Feeds `OperationsCasesService` — the same queue that already carries SOS and
+/// incidents. Deliberately not a second Operations system.
+model SupportTicket {
+  id          String          @id @default(uuid()) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  persona     SupportPersona
+  category    SupportCategory
+  subject     String          @db.VarChar(200)
+  description String          @db.VarChar(2000)
+
+  status SupportTicketStatus @default(OPEN)
+
+  /// True for PAYMENT, WALLET and SAFETY. Set server-side from the category at
+  /// creation and never from the request body.
+  ///
+  /// Nothing reads it yet — no AI exists in this phase. It is written now so
+  /// that when first-line automation arrives it inherits a decision already
+  /// made, rather than a judgement it has to make about its own limits. A
+  /// stored boolean is also auditable after the fact; a rule evaluated at read
+  /// time is not.
+  requiresHumanHandling Boolean @default(false) @map("requires_human_handling")
+
+  /// Context captured at submission, so Operations is not asking a person who
+  /// is already unhappy to tell them who they are. All optional: a ticket with
+  /// less context is still a ticket, and refusing one for want of an app
+  /// version would be worse than the gap it fills.
+  contactEmail String? @map("contact_email") @db.VarChar(255)
+  contactPhone String? @map("contact_phone") @db.VarChar(20)
+  appVersion   String? @map("app_version") @db.VarChar(40)
+  orderId      String? @map("order_id") @db.Uuid
+  rideId       String? @map("ride_id") @db.Uuid
+
+  adminResponse String?   @map("admin_response") @db.VarChar(2000)
+  resolvedBy    String?   @map("resolved_by") @db.Uuid
+  resolvedAt    DateTime? @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user     User  @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
+  resolver User? @relation("SupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@index([persona, status])
+  @@index([category])
+  @@map("support_tickets")
+}
+
 /// Driver Slice 2 item 4 — Incident Reporting (founder-approved 2026-08-04):
 /// safety-relevant (accident, passenger altercation, vehicle breakdown),
 /// distinct from the general-purpose Driver Support ticket above and from
@@ -2983,6 +3080,10 @@ enum NotificationType {
   ORDER_DELAYED
   ORDER_COMPLETED
   DRIVER_SUPPORT_TICKET_UPDATED
+  /// DPX-SUPPORT-001 — the persona-neutral successor to
+  /// DRIVER_SUPPORT_TICKET_UPDATED. The old value is kept because rows in
+  /// `notifications` already carry it; nothing new is written with it.
+  SUPPORT_TICKET_UPDATED
   INCIDENT_REPORT_UPDATED
   SOS_ALERT_TRIGGERED
   SOS_ALERT_UPDATED

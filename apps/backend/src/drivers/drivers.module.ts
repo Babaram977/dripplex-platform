@@ -5,6 +5,7 @@ import { CmsModule } from '../cms/cms.module';
 import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SupportModule } from '../support/support.module';
 import { UploadsModule } from '../uploads/uploads.module';
 
 import { DriverActivationService } from './activation/driver-activation.service';
@@ -59,6 +60,10 @@ import { VehiclesService } from './vehicles/vehicles.service';
     NotificationCenterModule,
     CmsModule,
     UploadsModule,
+    // DPX-SUPPORT-001 — `/driver/support-tickets` is now an adapter over the
+    // universal support service, so driver builds already on phones keep
+    // reaching the one queue Operations watches.
+    SupportModule,
   ],
   controllers: [
     AdminDriverTiersController,

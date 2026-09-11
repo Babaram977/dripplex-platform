@@ -49,7 +49,7 @@ const NAV: NavEntry[] = [
       { href: '/rides', label: 'Ride Queue' },
       { href: '/queues/sos', label: 'SOS Queue' },
       { href: '/queues/incidents', label: 'Incidents' },
-      { href: '/queues/support', label: 'Driver Support' },
+      { href: '/queues/support', label: 'Support' },
     ],
   },
   { href: '/pricing', label: 'Ride Pricing' },

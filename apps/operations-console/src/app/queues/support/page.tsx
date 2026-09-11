@@ -13,13 +13,22 @@ import { PriorityBadge } from '@/components/priority-badge';
 import { QueueFilterBar } from '@/components/queue-filter-bar';
 import { useSupportQueue } from '@/hooks/use-operations-queues';
 
+const PERSONA_LABEL: Record<string, string> = {
+  CUSTOMER: 'Customer',
+  RIDER: 'Rider',
+  DRIVER: 'Driver',
+  MERCHANT: 'Merchant',
+  FLEET_OWNER: 'Fleet owner',
+};
+
 /**
- * DPX-OPS-001 Slice 2 — Driver Support Queue. Per the founder's explicit
+ * DPX-OPS-001 Slice 2 — Support Queue. Per the founder's explicit
  * constraint, this is the only live support queue in Phase 1 — Customer
  * and Merchant support are architecture-only for now, see
  * docs/DPX-OPS-001-REALITY-AUDIT.md's "Founder review — approved" section.
- * No Ride/Vehicle filter here — `DriverSupportTicket` has neither column
- * (per the founder's 2026-08-05 decision not to modify the frozen table).
+ * No Vehicle filter here — a support ticket has no vehicle on it.
+ *
+ * DPX-SUPPORT-001 — every persona files here now, not just drivers.
  */
 export default function SupportQueuePage(): React.JSX.Element {
   const [filters, setFilters] = React.useState<QueueFilters>({});
@@ -31,11 +40,10 @@ export default function SupportQueuePage(): React.JSX.Element {
     <AppShell>
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="font-display text-3xl font-semibold tracking-tight">
-            Driver Support Queue
-          </h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight">Support Queue</h1>
           <p className="text-muted-foreground mt-2 text-sm">
-            Driver support tickets awaiting a response.
+            Support tickets from customers, riders, drivers, merchants and fleet owners awaiting a
+            response.
           </p>
         </div>
 
@@ -91,10 +99,11 @@ export default function SupportQueuePage(): React.JSX.Element {
                   >
                     <div>
                       <p className="text-sm font-medium">
-                        {item.driverName} · {item.subject}
+                        {item.userName} · {item.subject}
                       </p>
                       <p className="text-muted-foreground mt-0.5 text-xs">
-                        Submitted {formatRelativeTime(item.createdAt)}
+                        {PERSONA_LABEL[item.persona] ?? item.persona} · Submitted{' '}
+                        {formatRelativeTime(item.createdAt)}
                         {item.assignedToName ? ` · Assigned to ${item.assignedToName}` : ''}
                       </p>
                     </div>

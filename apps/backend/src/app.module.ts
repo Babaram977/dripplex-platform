@@ -42,6 +42,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { RidersModule } from './riders/riders.module';
 import { RidesModule } from './rides/rides.module';
 import { SearchModule } from './search/search.module';
+import { SupportModule } from './support/support.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
 import { UtilitiesModule } from './utilities/utilities.module';
@@ -96,6 +97,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     FraudModule,
     HealthModule,
     OperationsModule,
+    SupportModule,
     CustomersModule,
     CommercialModule,
     KycModule,

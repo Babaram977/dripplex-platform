@@ -1,8 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
 import {
-  DriverSupportCategory,
-  DriverSupportTicketStatus,
   IncidentCategory,
   IncidentReportStatus,
   IncidentSeverity,
@@ -11,13 +9,16 @@ import {
   OperationsPriority,
   PrismaClient,
   SosAlertStatus,
+  SupportCategory,
+  SupportPersona,
+  SupportTicketStatus,
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { IncidentReportService } from '../drivers/incidents/incident-report.service';
 import { SosAlertService } from '../drivers/sos/sos-alert.service';
-import { DriverSupportService } from '../drivers/support/driver-support.service';
+import { SupportService } from '../support/support.service';
 
 import { INCIDENT_SEVERITY_TO_PRIORITY, OperationsCasesService } from './operations-cases.service';
 
@@ -78,14 +79,14 @@ describe('OperationsCasesService', () => {
       auditService,
       notificationCenter,
     );
-    const driverSupportService = new DriverSupportService(prisma, auditService, notificationCenter);
+    const supportService = new SupportService(prisma, auditService, notificationCenter);
 
     service = new OperationsCasesService(
       prisma,
       auditService,
       sosAlertService,
       incidentReportService,
-      driverSupportService,
+      supportService,
     );
 
     const driver = await prisma.user.create({
@@ -183,7 +184,7 @@ describe('OperationsCasesService', () => {
       const [sosAlerts, incidentReports, supportTickets] = await Promise.all([
         prisma.sosAlert.findMany({ where: { driverId }, select: { id: true } }),
         prisma.incidentReport.findMany({ where: { driverId }, select: { id: true } }),
-        prisma.driverSupportTicket.findMany({ where: { driverId }, select: { id: true } }),
+        prisma.supportTicket.findMany({ where: { userId: driverId }, select: { id: true } }),
       ]);
       const sourceIds = [
         ...sosAlerts.map((a) => a.id),
@@ -206,7 +207,7 @@ describe('OperationsCasesService', () => {
 
       await prisma.sosAlert.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.incidentReport.deleteMany({ where: { driverId } }).catch(() => undefined);
-      await prisma.driverSupportTicket.deleteMany({ where: { driverId } }).catch(() => undefined);
+      await prisma.supportTicket.deleteMany({ where: { userId: driverId } }).catch(() => undefined);
       await prisma.vehicle.deleteMany({ where: { driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: driverId } }).catch(() => undefined);
       await prisma.user.delete({ where: { id: operatorId } }).catch(() => undefined);
@@ -256,10 +257,11 @@ describe('OperationsCasesService', () => {
   it('defaults a support ticket case to MEDIUM priority', async () => {
     if (!databaseAvailable) return;
 
-    const ticket = await prisma.driverSupportTicket.create({
+    const ticket = await prisma.supportTicket.create({
       data: {
-        driverId,
-        category: DriverSupportCategory.PAYOUT,
+        userId: driverId,
+        persona: SupportPersona.DRIVER,
+        category: SupportCategory.PAYMENT,
         subject: 'Missing payout',
         description: 'Payout from last week never arrived.',
       },
@@ -329,10 +331,11 @@ describe('OperationsCasesService', () => {
   it('closing a support case syncs the ticket to CLOSED and also stamps resolvedAt if unset', async () => {
     if (!databaseAvailable) return;
 
-    const ticket = await prisma.driverSupportTicket.create({
+    const ticket = await prisma.supportTicket.create({
       data: {
-        driverId,
-        category: DriverSupportCategory.APP_BUG,
+        userId: driverId,
+        persona: SupportPersona.DRIVER,
+        category: SupportCategory.TECHNICAL,
         subject: 'App crash',
         description: 'App crashes on login.',
       },
@@ -352,17 +355,18 @@ describe('OperationsCasesService', () => {
     expect(detail.closedAt).not.toBeNull();
     expect(detail.resolvedAt).not.toBeNull();
 
-    const sourceTicket = await prisma.driverSupportTicket.findUnique({ where: { id: ticket.id } });
-    expect(sourceTicket?.status).toBe(DriverSupportTicketStatus.CLOSED);
+    const sourceTicket = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
+    expect(sourceTicket?.status).toBe(SupportTicketStatus.CLOSED);
   });
 
   it('adds a note as an immutable timeline event', async () => {
     if (!databaseAvailable) return;
 
-    const ticket = await prisma.driverSupportTicket.create({
+    const ticket = await prisma.supportTicket.create({
       data: {
-        driverId,
-        category: DriverSupportCategory.OTHER,
+        userId: driverId,
+        persona: SupportPersona.DRIVER,
+        category: SupportCategory.OTHER,
         subject: 'General question',
         description: 'How do I update my bank details?',
       },
@@ -493,13 +497,17 @@ describe('OperationsCasesService', () => {
       expect(byVehicle.items).toHaveLength(0);
     });
 
-    it('always empties the Support queue on a rideId or vehicleId filter — DriverSupportTicket has neither column', async () => {
+    it('empties the Support queue on a vehicleId filter, and on a rideId the ticket is not about', async () => {
       if (!databaseAvailable) return;
 
-      await prisma.driverSupportTicket.create({
+      // DPX-SUPPORT-001 — a support ticket now carries the ride it is about, so
+      // rideId is a real filter here rather than a guaranteed empty result. A
+      // ticket with no ride on it must still not match somebody else's.
+      await prisma.supportTicket.create({
         data: {
-          driverId,
-          category: DriverSupportCategory.OTHER,
+          userId: driverId,
+          persona: SupportPersona.DRIVER,
+          category: SupportCategory.OTHER,
           subject: 'Filter test',
           description: 'Should never match a ride/vehicle filter.',
         },

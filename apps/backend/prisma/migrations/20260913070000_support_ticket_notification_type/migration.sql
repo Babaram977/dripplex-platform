@@ -1,0 +1,13 @@
+-- DPX-SUPPORT-001 — the persona-neutral notification type.
+--
+-- Its own migration, deliberately. `ALTER TYPE ... ADD VALUE` cannot run inside
+-- a transaction, so Prisma runs any file containing one without transactional
+-- protection. Folding this into 20260913060000 would have stripped that
+-- protection from the support_tickets backfill in the same file, turning a
+-- half-completed copy into a failed migration row and a P3009 that blocks every
+-- subsequent deploy. One statement, alone, is the version that cannot half-fail.
+--
+-- DRIVER_SUPPORT_TICKET_UPDATED is left in place: rows in `notifications`
+-- already carry it, and Postgres cannot remove an enum value anyway. Nothing new
+-- is written with it after this.
+ALTER TYPE "NotificationType" ADD VALUE IF NOT EXISTS 'SUPPORT_TICKET_UPDATED';

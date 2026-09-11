@@ -217,6 +217,18 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:drivers:support-ticket:manage',
     description: 'View and resolve the driver support ticket queue',
   },
+  // DPX-SUPPORT-001 — the persona-neutral pair that supersedes the two
+  // `driver:`-prefixed permissions above. The old two stay: deployed driver
+  // apps still call /driver/support-tickets, and revoking a permission those
+  // builds depend on would 403 every driver still on them.
+  {
+    code: 'support:tickets:use',
+    description: 'File and view your own support tickets, whichever persona you are',
+  },
+  {
+    code: 'admin:support:tickets:manage',
+    description: 'View and answer the support ticket queue across every persona',
+  },
   {
     code: 'driver:incident-report:manage',
     description: 'Submit and view own driver incident reports',

@@ -14,16 +14,32 @@ import { PriorityBadge } from '@/components/priority-badge';
 import { useCaseDetail } from '@/hooks/use-operations-case';
 
 const CATEGORY_LABEL: Record<string, string> = {
-  PAYOUT: 'Payout',
+  PAYMENT: 'Payment',
+  RIDE: 'Ride',
+  FOOD_ORDER: 'Food order',
+  MERCHANT: 'Merchant',
+  DRIVER_RIDER: 'Driver / rider',
+  WALLET: 'Wallet',
   ACCOUNT: 'Account',
-  APP_BUG: 'App bug',
-  KYC: 'KYC',
+  TECHNICAL: 'Technical',
+  SAFETY: 'Safety',
   OTHER: 'Other',
 };
 
-/** DPX-OPS-001 Slice 2 — Driver Support case detail. `adminResponse`
- * (visible to the driver) stays a separate field from the internal note
- * timeline below — same split Driver Slice 2's own admin surface uses. */
+const PERSONA_LABEL: Record<string, string> = {
+  CUSTOMER: 'Customer',
+  RIDER: 'Rider',
+  DRIVER: 'Driver',
+  MERCHANT: 'Merchant',
+  FLEET_OWNER: 'Fleet owner',
+};
+
+/** DPX-OPS-001 Slice 2 — support case detail. `adminResponse` (visible to the
+ * person who filed) stays a separate field from the internal note timeline
+ * below — same split Driver Slice 2's own admin surface uses.
+ *
+ * DPX-SUPPORT-001 — the filer can now be any persona, so the heading names the
+ * persona rather than assuming a driver. */
 export default function SupportCaseDetailPage(): React.JSX.Element {
   const params = useParams<{ id: string }>();
   const query = useCaseDetail(params.id);
@@ -50,9 +66,10 @@ export default function SupportCaseDetailPage(): React.JSX.Element {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h1 className="font-display text-3xl font-semibold tracking-tight">
-                  {kase.driverName} · {kase.subject}
+                  {kase.userName} · {kase.subject}
                 </h1>
                 <p className="text-muted-foreground mt-1 text-sm">
+                  {PERSONA_LABEL[kase.persona] ?? kase.persona} ·{' '}
                   {CATEGORY_LABEL[kase.category] ?? kase.category} · Submitted{' '}
                   {formatDate(kase.createdAt, 'en-NG', {
                     year: 'numeric',
@@ -61,8 +78,13 @@ export default function SupportCaseDetailPage(): React.JSX.Element {
                     hour: '2-digit',
                     minute: '2-digit',
                   })}
-                  {kase.driverPhone ? ` · ${kase.driverPhone}` : ''}
+                  {kase.userPhone ? ` · ${kase.userPhone}` : ''}
                 </p>
+                {kase.requiresHumanHandling ? (
+                  <p className="text-destructive mt-1 text-xs font-medium">
+                    Must be answered by a person — payment, wallet and safety are never automated.
+                  </p>
+                ) : null}
               </div>
               <div className="flex gap-2">
                 <PriorityBadge priority={kase.priority} />
@@ -76,9 +98,43 @@ export default function SupportCaseDetailPage(): React.JSX.Element {
               </CardHeader>
               <CardContent className="flex flex-col gap-3 text-sm">
                 <p>{kase.description}</p>
+                <dl className="text-muted-foreground grid grid-cols-1 gap-1 text-xs sm:grid-cols-2">
+                  {kase.contactEmail ? (
+                    <div>
+                      <dt className="inline font-medium">Contact email: </dt>
+                      <dd className="inline">{kase.contactEmail}</dd>
+                    </div>
+                  ) : null}
+                  {kase.contactPhone ? (
+                    <div>
+                      <dt className="inline font-medium">Contact phone: </dt>
+                      <dd className="inline">{kase.contactPhone}</dd>
+                    </div>
+                  ) : null}
+                  {kase.orderId ? (
+                    <div>
+                      <dt className="inline font-medium">Order: </dt>
+                      <dd className="inline font-mono">{kase.orderId}</dd>
+                    </div>
+                  ) : null}
+                  {kase.rideId ? (
+                    <div>
+                      <dt className="inline font-medium">Ride: </dt>
+                      <dd className="inline font-mono">{kase.rideId}</dd>
+                    </div>
+                  ) : null}
+                  {kase.appVersion ? (
+                    <div>
+                      <dt className="inline font-medium">App version: </dt>
+                      <dd className="inline">{kase.appVersion}</dd>
+                    </div>
+                  ) : null}
+                </dl>
                 {kase.adminResponse ? (
                   <div className="border-border/70 rounded-md border p-3">
-                    <p className="text-muted-foreground text-xs">Response sent to driver</p>
+                    <p className="text-muted-foreground text-xs">
+                      Response sent to the person who filed
+                    </p>
                     <p className="mt-1">{kase.adminResponse}</p>
                   </div>
                 ) : null}

@@ -16,13 +16,13 @@ import type {
 import type {
   DriverAvailability,
   DriverProfile,
-  DriverSupportTicket,
   IncidentReport,
   OperationsCase,
   OperationsCaseEvent,
   Ride,
   RideOffer,
   SosAlert,
+  SupportTicket,
   User,
 } from '@prisma/client';
 
@@ -167,18 +167,36 @@ export function toIncidentQueueItemDto(
   };
 }
 
+/** DPX-SUPPORT-001 — the filer is no longer necessarily a driver.
+ *
+ * `driverId`/`driverName`/`driverPhone` come from `OperationsCaseBaseDto` and
+ * are rendered by the shared case list for every case type, so they are filled
+ * with the filer whatever persona they are. `userId`/`userName`/`userPhone`
+ * carry the same three values under honest names; new UI should read those and
+ * `persona`. */
 export function toSupportQueueItemDto(
-  ticket: DriverSupportTicket & { driver: User },
+  ticket: SupportTicket & { user: User },
   kase: OperationsCase,
   userMap: Map<string, User>,
 ): SupportQueueItemDto {
+  const filerName = `${ticket.user.firstName} ${ticket.user.lastName}`;
   return {
     ...toOperationsCaseBaseDto(kase, userMap),
     caseType: 'SUPPORT',
     sourceStatus: ticket.status,
-    driverId: ticket.driverId,
-    driverName: `${ticket.driver.firstName} ${ticket.driver.lastName}`,
-    driverPhone: ticket.driver.phone,
+    driverId: ticket.userId,
+    driverName: filerName,
+    driverPhone: ticket.user.phone,
+    userId: ticket.userId,
+    userName: filerName,
+    userPhone: ticket.user.phone,
+    persona: ticket.persona,
+    requiresHumanHandling: ticket.requiresHumanHandling,
+    contactEmail: ticket.contactEmail,
+    contactPhone: ticket.contactPhone,
+    appVersion: ticket.appVersion,
+    orderId: ticket.orderId,
+    rideId: ticket.rideId,
     category: ticket.category,
     subject: ticket.subject,
     description: ticket.description,

@@ -5,7 +5,7 @@ import { PrismaClient, RideStatus, RideType, SosAlertStatus } from '@prisma/clie
 import { AuditService } from '../audit/audit.service';
 import { IncidentReportService } from '../drivers/incidents/incident-report.service';
 import { SosAlertService } from '../drivers/sos/sos-alert.service';
-import { DriverSupportService } from '../drivers/support/driver-support.service';
+import { SupportService } from '../support/support.service';
 
 import { OperationsCasesService } from './operations-cases.service';
 import { OperationsDashboardService } from './operations-dashboard.service';
@@ -52,7 +52,7 @@ describe('OperationsDashboardService', () => {
       auditService,
       new SosAlertService(prisma, auditService, notificationCenter),
       new IncidentReportService(prisma, auditService, notificationCenter),
-      new DriverSupportService(prisma, auditService, notificationCenter),
+      new SupportService(prisma, auditService, notificationCenter),
     );
     service = new OperationsDashboardService(prisma, casesService);
 
