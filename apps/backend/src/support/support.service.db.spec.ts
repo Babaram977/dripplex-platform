@@ -341,6 +341,7 @@ describe('SupportService', () => {
     expect(ticket.requiresHumanHandling).toBe(false);
     expect(ticket.gateDetectedCategory).toBeNull();
     expect(ticket.gateMatchedTerm).toBeNull();
+    expect(ticket.gateNotEnglish).toBe(false);
   });
 
   it('runs the gate on the legacy driver route too', async () => {
@@ -361,6 +362,29 @@ describe('SupportService', () => {
 
     expect(ticket.requiresHumanHandling).toBe(true);
     expect(ticket.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+  });
+
+  it('sends a message it cannot read to a person rather than guessing', async () => {
+    if (!databaseAvailable) return;
+
+    // The gate reads English only (founder decision 2026-09-11). The honest
+    // answer to a language it does not read is "a person will look at this" —
+    // never a guess, and never silently letting it through to automation.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.OTHER,
+        subject: 'Matsala',
+        description: 'An sace kudina daga asusuna.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(true);
+    expect(ticket.gateNotEnglish).toBe(true);
+    // No category, because nothing was read — which is different from reading
+    // the message and finding nothing.
+    expect(ticket.gateDetectedCategory).toBeNull();
   });
 
   it('records the gate decision in the audit trail', async () => {

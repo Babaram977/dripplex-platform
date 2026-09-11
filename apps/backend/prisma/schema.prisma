@@ -2787,6 +2787,15 @@ model SupportTicket {
   /// have changed since.
   gateMatchedTerm String? @map("gate_matched_term") @db.VarChar(120)
 
+  /// DPX-SUPPORT-002 §4 — the gate reads English only, and this marks a message
+  /// it could not confidently read.
+  ///
+  /// Such a ticket is human-handled without a detected category: the platform's
+  /// answer to a language it does not read is "a person will look at this",
+  /// never a guess. Distinct from `gateDetectedCategory` being null, which means
+  /// the gate read the message and found nothing.
+  gateNotEnglish Boolean @default(false) @map("gate_not_english")
+
   /// Context captured at submission, so Operations is not asking a person who
   /// is already unhappy to tell them who they are. All optional: a ticket with
   /// less context is still a ticket, and refusing one for want of an app

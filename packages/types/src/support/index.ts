@@ -51,6 +51,11 @@ export interface SupportTicketDto {
   gateDetectedCategory: SupportCategory | null;
   /** The lexicon term that fired, so the decision can be explained later. */
   gateMatchedTerm: string | null;
+  /** DPX-SUPPORT-002 — the gate reads English only. True when it could not
+   *  confidently read the message, which makes the ticket human-handled with no
+   *  detected category: the answer to a language we do not read is "a person
+   *  will look at this", never a guess. */
+  gateNotEnglish: boolean;
   contactEmail: string | null;
   contactPhone: string | null;
   appVersion: string | null;

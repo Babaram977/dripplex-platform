@@ -13,6 +13,7 @@ export function toSupportTicketDto(ticket: SupportTicket): SupportTicketDto {
     requiresHumanHandling: ticket.requiresHumanHandling,
     gateDetectedCategory: ticket.gateDetectedCategory,
     gateMatchedTerm: ticket.gateMatchedTerm,
+    gateNotEnglish: ticket.gateNotEnglish,
     contactEmail: ticket.contactEmail,
     contactPhone: ticket.contactPhone,
     appVersion: ticket.appVersion,

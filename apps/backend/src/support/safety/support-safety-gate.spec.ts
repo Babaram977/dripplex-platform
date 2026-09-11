@@ -1,6 +1,6 @@
 import { SupportCategory } from '@prisma/client';
 
-import { detectMandatoryHumanCategory, normalise } from './support-safety-gate';
+import { detectMandatoryHumanCategory, normalise, requiresHuman } from './support-safety-gate';
 
 /**
  * DPX-SUPPORT-002 §4 — the deterministic money/safety gate.
@@ -32,52 +32,12 @@ describe('detectMandatoryHumanCategory', () => {
     });
   });
 
-  describe('language coverage — part of the deliverable, not a refinement', () => {
-    it.each([
-      [
-        'Nigerian Pidgin, money',
-        'Wetin happen',
-        'Dem charge me but the money no enter my account.',
-      ],
-      ['Nigerian Pidgin, money', 'Abeg', 'Dem collect my money since last week.'],
-      ['Hausa, money', 'Matsala', 'An cire kudi na amma ba a biya ba.'],
-      ['Hausa, money, no diacritics', 'Matsala', 'Ina son kudina.'],
-    ])('%s: "%s"', (_label, subject, description) => {
-      expect(detectMandatoryHumanCategory(subject, description).category).toBe(
-        SupportCategory.PAYMENT,
-      );
-    });
-
-    it.each([
-      ['Nigerian Pidgin, safety', 'Help', 'Dem wan kill me for inside the car.'],
-      ['Nigerian Pidgin, safety', 'Wahala', 'I dey fear for my life.'],
-      ['Hausa, safety', 'Gaggawa', 'Taimake ni, akwai hatsari.'],
-      ['Hausa, safety', 'Gaggawa', 'Ina tsoro, direban yana bina.'],
-    ])('%s: "%s"', (_label, subject, description) => {
-      expect(detectMandatoryHumanCategory(subject, description).category).toBe(
-        SupportCategory.SAFETY,
-      );
-    });
-
-    it('matches Hausa written with its hooked letters as well as without', () => {
-      // Real users type both. "kuɗina" and "kudina" are the same word, and a
-      // gate that only understood one spelling would work for some users and
-      // not others — worse than failing for everyone, because it looks like it
-      // works.
-      expect(detectMandatoryHumanCategory('', 'Ina son kuɗina').category).toBe(
-        SupportCategory.PAYMENT,
-      );
-      expect(detectMandatoryHumanCategory('', 'Ina son kudina').category).toBe(
-        SupportCategory.PAYMENT,
-      );
-    });
-  });
-
   describe('semantic safety precedence over a generic money match', () => {
-    // Founder decision 2026-09-11. The gate is a risk-escalation boundary, not a
-    // final support-team classifier: "somebody took my money" may be a
-    // compromised account, coercion, or a person still standing there. Payments
-    // can pick it up afterwards; the reverse is not recoverable the same way.
+    // Founder decision 2026-09-11. Safety wins over financial classification
+    // when the wording says SOMEBODY TOOK IT — not merely because a word relates
+    // to money going wrong. The gate is a risk-escalation boundary, not a final
+    // support-team classifier: Payments can pick it up afterwards, whereas
+    // finding out too late that a payment ticket was a robbery cannot be undone.
     it.each([
       ['Someone stole my money'],
       ['Someone has stolen my money'],
@@ -88,9 +48,9 @@ describe('detectMandatoryHumanCategory', () => {
       expect(detectMandatoryHumanCategory(text).category).toBe(SupportCategory.SAFETY);
     });
 
-    // The other half of the rule, and the harder half. Not every mention of
-    // money going wrong is an emergency — routing disputed charges to the
-    // safety queue would dilute it until real emergencies are hard to find.
+    // The other half, and the harder half. Not every mention of money going
+    // wrong is an emergency; routing disputed charges to the safety queue would
+    // dilute it until real emergencies are hard to find.
     it.each([
       ['My wallet was charged twice'],
       ["I was charged for something I didn't buy"],
@@ -102,9 +62,9 @@ describe('detectMandatoryHumanCategory', () => {
       expect(detectMandatoryHumanCategory(text).category).toBe(SupportCategory.PAYMENT);
     });
 
-    it('does not treat "stole" as unreachable behind the word money', () => {
+    it('does not leave "stole" unreachable behind the word money', () => {
       // Before this rule, "Someone stole my money" matched only on `money` and
-      // was filed as a payment question — the theft went unnoticed, because the
+      // was filed as a billing question — the theft went unnoticed, because the
       // past tense of the commonest theft verb in English was not in the list.
       expect(detectMandatoryHumanCategory('Someone stole my money').matchedTerm).toBe('stole');
     });
@@ -179,6 +139,78 @@ describe('detectMandatoryHumanCategory', () => {
       const result = detectMandatoryHumanCategory('Question', description);
       expect(result.category).toBeNull();
       expect(result.matchedTerm).toBeNull();
+    });
+  });
+
+  describe('English only — and honest about it', () => {
+    // Founder decision 2026-09-11. The gate reads English; a message it cannot
+    // confidently read goes to a person rather than being guessed at. That
+    // second half is what makes the first half safe: without it, English-only
+    // would mean "An sace kudina" — my money was stolen — reaching automation.
+    it.each([
+      ['Hausa, money', 'An sace kudina'],
+      ['Hausa, safety', 'Taimake ni, akwai hatsari'],
+      ['Hausa, ordinary', 'Ina bukatar odar abinci'],
+      ['Hausa with hooked letters', 'Ina son ku\u0257ina'],
+      [
+        'non-Latin script',
+        '\u0644\u0642\u062f \u0633\u0631\u0642\u0648\u0627 \u0623\u0645\u0648\u0627\u0644\u064a',
+      ],
+    ])('sends %s to a person instead of guessing', (_label, text) => {
+      const result = detectMandatoryHumanCategory(text);
+      expect(result.notConfidentlyEnglish).toBe(true);
+      expect(requiresHuman(result)).toBe(true);
+    });
+
+    it.each([
+      ['an ordinary bug report', 'The app crashes when I open my trip history'],
+      ['a short bug report with no function word', 'App crashes constantly'],
+      ['a menu question', 'Does this restaurant have a vegetarian option'],
+      ['a delivery question', 'How long until the rider reaches my address'],
+    ])('reads %s as English and lets it through', (_label, text) => {
+      const result = detectMandatoryHumanCategory(text);
+      expect(result.notConfidentlyEnglish).toBe(false);
+      expect(requiresHuman(result)).toBe(false);
+    });
+
+    it('reads Nigerian Pidgin as English, and its money words still fire', () => {
+      // Pidgin shares English function words and most of its money and safety
+      // vocabulary, so it is read rather than deferred — and the lexicon catches
+      // what matters in it.
+      const money = detectMandatoryHumanCategory('Dem charge me but the money no enter');
+      expect(money.notConfidentlyEnglish).toBe(false);
+      expect(money.category).toBe(SupportCategory.PAYMENT);
+
+      const safety = detectMandatoryHumanCategory('Dem wan kill me inside the car');
+      expect(safety.category).toBe(SupportCategory.SAFETY);
+    });
+
+    it('is not fooled by Hausa words that look like English articles', () => {
+      // "an", "a" and "in" are common Hausa words as well as English ones, and
+      // keeping them as English markers made "An sace kudina" read as English.
+      // They are excluded; ordinary English still passes because a sentence long
+      // enough to judge carries other markers.
+      expect(detectMandatoryHumanCategory('An sace kudina').notConfidentlyEnglish).toBe(true);
+      expect(
+        detectMandatoryHumanCategory('An error occurred in the app').notConfidentlyEnglish,
+      ).toBe(false);
+      expect(
+        detectMandatoryHumanCategory('A driver cancelled my order').notConfidentlyEnglish,
+      ).toBe(false);
+    });
+
+    it('does not judge a message too short to judge', () => {
+      // One or two words carry too little signal, and the lexicon already
+      // catches the ones that matter.
+      expect(detectMandatoryHumanCategory('Refund').notConfidentlyEnglish).toBe(false);
+      expect(detectMandatoryHumanCategory('Refund', 'please').notConfidentlyEnglish).toBe(false);
+    });
+
+    it('still reports money and safety when it cannot read the message', () => {
+      // A term can fire inside text that is otherwise unreadable — "kill me" in
+      // a mixed message. Both facts are recorded; both mean a person.
+      const result = detectMandatoryHumanCategory('Direba na kill me abeg');
+      expect(requiresHuman(result)).toBe(true);
     });
   });
 

@@ -15,7 +15,7 @@ import {
 import { NotificationCenterService } from '../notification-center/notification-center.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { detectMandatoryHumanCategory } from './safety/support-safety-gate';
+import { detectMandatoryHumanCategory, requiresHuman } from './safety/support-safety-gate';
 import { personaFor } from './support-persona.util';
 import { requiresHumanHandling, SUPPORT_AUDIT_ACTIONS } from './support.constants';
 import { toSupportTicketDto } from './support.mapper';
@@ -110,11 +110,12 @@ export class SupportService {
         category: dto.category,
         subject,
         description,
-        requiresHumanHandling: requiresHumanHandling(dto.category) || gate.category !== null,
+        requiresHumanHandling: requiresHumanHandling(dto.category) || requiresHuman(gate),
         // What the platform concluded it was, recorded beside the above rather
         // than instead of it — the disagreement is the interesting part.
         gateDetectedCategory: gate.category,
         gateMatchedTerm: gate.matchedTerm,
+        gateNotEnglish: gate.notConfidentlyEnglish,
         // Fall back to the account's own details, so Operations is not asking
         // someone who is already unhappy to tell them who they are.
         contactEmail: dto.contactEmail ?? account.email,
@@ -139,6 +140,7 @@ export class SupportService {
           // afterwards, not re-derived from a lexicon that may have changed.
           gateDetectedCategory: ticket.gateDetectedCategory,
           gateMatchedTerm: ticket.gateMatchedTerm,
+          gateNotEnglish: ticket.gateNotEnglish,
         },
       },
     );

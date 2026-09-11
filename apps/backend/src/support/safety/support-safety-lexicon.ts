@@ -3,39 +3,56 @@ import { SupportCategory } from '@prisma/client';
 /**
  * DPX-SUPPORT-002 §4 — the terms the deterministic money/safety gate looks for.
  *
- * Separated from the gate itself because this list is the part that will change
- * most often and needs review by people who are not engineers. The matching
- * mechanism is code; this is closer to policy.
+ * Separated from the gate because this list is the part that changes most often
+ * and needs review by people who are not engineers. The matching mechanism is
+ * code; this is closer to policy.
  *
- * ## Coverage is part of the deliverable
+ * ## English only, deliberately
  *
- * DrippleX operates in Nigeria. A user in Kano describing a payment problem in
- * Hausa, or anyone writing Nigerian Pidgin, must trip this gate exactly as an
- * English speaker does. A gate that works for some users and not others is
- * worse than one that fails for everybody, because it looks like it works.
+ * Founder decision 2026-09-11, amending §4 of the Phase 2 record: this gate is
+ * English only. An earlier draft carried Hausa and Nigerian Pidgin lists, and
+ * they were withdrawn because they were not good enough to be trusted with the
+ * job. Testing them found that "Ina bukatar taimako da odar na" — I need help
+ * with my order — was classified as a physical emergency, along with "I spent a
+ * lot of money" and "turn off the light". A gate that sends most ordinary
+ * messages in a language to the emergency queue does not protect the people who
+ * speak it; it just makes the queue useless and looks like coverage.
  *
- * ## Provenance, stated honestly
+ * A list nobody qualified has checked is not safety work. Better a small,
+ * precise gate that is honest about what it covers.
  *
- * The English list is written with confidence. The Hausa and Pidgin lists are a
- * defensible starting point, not a finished one, and they are the reason this
- * file exists separately: **they need review by native speakers before anyone
- * should describe this gate as complete.** That review is tracked as a Phase 2
- * acceptance item, not quietly assumed. Under-coverage here is a silent
- * failure — nothing errors, a real money or safety problem simply reaches
- * automation instead of a person.
+ * ## What this costs, stated plainly
+ *
+ * DrippleX operates in Nigeria. Somebody writing "An sace kudina" — my money
+ * was stolen — gets no safety routing from this gate at all.
+ *
+ * Today that costs nothing, because Phase 1 sends every support ticket to a
+ * human regardless: the gate decides which queue, not whether a person sees it.
+ * The moment it starts mattering is the moment Drip AI can answer a ticket
+ * without a person, and at that moment an unreviewed language is a Hausa
+ * speaker's stolen-money report being handled by a bot while an English
+ * speaker's reaches a person.
+ *
+ * So: Hausa and Nigerian Pidgin coverage, reviewed by native speakers, is a
+ * prerequisite for Drip AI going live — not for this gate shipping. That
+ * sequencing is the whole reason it is safe to be English only now.
  *
  * ## Over-triggering is the intended bias
  *
  * A false positive sends a resolvable question to a human. A false negative
- * lets automation near somebody's money or safety. These are not comparable
- * costs, so terms are included when they are *plausibly* about money or safety,
- * not only when they are certainly about it. This list must never be trimmed to
- * improve deflection rate, AI containment or cost per ticket (§4, LOCKED).
+ * lets automation near somebody's money or safety. Not comparable costs, so
+ * terms are included when they are plausibly about money or safety, not only
+ * when they are certainly about it. This list must never be trimmed to improve
+ * deflection rate, AI containment or cost per ticket (§4, LOCKED).
  */
 
-/** Terms that mean a conversation is about money. */
+/**
+ * Money — a payment, a balance, a charge that went wrong.
+ *
+ * The language of a disputed amount, not of a crime. Theft lives in the safety
+ * list below.
+ */
 const MONEY_TERMS: readonly string[] = [
-  // --- English ---
   'money',
   'cash',
   'payment',
@@ -100,21 +117,11 @@ const MONEY_TERMS: readonly string[] = [
   'dx points',
   'voucher',
   'coupon',
-  // Theft words have MOVED to the safety list. Founder decision 2026-09-11:
-  // safety outranks financial classification whenever the wording indicates
-  // theft, robbery, fraud, coercion or unauthorised taking — even when the
-  // object is money.
-  //
-  // What stays here is the language of a disputed charge rather than of a crime,
-  // and the distinction is deliberate: not every mention of fraud is an
-  // emergency. "Is this merchant a scam?" and "I was cheated on the price" are
-  // Payments questions, and routing them to the safety queue would dilute it
-  // until the real emergencies are hard to find — the same failure the Hausa
-  // word for "help" is currently causing.
-  //
-  // These four are flagged for the lexicon review as genuinely uncertain: they
-  // sit on the line between a dispute and an allegation, and which side they
-  // fall on depends on how people actually use them, not on what they denote.
+
+  // On the line between a dispute and an allegation, and left here on purpose.
+  // "Is this merchant a scam?" and "I was cheated on the price" are Payments
+  // questions. Routing every mention of fraud to the safety queue would dilute
+  // it until real emergencies are hard to find.
   'fraud',
   'fraudulent',
   'scam',
@@ -123,73 +130,16 @@ const MONEY_TERMS: readonly string[] = [
   'duped',
   'short-changed',
   'shortchanged',
-
-  // --- Nigerian Pidgin ---
-  // Written as phrases because the individual words ("enter", "go", "collect")
-  // are far too common to match on their own.
-  'my money',
-  'our money',
-  'money no enter',
-  'e no enter',
-  'no enter my account',
-  'money don go',
-  'money don disappear',
-  'dem charge me',
-  'dem don charge me',
-  'dem collect my money',
-  'dem take my money',
-  'dem debit me',
-  'dem don debit me',
-  'dem thief my money',
-  'dem tief my money',
-  'dem no pay me',
-  'dem never pay me',
-  'i never receive',
-  'i no receive',
-  'i no see my money',
-  'e remove my money',
-  'wetin happen to my money',
-  'where my money',
-  'give me my money',
-  'return my money',
-  'pay me my money',
-
-  // --- Hausa ---
-  // Diacritics are stripped before matching (see normalise() in the gate), so
-  // the hooked letters are written here in their plain form: kudi/kudina for
-  // kuɗi/kuɗina. Both spellings therefore match.
-  'kudi', // money
-  'kudina', // my money
-  'kudi na', // my money (spaced)
-  'kudinmu', // our money
-  'banki', // bank
-  'asusu', // account
-  'biya', // pay / payment
-  'biyan', // payment (construct)
-  'an biya', // it was paid
-  'ba a biya ba', // it was not paid
-  'ba a biya ni ba', // I was not paid
-  'an cire', // it was deducted / withdrawn
-  'cire kudi', // withdraw money
-  'an cire kudi', // money was deducted
-  'sata', // theft
-  'an sace', // it was stolen
-  'barawo', // thief
-  'damfara', // fraud / swindle
-  'ba ni kudina', // give me my money
-  'kudina ya bata', // my money is lost
-  'ya bata', // it is lost / spoiled
 ];
 
 /**
- * Terms that mean a conversation is about someone's physical safety.
+ * Safety — somebody's physical safety, and money somebody else took.
  *
- * Deliberately broader than "crime". A person describing an accident, a threat,
- * a medical emergency or fear of a driver is a safety case whatever category
- * they picked from a dropdown.
+ * Deliberately broader than "crime": an accident, a threat, a medical emergency
+ * or fear of a driver is a safety case whatever category was picked from a
+ * dropdown.
  */
 const SAFETY_TERMS: readonly string[] = [
-  // --- English ---
   'accident',
   'crash',
   'collision',
@@ -263,17 +213,16 @@ const SAFETY_TERMS: readonly string[] = [
 
   // Theft, and money moved by somebody else without permission.
   //
-  // Founder decision 2026-09-11. The gate is a risk-escalation boundary, not a
-  // final support-team classifier: somebody saying their money was taken may be
-  // describing a compromised account, coercion, or a person still standing in
-  // front of them. Payments can pick it up afterwards if that is all it was; the
-  // reverse — finding out too late that a payment ticket was a robbery — is not
-  // recoverable in the same way.
+  // Founder decision 2026-09-11: safety outranks financial classification when
+  // the wording says SOMEBODY TOOK IT, not merely that an amount is wrong. The
+  // gate is a risk-escalation boundary, not a final support-team classifier —
+  // somebody saying their money was taken may be describing a compromised
+  // account, coercion, or a person still standing in front of them. Payments can
+  // pick it up afterwards; the reverse, finding out too late that a payment
+  // ticket was a robbery, is not recoverable the same way.
   //
-  // The line drawn here is "somebody took it" rather than "the amount is wrong".
-  // "I did not authorise this charge" stays a Payments matter and is not listed:
-  // it already reaches a human through `charge`, and it is the ordinary wording
-  // of a chargeback, not of a theft.
+  // "I did not authorise this charge" is deliberately absent: the ordinary
+  // wording of a chargeback, and it already reaches a human through `charge`.
   'steal',
   'steals',
   'stealing',
@@ -291,8 +240,9 @@ const SAFETY_TERMS: readonly string[] = [
   'without my consent',
   'without consent',
   'without my approval',
-  // Account compromise, named in the decision as a safety matter. The bare word
-  // "compromised" is deliberately absent — too broad on its own.
+
+  // Account compromise. The bare word "compromised" is deliberately absent —
+  // too broad on its own.
   'hacked',
   'hacker',
   'account was hacked',
@@ -301,71 +251,19 @@ const SAFETY_TERMS: readonly string[] = [
   'someone accessed my account',
   'someone used my account',
   'someone is using my account',
-
-  // --- Nigerian Pidgin ---
-  'dem wan kill me',
-  'dem wan harm me',
-  'dem beat me',
-  'e beat me',
-  'i dey fear',
-  'i dey fear for my life',
-  'e dey threaten me',
-  'dem threaten me',
-  'e wound me',
-  'i wound',
-  'na wa o',
-  'dem carry me go',
-  'dem lock me',
-  'e no gree stop',
-  'e no gree make i comot',
-  'make i comot',
-  'i wan comot',
-  'help me abeg',
-  'abeg help',
-  'e dey chase me',
-  'dem dey follow me',
-
-  // --- Hausa ---
-  // (diacritics stripped before matching)
-  'hatsari', // accident / danger
-  'hadari', // accident / danger (also 'storm')
-  'taimaka', // help (verb)
-  'taimake ni', // help me
-  'taimako', // help (noun)
-  'ceto', // rescue
-  'ku taimake ni', // help me (plural/polite)
-  'ina tsoro', // I am afraid
-  'tsoro', // fear
-  'tsaro', // security
-  'yan sanda', // police
-  'asibiti', // hospital
-  'rauni', // injury / wound
-  'ya ji rauni', // he/she was injured
-  'na ji rauni', // I was injured
-  'bindiga', // gun
-  'wuka', // knife
-  'fyade', // rape
-  'garkuwa', // kidnapping / hostage-taking
-  'sace', // abduct / steal
-  'an sace ni', // I was abducted
-  'kashe', // kill
-  'zai kashe ni', // he will kill me
-  'suna binni', // they are following me
-  'mutuwa', // death
 ];
 
 /**
  * The gate's term table.
  *
- * WALLET is not given its own list. Wallet problems are money problems, they
- * are described in the same words, and splitting them would mean deciding
- * whether "my balance is wrong" is PAYMENT or WALLET before a human has looked
- * — a distinction that changes nothing, because both are mandatory-human. Money
- * terms therefore resolve to PAYMENT, and the declared category is preserved
- * separately for anyone who wants to know what the user themselves called it.
+ * WALLET has no list of its own. Wallet problems are money problems, described
+ * in the same words, and splitting them would mean deciding whether "my balance
+ * is wrong" is PAYMENT or WALLET before a human has looked — a distinction that
+ * changes nothing, because both are mandatory-human. Money terms resolve to
+ * PAYMENT, and the category the user declared is preserved separately.
  *
- * Order matters: SAFETY is checked first in the gate, because a message that
- * mentions both a robbery and the money taken is a safety case.
+ * Order matters: SAFETY is checked first, so a message describing a robbery and
+ * the money taken is a safety case.
  */
 export const SAFETY_GATE_TERMS: readonly {
   category: SupportCategory;

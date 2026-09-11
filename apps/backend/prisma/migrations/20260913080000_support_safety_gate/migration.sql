@@ -14,7 +14,13 @@
 -- Purely additive. No existing column is altered and no row is rewritten.
 ALTER TABLE "support_tickets"
   ADD COLUMN "gate_detected_category" "SupportCategory",
-  ADD COLUMN "gate_matched_term"      VARCHAR(120);
+  ADD COLUMN "gate_matched_term"      VARCHAR(120),
+  -- The gate reads English only. A message it cannot confidently read is
+  -- human-handled with no detected category: the answer to a language we do not
+  -- read is "a person will look at this", never a guess. FALSE for every row
+  -- written before the gate existed, which is correct -- they were all read by a
+  -- person anyway.
+  ADD COLUMN "gate_not_english"       BOOLEAN NOT NULL DEFAULT false;
 
 -- Operations filters the queue on "what did the platform decide", which is a
 -- different question from the declared category the Phase 1 index already

@@ -1,5 +1,6 @@
 import { type SupportCategory } from '@prisma/client';
 
+import { isNotConfidentlyEnglish } from './support-english';
 import { SAFETY_GATE_TERMS } from './support-safety-lexicon';
 
 /**
@@ -52,10 +53,8 @@ export function normalise(text: string): string {
       .normalize('NFD')
       // Combining diacritical marks, left behind by NFD.
       .replace(/[̀-ͯ]/g, '')
-      // Hausa hooked consonants and the glottal apostrophe do not decompose.
-      .replace(/[ɗƊ]/g, 'd')
-      .replace(/[ƙƘ]/g, 'k')
-      .replace(/[ɓƁ]/g, 'b')
+      // Apostrophes close up rather than splitting a word, so "didn't" becomes
+      // "didnt" and both spellings match one term.
       .replace(/[’'ʼ]/g, '')
       // Everything that is not a letter, digit or the naira sign becomes a space,
       // so terms are found on word boundaries without a regex per term.
@@ -113,6 +112,16 @@ export interface SafetyGateResult {
   /** The term that fired, kept for the audit record so a decision about
    *  somebody's money can be explained afterwards rather than re-guessed. */
   matchedTerm: string | null;
+  /** True when the message is not confidently English. The gate reads English
+   *  only, and a message it cannot read goes to a person rather than being
+   *  guessed at — see `support-english.ts`. */
+  notConfidentlyEnglish: boolean;
+}
+
+/** Does this result mean a person must handle the ticket? Either the gate found
+ *  money or safety wording, or it could not read the message at all. */
+export function requiresHuman(result: SafetyGateResult): boolean {
+  return result.category !== null || result.notConfidentlyEnglish;
 }
 
 /**
@@ -124,12 +133,13 @@ export interface SafetyGateResult {
 export function detectMandatoryHumanCategory(
   ...parts: (string | null | undefined)[]
 ): SafetyGateResult {
-  const normalised = normalise(
-    parts.filter((part): part is string => typeof part === 'string').join(' '),
-  );
+  const raw = parts.filter((part): part is string => typeof part === 'string').join(' ');
+  const normalised = normalise(raw);
   if (normalised.length === 0) {
-    return { category: null, matchedTerm: null };
+    return { category: null, matchedTerm: null, notConfidentlyEnglish: false };
   }
+
+  const notEnglish = isNotConfidentlyEnglish(raw, normalised);
 
   const words = normalised.split(' ');
   const padded = ` ${normalised} `;
@@ -140,15 +150,15 @@ export function detectMandatoryHumanCategory(
     for (const word of words) {
       const original = lexiconWords.get(word);
       if (original !== undefined) {
-        return { category, matchedTerm: original };
+        return { category, matchedTerm: original, notConfidentlyEnglish: notEnglish };
       }
     }
     for (const phrase of phrases) {
       if (padded.includes(` ${phrase.normalised} `)) {
-        return { category, matchedTerm: phrase.original };
+        return { category, matchedTerm: phrase.original, notConfidentlyEnglish: notEnglish };
       }
     }
   }
 
-  return { category: null, matchedTerm: null };
+  return { category: null, matchedTerm: null, notConfidentlyEnglish: notEnglish };
 }
