@@ -25,6 +25,8 @@ export const LOYALTY_AUDIT_ACTIONS = {
   REDEMPTION_CODE_ISSUED: 'loyalty.redemption_code_issued',
   REDEMPTION_CODE_CANCELLED: 'loyalty.redemption_code_cancelled',
   MERCHANT_REDEEMED: 'loyalty.merchant_redeemed',
+  REWARD_REDEEMED: 'loyalty.reward_redeemed',
+  REWARD_FULFILMENT_UPDATED: 'loyalty.reward_fulfilment_updated',
 } as const;
 
 export const LOYALTY_EVENT_POINTS = {
@@ -89,6 +91,7 @@ export const LOYALTY_REFERENCE_TYPES = {
   ACHIEVEMENT: 'ACHIEVEMENT',
   EXPIRATION: 'POINT_EXPIRATION',
   STORE_REDEMPTION: 'STORE_REDEMPTION',
+  REWARD: 'REWARD',
 } as const;
 
 /**

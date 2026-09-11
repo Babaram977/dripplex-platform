@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -120,4 +121,38 @@ export class RedeemStoreCodeDto {
   @IsString()
   @MaxLength(32)
   public code!: string;
+}
+
+export class RedeemRewardDto {
+  /**
+   * The caller's own key, unique per holder. It is what makes a retry safe: two
+   * taps on a slow connection are one redemption rather than two, enforced by a
+   * unique index rather than by hope.
+   */
+  @IsString()
+  @MaxLength(100)
+  public idempotencyKey!: string;
+}
+
+export class AdvanceFulfilmentDto {
+  @IsIn([
+    'FULFILMENT_PENDING',
+    'PROCESSING',
+    'READY_FOR_COLLECTION',
+    'SHIPPED',
+    'DELIVERED',
+    'CANCELLED',
+  ])
+  public status!:
+    | 'FULFILMENT_PENDING'
+    | 'PROCESSING'
+    | 'READY_FOR_COLLECTION'
+    | 'SHIPPED'
+    | 'DELIVERED'
+    | 'CANCELLED';
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  public note?: string;
 }

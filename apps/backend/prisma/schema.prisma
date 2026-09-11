@@ -589,6 +589,7 @@ model User {
   loyaltyAccount              LoyaltyAccount?
   userAchievements            UserAchievement[]
   loyaltyRedemptionCodes      LoyaltyRedemptionCode[]
+  loyaltyRewardRedemptions    LoyaltyRewardRedemption[]
   cmsContentVersions          CmsContentVersion[]          @relation("CmsContentVersionCreator")
   fraudSignals                FraudSignal[]                @relation("FraudSignalUser")
   fraudReviews                FraudSignal[]                @relation("FraudSignalReviewer")
@@ -3679,14 +3680,14 @@ model LoyaltyRedemptionCode {
   /// on the holder's own till code is what ties it to the person who chose it.
   couponCode String? @map("coupon_code") @db.VarChar(50)
 
-  expiresAt  DateTime  @map("expires_at")
-  redeemedAt DateTime? @map("redeemed_at")
+  expiresAt     DateTime  @map("expires_at")
+  redeemedAt    DateTime? @map("redeemed_at")
   /// The merchant User who took it.
-  redeemedBy  String?   @map("redeemed_by") @db.Uuid
-  cancelledAt DateTime? @map("cancelled_at")
+  redeemedBy    String?   @map("redeemed_by") @db.Uuid
+  cancelledAt   DateTime? @map("cancelled_at")
   /// The negative LoyaltyLedgerEntry this produced — the audit link between the
   /// points that left and the naira that arrived.
-  ledgerEntryId String? @map("ledger_entry_id") @db.Uuid
+  ledgerEntryId String?   @map("ledger_entry_id") @db.Uuid
 
   createdAt DateTime @default(now()) @map("created_at")
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -3695,6 +3696,132 @@ model LoyaltyRedemptionCode {
   @@index([redeemedBy])
   @@index([expiresAt])
   @@map("loyalty_redemption_codes")
+}
+
+/// What a DX Points reward actually gives.
+///
+/// Nora's specification, 2026-09-11: points are a loyalty unit, not naira. A
+/// reward is an *entitlement* the holder earns by spending points — a coupon, a
+/// free delivery, a gift — never a cash payout.
+enum LoyaltyRewardType {
+  DISCOUNT_COUPON
+  FREE_DELIVERY
+  PHYSICAL_GIFT
+  WALLET_BENEFIT
+  SERVICE_BENEFIT
+}
+
+/// Where a redemption has got to.
+///
+/// A physical gift is not finished because the points came off — it still has
+/// to reach somebody. Digital rewards go straight to FULFILLED; anything
+/// posted or collected moves through the fulfilment states, and Operations can
+/// see which are outstanding.
+enum LoyaltyRedemptionStatus {
+  FULFILLED
+  FULFILMENT_PENDING
+  PROCESSING
+  READY_FOR_COLLECTION
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+/// DPX-LOYALTY-004 — one row in the DX Points rewards catalogue.
+///
+/// Founder decision 2026-09-11: redemption thresholds "be like 10k 25k 50k".
+/// They are rows here rather than constants precisely so Operations can add
+/// 5,000 or 75,000 or 100,000 without a deployment — and so the thresholds are
+/// never mistaken for naira. 10,000 DX Points is ten thousand points, not
+/// ₦10,000.
+model LoyaltyReward {
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(150)
+  description String?           @db.Text
+  type        LoyaltyRewardType
+  /// What it costs in DX Points. The "threshold" in 10k/25k/50k.
+  pointsCost  Int               @map("points_cost")
+
+  /// What the reward is worth where that is meaningful: the naira face value of
+  /// a coupon, or the cap on a percentage discount. Never a payout — a reward
+  /// is an entitlement, and points are not cash.
+  monetaryValue      Decimal? @map("monetary_value") @db.Decimal(12, 2)
+  discountPercentage Decimal? @map("discount_percentage") @db.Decimal(5, 2)
+  maxDiscount        Decimal? @map("max_discount") @db.Decimal(12, 2)
+
+  /// Null is unlimited. A finite stock is decremented atomically at redemption,
+  /// so a gift cannot be promised to more people than exist.
+  stockQuantity        Int? @map("stock_quantity")
+  /// How many times one holder may take this reward. Null is unlimited.
+  perUserLimit         Int? @map("per_user_limit")
+  /// How many times it may be taken in total. Null is unlimited.
+  totalRedemptionLimit Int? @map("total_redemption_limit")
+  redeemedCount        Int  @default(0) @map("redeemed_count")
+
+  /// How long the entitlement lasts once taken, in days. Null never expires.
+  entitlementDays Int? @map("entitlement_days")
+
+  startsAt DateTime? @map("starts_at")
+  endsAt   DateTime? @map("ends_at")
+  active   Boolean   @default(true)
+
+  createdBy String?  @map("created_by") @db.Uuid
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  redemptions LoyaltyRewardRedemption[]
+
+  @@index([active, pointsCost])
+  @@map("loyalty_rewards")
+}
+
+/// One holder taking one reward.
+///
+/// The points ledger records the points leaving; this records what they bought
+/// and whether it has reached the person. The two are written in the same
+/// transaction, so an entitlement without a debit — or a debit without an
+/// entitlement — cannot exist.
+model LoyaltyRewardRedemption {
+  id       String @id @default(uuid()) @db.Uuid
+  rewardId String @map("reward_id") @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+
+  /// Snapshotted, not read back from the reward. Operations re-pricing a
+  /// reward must not rewrite what somebody already paid for it.
+  pointsSpent   Int               @map("points_spent")
+  rewardType    LoyaltyRewardType @map("reward_type")
+  monetaryValue Decimal?          @map("monetary_value") @db.Decimal(12, 2)
+
+  status LoyaltyRedemptionStatus @default(FULFILLED)
+
+  /// The negative LoyaltyLedgerEntry that paid for this — the audit link
+  /// between the points that left and the entitlement that arrived.
+  ledgerEntryId String? @map("ledger_entry_id") @db.Uuid
+  /// A coupon minted for this redemption, where the reward grants one.
+  promotionId   String? @map("promotion_id") @db.Uuid
+
+  /// When the entitlement lapses, if it does.
+  expiresAt      DateTime? @map("expires_at")
+  fulfilledAt    DateTime? @map("fulfilled_at")
+  /// Free text Operations uses while a physical gift is in flight.
+  fulfilmentNote String?   @map("fulfilment_note") @db.VarChar(500)
+
+  /// The caller's own key. Two taps on a slow connection are one redemption,
+  /// not two, and the unique index is what makes that true rather than likely.
+  idempotencyKey String @map("idempotency_key") @db.VarChar(100)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  reward LoyaltyReward @relation(fields: [rewardId], references: [id], onDelete: Restrict)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([rewardId])
+  @@map("loyalty_reward_redemptions")
 }
 
 model LoyaltyAchievement {
