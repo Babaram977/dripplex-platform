@@ -293,6 +293,11 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
   },
   {
+    code: 'operations:finance:read',
+    description:
+      'View the settlements and payout-request queue across every persona, and referral performance',
+  },
+  {
     code: 'messaging:use',
     description:
       'Read and send messages on a delivery or ride the caller is a party to (DPX-CHAT-001)',

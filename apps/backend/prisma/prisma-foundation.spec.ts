@@ -136,7 +136,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // shop; the second is the merchant side of the same transaction, and the
     // two are deliberately not one permission — generating an authorisation
     // over your own points and taking somebody else's are opposite ends of it.
-    expect(PERMISSION_SEEDS).toHaveLength(147);
+    // 147 -> 148: `operations:finance:read` (DPX-OPS). Its own permission
+    // rather than reusing ANALYTICS_READ, which is aggregate operating data —
+    // this names individual partners, what they are owed and what they have
+    // earned. Read-only: approving a payout stays on the withdrawal and
+    // fleet-settlement endpoints, so an operator can be given the queue
+    // without being given the ability to pay anybody.
+    expect(PERMISSION_SEEDS).toHaveLength(148);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
@@ -147,6 +153,7 @@ describe('Prisma schema foundation (S1-C1)', () => {
         'admin:commission-campaign:manage',
         'loyalty:redemption-code:create',
         'merchant:loyalty:redeem',
+        'operations:finance:read',
       ]),
     );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(

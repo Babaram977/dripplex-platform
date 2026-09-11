@@ -772,6 +772,101 @@ export interface ListReferralFraudChecksQuery {
  * order volume and settles once the month closes, so a week-long campaign has
  * no well-defined meaning against it.
  */
+/**
+ * DPX-OPS — who is asking DrippleX for money. Not a column anywhere: a
+ * withdrawal's persona comes from the wallet it is drawn on, and a fleet
+ * settlement request is a fleet by construction.
+ */
+export type PayoutRequesterType = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+/**
+ * A payout is a partner drawing down a wallet balance they already hold; a
+ * fleet receivable is DrippleX owing a fleet for work its riders did, which has
+ * not been paid into any wallet yet. Different obligations, not labels.
+ */
+export type PayoutRequestKind = 'WALLET_PAYOUT' | 'FLEET_RECEIVABLE';
+
+export type PayoutRequestStatus =
+  'PENDING' | 'APPROVED' | 'PROCESSING' | 'PAID' | 'REJECTED' | 'CANCELLED';
+
+export interface OperationsPayoutRequestDto {
+  id: string;
+  kind: PayoutRequestKind;
+  requesterType: PayoutRequesterType;
+  requesterUserId: string;
+  requesterName: string;
+  /** A fleet's DX number, so Operations can quote it back. Null otherwise. */
+  requesterReference: string | null;
+  amount: number;
+  currency: string;
+  status: PayoutRequestStatus;
+  requestedAt: string;
+  resolvedAt: string | null;
+  note: string | null;
+  /** Which endpoint actions this request — the two kinds differ. */
+  actionPath: string;
+}
+
+export interface OperationsPayoutQueueSummaryDto {
+  pendingCount: number;
+  pendingAmount: number;
+  pendingByRequester: { requesterType: PayoutRequesterType; count: number; amount: number }[];
+}
+
+export interface OperationsPayoutQueueQuery {
+  page?: number;
+  pageSize?: number;
+  requesterType?: PayoutRequesterType;
+  status?: PayoutRequestStatus;
+}
+
+/** The personas that actually have a referral code today. */
+export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER';
+
+export interface ReferralPersonaPerformanceDto {
+  persona: ReferralPersona;
+  referrers: number;
+  activeReferrers: number;
+  redemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+  /** rewarded / redemptions — what converted, not what was clicked. */
+  conversionRate: number;
+}
+
+export interface ReferralPerformerDto {
+  userId: string;
+  name: string;
+  persona: ReferralPersona;
+  code: string;
+  redemptions: number;
+  rewardedRedemptions: number;
+  /** Driver Growth Campaign only. Null — not zero — for personas without one. */
+  rewardAmountEarned: number | null;
+  rewardAmountUnpaid: number | null;
+}
+
+export interface DriverCampaignPerformanceDto {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  participatingDrivers: number;
+  registeredPassengers: number;
+  qualifiedPassengers: number;
+  rewardsPending: { count: number; amount: number };
+  rewardsApproved: { count: number; amount: number };
+  rewardsPaid: { count: number; amount: number };
+}
+
+export interface OperationsReferralOverviewDto {
+  personas: ReferralPersonaPerformanceDto[];
+  driverCampaigns: DriverCampaignPerformanceDto[];
+  /** Personas with no referral programme at all — named, not shown as zeroes. */
+  personasWithoutProgramme: string[];
+}
+
 export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE';
 
 export type CommissionCampaignStatus =

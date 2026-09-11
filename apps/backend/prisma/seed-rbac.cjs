@@ -324,6 +324,11 @@ const PERMISSION_SEEDS = [
       'Read the completed record of rides, deliveries, orders and utility purchases in the Operations Console — for audit, dispute resolution and security enquiries',
   },
   {
+    code: 'operations:finance:read',
+    description:
+      'View the settlements and payout-request queue across every persona, and referral performance',
+  },
+  {
     code: 'admin:rides:pricing:manage',
     description: 'Edit the ride fare table and surcharge zones in the Operations Console',
   },
@@ -562,6 +567,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'operations:finance:read',
     'admin:fleets:manage',
     'admin:fleets:commission:manage',
     'admin:commission-campaign:read',
@@ -636,6 +642,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'operations:finance:read',
     'admin:fleets:manage',
     'admin:fleets:commission:manage',
     'users:read',
@@ -762,6 +769,7 @@ const ROLE_PERMISSION_GRANTS = {
     'operations:queues:manage',
     'operations:analytics:read',
     'operations:history:read',
+    'operations:finance:read',
     'admin:fleets:manage',
     'admin:fleets:commission:manage',
     'users:read',

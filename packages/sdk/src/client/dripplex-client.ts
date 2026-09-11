@@ -44,6 +44,7 @@ import {
 import { OperationsAnalyticsClient } from '../operations/operations-analytics-client.js';
 import { OperationsCasesClient } from '../operations/operations-cases-client.js';
 import { OperationsDashboardClient } from '../operations/operations-dashboard-client.js';
+import { OperationsFinanceClient } from '../operations/operations-finance-client.js';
 import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
 import { OperationsHistoryClient } from '../operations/operations-history-client.js';
 import { OperationsQueuesClient } from '../operations/operations-queues-client.js';
@@ -131,6 +132,7 @@ export class DripplexClient {
   public readonly adminCommissionCampaigns: AdminCommissionCampaignsClient;
   public readonly adminUtilities: AdminUtilitiesClient;
   public readonly operationsInspections: OperationsInspectionsClient;
+  public readonly operationsFinance: OperationsFinanceClient;
   public readonly operationsFleet: OperationsFleetClient;
   public readonly adminCommercialCreditSettings: AdminCommercialCreditSettingsClient;
   public readonly adminPlatformCommissionSettings: AdminPlatformCommissionSettingsClient;
@@ -216,6 +218,7 @@ export class DripplexClient {
     this.adminCommissionCampaigns = new AdminCommissionCampaignsClient(this.http);
     this.adminUtilities = new AdminUtilitiesClient(this.http);
     this.operationsInspections = new OperationsInspectionsClient(this.http);
+    this.operationsFinance = new OperationsFinanceClient(this.http);
     this.operationsFleet = new OperationsFleetClient(this.http);
     this.adminCommercialCreditSettings = new AdminCommercialCreditSettingsClient(this.http);
     this.adminPlatformCommissionSettings = new AdminPlatformCommissionSettingsClient(this.http);
