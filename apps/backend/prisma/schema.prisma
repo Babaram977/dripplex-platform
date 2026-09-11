@@ -3713,10 +3713,46 @@ model LoyaltyAccount {
   @@map("loyalty_accounts")
 }
 
+/// DPX-LOYALTY-006 — what a line on the DX Points ledger *is*.
+///
+/// Nora's policy, 2026-09-11: "DX Points are a separate auditable ledger" with
+/// states EARNED / BONUS / REDEEMED / EXPIRED / REVERSED / ADJUSTED.
+///
+/// Before this the only thing distinguishing one line from another was the sign
+/// of `points` and a free-text `referenceType`, which meant every question an
+/// auditor actually asks — how much was given away as bonuses, how much was
+/// clawed back, how much did support hand out by hand — could only be answered
+/// by pattern-matching strings.
+enum LoyaltyLedgerEntryType {
+  /// Earned by doing the thing the programme rewards: an order, a delivery, a
+  /// completed job.
+  EARNED
+  /// Given rather than earned — a milestone achievement, a campaign sweetener.
+  /// Separated from EARNED because the two answer different questions: one is
+  /// the cost of the programme working, the other is the cost of promoting it.
+  BONUS
+  /// Spent by the holder. Negative.
+  REDEEMED
+  /// Aged out under the 365-day rule. Negative, and nobody chose it.
+  EXPIRED
+  /// Taken back because what earned them was undone — a refunded order. Negative
+  /// and distinct from REDEEMED, because the holder did not spend these.
+  REVERSED
+  /// A human at Operations moved the balance by hand. Either direction, always
+  /// with a reason, and deliberately its own state so it can be counted.
+  ADJUSTED
+}
+
 model LoyaltyLedgerEntry {
-  id            String         @id @default(uuid()) @db.Uuid
-  accountId     String         @map("account_id") @db.Uuid
-  points        Int
+  id        String @id @default(uuid()) @db.Uuid
+  accountId String @map("account_id") @db.Uuid
+  points    Int
+
+  /// DPX-LOYALTY-006 — what kind of line this is. Defaulted to EARNED for the
+  /// rows that predate it, then corrected by the migration from the sign and
+  /// reference type each one actually carries.
+  type LoyaltyLedgerEntryType @default(EARNED)
+
   reason        String         @db.VarChar(255)
   referenceType String?        @map("reference_type") @db.VarChar(100)
   referenceId   String?        @map("reference_id") @db.Uuid
@@ -3728,6 +3764,9 @@ model LoyaltyLedgerEntry {
   @@index([accountId, createdAt])
   @@index([referenceType, referenceId])
   @@index([expiresAt])
+  /// "How much has this programme given away as bonuses this month" is a
+  /// question Operations asks of the whole ledger, not of one account.
+  @@index([type, createdAt])
   @@map("loyalty_ledger_entries")
 }
 

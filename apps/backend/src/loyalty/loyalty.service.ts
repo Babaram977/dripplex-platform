@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LoyaltyTier, Prisma, WalletOwnerType } from '@prisma/client';
+import { LoyaltyLedgerEntryType, LoyaltyTier, Prisma, WalletOwnerType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -129,6 +129,13 @@ export interface AwardPointsInput {
   referenceType?: string;
   referenceId?: string;
   expiresAt?: Date | null;
+  /**
+   * DPX-LOYALTY-006 — EARNED by default, because that is what the overwhelming
+   * majority of awards are. BONUS is for points given rather than earned, and
+   * the distinction is what lets Operations separate the cost of the programme
+   * working from the cost of promoting it.
+   */
+  type?: LoyaltyLedgerEntryType;
   context?: AuditContext;
 }
 
@@ -303,6 +310,7 @@ export class LoyaltyService {
         data: {
           accountId: existing.id,
           points: input.points,
+          type: input.type ?? LoyaltyLedgerEntryType.EARNED,
           reason: input.reason,
           referenceType: input.referenceType ?? null,
           referenceId: input.referenceId ?? null,
@@ -433,6 +441,7 @@ export class LoyaltyService {
         data: {
           accountId: existing.id,
           points: -points,
+          type: LoyaltyLedgerEntryType.REDEEMED,
           reason: `Redeemed for NGN ${String(amount)} wallet credit`,
           referenceType: LOYALTY_REFERENCE_TYPES.REDEMPTION,
           referenceId: null,
@@ -648,6 +657,7 @@ export class LoyaltyService {
         data: {
           accountId: entry.accountId,
           points: -pointsToExpire,
+          type: LoyaltyLedgerEntryType.EXPIRED,
           reason: 'Expired loyalty points',
           referenceType: LOYALTY_REFERENCE_TYPES.EXPIRATION,
           referenceId: entry.id,
@@ -743,6 +753,7 @@ export class LoyaltyService {
         data: {
           accountId: account.id,
           points: achievement.pointsReward,
+          type: LoyaltyLedgerEntryType.BONUS,
           reason: `Achievement reward: ${achievement.name}`,
           referenceType: LOYALTY_REFERENCE_TYPES.ACHIEVEMENT,
           referenceId: achievement.id,
@@ -828,6 +839,171 @@ export class LoyaltyService {
           : `That would pass the ${String(cap)}-point daily redemption limit — you can redeem ${String(remaining)} more today.`,
       );
     }
+  }
+
+  /**
+   * DPX-LOYALTY-006 — Operations moving a balance by hand.
+   *
+   * Support needs this: points lost to a bug, goodwill after a bad trip, a
+   * duplicate award taken back. It happens today anyway, by an engineer running
+   * SQL, which leaves no audit trail and no state anybody can count. Giving it
+   * an endpoint and its own ledger state makes it visible rather than making it
+   * possible.
+   *
+   * A positive adjustment does **not** raise `lifetimePoints`. Lifetime points
+   * drive the tier, and an operator handing somebody 5,000 points as an apology
+   * must not also hand them a tier they did not earn.
+   *
+   * A negative adjustment is floored at the balance. A loyalty balance must
+   * never go negative: it is not a debt anybody agreed to, and the expiry
+   * allocator assumes lots that sum to the balance.
+   */
+  public async adjustPoints(input: {
+    userId: string;
+    points: number;
+    reason: string;
+    adminUserId: string;
+    context?: AuditContext;
+  }): Promise<{ applied: number; balance: number }> {
+    if (!Number.isInteger(input.points) || input.points === 0) {
+      throw new ValidationDomainException(
+        'An adjustment must be a whole number of points, positive or negative',
+      );
+    }
+    if (input.reason.trim() === '') {
+      throw new ValidationDomainException('An adjustment needs a reason');
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const account = await tx.loyaltyAccount.upsert({
+        where: { userId: input.userId },
+        update: { deletedAt: null },
+        create: { userId: input.userId },
+      });
+
+      const applied =
+        input.points < 0 ? -Math.min(account.pointsBalance, Math.abs(input.points)) : input.points;
+      if (applied === 0) {
+        return { applied: 0, balance: account.pointsBalance };
+      }
+
+      const updated = await tx.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { pointsBalance: { increment: applied } },
+      });
+
+      await tx.loyaltyLedgerEntry.create({
+        data: {
+          accountId: account.id,
+          points: applied,
+          type: LoyaltyLedgerEntryType.ADJUSTED,
+          reason: input.reason.trim().slice(0, 255),
+          referenceType: LOYALTY_REFERENCE_TYPES.ADJUSTMENT,
+          referenceId: null,
+          // Adjusted points expire on the same clock as earned ones; a positive
+          // adjustment that never expired would quietly outlive the policy.
+          expiresAt: applied > 0 ? this.defaultExpiryDate() : null,
+        },
+      });
+
+      return { applied, balance: updated.pointsBalance };
+    });
+
+    await this.auditService.record(
+      LOYALTY_AUDIT_ACTIONS.POINTS_ADJUSTED,
+      { ...(input.context ?? {}), userId: input.adminUserId },
+      {
+        resource: 'loyalty_account',
+        resourceId: input.userId,
+        metadata: {
+          requestedPoints: input.points,
+          appliedPoints: result.applied,
+          reason: input.reason,
+          holderId: input.userId,
+        },
+      },
+    );
+
+    return result;
+  }
+
+  /**
+   * DPX-LOYALTY-006 — take back points awarded for something that was undone.
+   *
+   * A refunded order is the case that exists today: points were awarded when it
+   * was paid, the money went back, and the points stayed. REVERSED rather than
+   * REDEEMED because the holder did not spend these — a statement saying they
+   * did would be wrong, and the two are counted separately.
+   *
+   * Bounded by what is still there. Somebody who has already spent the points
+   * cannot be reversed below zero, and the shortfall is reported rather than
+   * forced: a negative loyalty balance is not a debt anybody agreed to. Like
+   * the referral reversal, that is a real limit of clawing anything back after
+   * it has moved, not something to paper over.
+   *
+   * Idempotent on the reference: replaying a refund event reverses once.
+   */
+  public async reversePointsFor(input: {
+    userId: string;
+    referenceType: string;
+    referenceId: string;
+    reason: string;
+  }): Promise<{ reversed: number; shortfall: number }> {
+    return await this.prisma.$transaction(async (tx) => {
+      const account = await tx.loyaltyAccount.findUnique({ where: { userId: input.userId } });
+      if (account === null) {
+        return { reversed: 0, shortfall: 0 };
+      }
+
+      const [awarded, alreadyReversed] = await Promise.all([
+        tx.loyaltyLedgerEntry.aggregate({
+          where: {
+            accountId: account.id,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+            points: { gt: 0 },
+          },
+          _sum: { points: true },
+        }),
+        tx.loyaltyLedgerEntry.count({
+          where: {
+            accountId: account.id,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+            type: LoyaltyLedgerEntryType.REVERSED,
+          },
+        }),
+      ]);
+
+      const toReverse = awarded._sum.points ?? 0;
+      if (toReverse <= 0 || alreadyReversed > 0) {
+        return { reversed: 0, shortfall: 0 };
+      }
+
+      const reversed = Math.min(account.pointsBalance, toReverse);
+      const shortfall = toReverse - reversed;
+      if (reversed === 0) {
+        return { reversed: 0, shortfall };
+      }
+
+      await tx.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { pointsBalance: { decrement: reversed } },
+      });
+      await tx.loyaltyLedgerEntry.create({
+        data: {
+          accountId: account.id,
+          points: -reversed,
+          type: LoyaltyLedgerEntryType.REVERSED,
+          reason: input.reason.slice(0, 255),
+          referenceType: input.referenceType,
+          referenceId: input.referenceId,
+          expiresAt: null,
+        },
+      });
+
+      return { reversed, shortfall };
+    });
   }
 
   private assertPositivePoints(points: number): void {

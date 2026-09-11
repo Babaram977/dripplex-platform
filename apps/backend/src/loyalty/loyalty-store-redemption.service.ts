@@ -2,6 +2,7 @@ import { createHash, randomInt } from 'node:crypto';
 
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  LoyaltyLedgerEntryType,
   NotificationCategory,
   NotificationChannel,
   NotificationType,
@@ -321,6 +322,7 @@ export class LoyaltyStoreRedemptionService {
 
       const entry = await tx.loyaltyLedgerEntry.create({
         data: {
+          type: LoyaltyLedgerEntryType.REDEEMED,
           accountId: account.id,
           points: -record.points,
           reason: `Spent in store for NGN ${String(amount)}`,

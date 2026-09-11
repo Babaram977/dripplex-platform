@@ -9,6 +9,7 @@ import {
   Matches,
   Max,
   MaxLength,
+  MinLength,
   Min,
 } from 'class-validator';
 
@@ -192,4 +193,17 @@ export class UpdateLoyaltySettingDto {
   @IsInt()
   @Min(1)
   public dailyRedemptionPointsCap?: number | null;
+}
+
+/** DPX-LOYALTY-006 — Operations moving a balance by hand. Always with a reason:
+ *  an adjustment nobody can explain later is indistinguishable from a bug. */
+export class AdjustLoyaltyPointsDto {
+  /** Positive gives, negative takes back. Never zero. */
+  @IsInt()
+  public points!: number;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(255)
+  public reason!: string;
 }

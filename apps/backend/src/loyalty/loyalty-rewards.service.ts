@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { LoyaltyRedemptionStatus, LoyaltyRewardType } from '@prisma/client';
+import { LoyaltyLedgerEntryType, LoyaltyRedemptionStatus, LoyaltyRewardType } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -208,6 +208,7 @@ export class LoyaltyRewardsService {
 
       const entry = await tx.loyaltyLedgerEntry.create({
         data: {
+          type: LoyaltyLedgerEntryType.REDEEMED,
           accountId: account.id,
           points: -reward.pointsCost,
           reason: `Redeemed for ${reward.name}`,

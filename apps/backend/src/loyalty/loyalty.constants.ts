@@ -28,6 +28,8 @@ export const LOYALTY_AUDIT_ACTIONS = {
   REWARD_REDEEMED: 'loyalty.reward_redeemed',
   REWARD_FULFILMENT_UPDATED: 'loyalty.reward_fulfilment_updated',
   SETTINGS_UPDATED: 'loyalty.settings_updated',
+  POINTS_ADJUSTED: 'loyalty.points_adjusted',
+  POINTS_REVERSED: 'loyalty.points_reversed',
 } as const;
 
 export const LOYALTY_EVENT_POINTS = {
@@ -101,6 +103,9 @@ export const LOYALTY_REFERENCE_TYPES = {
   EXPIRATION: 'POINT_EXPIRATION',
   STORE_REDEMPTION: 'STORE_REDEMPTION',
   REWARD: 'REWARD',
+  /** An Operations adjustment. No reference id — it points at nothing but the
+   *  decision, which is recorded on the audit trail instead. */
+  ADJUSTMENT: 'ADJUSTMENT',
 } as const;
 
 /**
