@@ -3,12 +3,15 @@
 **Founder decision 2026-09-11. Amends §4 of the Phase 2 record, which required
 Hausa and Nigerian Pidgin coverage as part of the deliverable.**
 
-> The Phase 2 record lives on the `dpx-support-002-phase-2-spec` branch, not
-> here, so this document cannot edit it. **§4 of that file still says the gate
-> must be language-aware and that Hausa and Pidgin coverage is part of the
-> deliverable — that requirement is withdrawn by this decision and the file
-> needs the same note applied when the two branches next meet.** Everything else
-> in §4 stands: deterministic, no LLM in the first gate, tuned toward
+> The Phase 2 record now travels with this branch, amended in both the places
+> that required multilingual coverage: §4 (the gate itself) and §19 (the safety
+> acceptance gates). Implementation, PR and specification therefore agree, and
+> merging PR #363 lands all three together.
+>
+> **The copy on `dpx-support-002-phase-2-spec` is superseded and should not be
+> merged separately** — two copies of the same file on two branches would
+> conflict, and that one still carries the withdrawn requirement. Everything
+> else in §4 stands: deterministic, no LLM in the first gate, tuned toward
 > over-triggering, never re-tuned for deflection rate.
 
 ## The decision
