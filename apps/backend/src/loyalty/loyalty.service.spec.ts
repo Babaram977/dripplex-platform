@@ -7,10 +7,14 @@ import { LoyaltyService } from './loyalty.service';
 
 import type { AuditService } from '../audit/audit.service';
 import type { PrismaService } from '../prisma/prisma.service';
+import type { WalletService } from '../wallet/wallet.service';
+import type { LoyaltyAccount } from '@prisma/client';
 
 const now = new Date('2026-07-21T12:00:00.000Z');
 const userId = '11111111-1111-4111-8111-111111111111';
 const accountId = '22222222-2222-4222-8222-222222222222';
+const walletId = '99999999-9999-4999-8999-999999999999';
+const redemptionEntryId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 interface LoyaltyPrismaMock {
   loyaltyAccount: {
@@ -22,6 +26,7 @@ interface LoyaltyPrismaMock {
     create: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
+    aggregate: jest.Mock;
   };
   userAchievement: {
     findMany: jest.Mock;
@@ -68,6 +73,7 @@ function achievement(overrides: Partial<Record<string, unknown>> = {}): Record<s
 describe('LoyaltyService', () => {
   let prisma: LoyaltyPrismaMock;
   let auditService: { record: jest.Mock };
+  let walletService: { creditWithin: jest.Mock; publishCredit: jest.Mock };
   let service: LoyaltyService;
 
   beforeEach(() => {
@@ -79,8 +85,9 @@ describe('LoyaltyService', () => {
       },
       loyaltyLedgerEntry: {
         create: jest.fn(),
-        findMany: jest.fn(),
-        count: jest.fn(),
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { points: null } }),
       },
       userAchievement: {
         findMany: jest.fn(),
@@ -97,9 +104,18 @@ describe('LoyaltyService', () => {
       ),
     };
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
+    walletService = {
+      creditWithin: jest.fn().mockResolvedValue({
+        wallet: { id: walletId, availableBalance: 3, ownerId: userId },
+        ledgerId: '88888888-8888-4888-8888-888888888888',
+        applied: true,
+      }),
+      publishCredit: jest.fn().mockResolvedValue(undefined),
+    };
     service = new LoyaltyService(
       prisma as unknown as PrismaService,
       auditService as unknown as AuditService,
+      walletService as unknown as WalletService,
     );
   });
 
@@ -163,27 +179,106 @@ describe('LoyaltyService', () => {
     );
   });
 
-  it('redeems points with a negative ledger entry', async () => {
+  it('redeems points into the wallet at 200 points to the naira', async () => {
     const before = account({ pointsBalance: 500, lifetimePoints: 500 });
-    const after = account({ pointsBalance: 300, lifetimePoints: 500 });
+    const after = account({ pointsBalance: 100, lifetimePoints: 500 });
     prisma.loyaltyAccount.upsert.mockResolvedValueOnce(before).mockResolvedValueOnce(after);
     prisma.loyaltyAccount.update.mockResolvedValue(after);
+    prisma.loyaltyLedgerEntry.create.mockResolvedValue({
+      id: redemptionEntryId,
+      accountId,
+      points: -400,
+      createdAt: now,
+      expiresAt: null,
+    });
     prisma.userAchievement.findMany.mockResolvedValue([]);
 
-    const result = await service.redeemPoints(userId, 200);
+    const result = await service.redeemPoints(userId, 400);
 
     expect(prisma.loyaltyLedgerEntry.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ points: -200, referenceType: 'REDEMPTION' }),
+      data: expect.objectContaining({ points: -400, referenceType: 'REDEMPTION' }),
     });
-    expect(result.account.pointsBalance).toBe(300);
+    // 400 points is NGN 2 — the whole point of the change: redemption used to
+    // burn the points and pay nothing at all.
+    expect(walletService.creditWithin).toHaveBeenCalledWith(
+      prisma,
+      expect.objectContaining({
+        ownerType: 'CUSTOMER',
+        ownerId: userId,
+        amount: 2,
+        referenceType: 'LOYALTY_REDEMPTION',
+        referenceId: redemptionEntryId,
+      }),
+    );
+    expect(result.amountCredited).toBe(2);
+    expect(result.pointsRedeemed).toBe(400);
+    expect(result.overview.account.pointsBalance).toBe(100);
+  });
+
+  it('burns the points and pays in one transaction', async () => {
+    const before = account({ pointsBalance: 500, lifetimePoints: 500 });
+    prisma.loyaltyAccount.upsert.mockResolvedValue(before);
+    prisma.loyaltyAccount.update.mockResolvedValue(account({ pointsBalance: 100 }));
+    prisma.loyaltyLedgerEntry.create.mockResolvedValue({
+      id: redemptionEntryId,
+      accountId,
+      points: -400,
+      createdAt: now,
+      expiresAt: null,
+    });
+    prisma.userAchievement.findMany.mockResolvedValue([]);
+    // If the wallet refuses, the whole transaction must fail — points that are
+    // taken without being paid for are the bug this replaced.
+    walletService.creditWithin.mockRejectedValue(new Error('wallet unavailable'));
+
+    await expect(service.redeemPoints(userId, 400)).rejects.toThrow('wallet unavailable');
+    expect(walletService.publishCredit).not.toHaveBeenCalled();
+  });
+
+  it('announces the credit only after the transaction commits', async () => {
+    const order: string[] = [];
+    prisma.$transaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
+      const value = await callback(prisma);
+      order.push('commit');
+      return value;
+    });
+    walletService.publishCredit.mockImplementation(() => {
+      order.push('publish');
+      return Promise.resolve();
+    });
+    prisma.loyaltyAccount.upsert.mockResolvedValue(account({ pointsBalance: 500 }));
+    prisma.loyaltyAccount.update.mockResolvedValue(account({ pointsBalance: 300 }));
+    prisma.loyaltyLedgerEntry.create.mockResolvedValue({
+      id: redemptionEntryId,
+      accountId,
+      points: -200,
+      createdAt: now,
+      expiresAt: null,
+    });
+    prisma.userAchievement.findMany.mockResolvedValue([]);
+
+    await service.redeemPoints(userId, 200);
+
+    expect(order).toEqual(['commit', 'publish']);
+  });
+
+  it('rejects redemptions that are not whole naira', async () => {
+    prisma.loyaltyAccount.upsert.mockResolvedValue(account({ pointsBalance: 5_000 }));
+
+    // 250 points is NGN 1.25; paying NGN 1 would quietly keep 50 points.
+    await expect(service.redeemPoints(userId, 250)).rejects.toBeInstanceOf(
+      ValidationDomainException,
+    );
+    expect(walletService.creditWithin).not.toHaveBeenCalled();
   });
 
   it('rejects redemption when points are insufficient', async () => {
     prisma.loyaltyAccount.upsert.mockResolvedValue(account({ pointsBalance: 10 }));
 
-    await expect(service.redeemPoints(userId, 25)).rejects.toBeInstanceOf(
+    await expect(service.redeemPoints(userId, 200)).rejects.toBeInstanceOf(
       ValidationDomainException,
     );
+    expect(walletService.creditWithin).not.toHaveBeenCalled();
   });
 
   it('expires due points once and caps at account balance', async () => {
@@ -213,11 +308,120 @@ describe('LoyaltyService', () => {
 
   it('skips entries that already have expiration ledgers', async () => {
     prisma.loyaltyLedgerEntry.findMany.mockResolvedValue([
-      { id: '55555555-5555-4555-8555-555555555555', accountId, points: 100, account: account() },
+      {
+        id: '55555555-5555-4555-8555-555555555555',
+        accountId,
+        points: 100,
+        createdAt: now,
+        expiresAt: new Date('2026-07-20T00:00:00.000Z'),
+        account: account(),
+      },
     ]);
     prisma.loyaltyLedgerEntry.count.mockResolvedValue(1);
 
     await expect(service.expirePoints(now)).resolves.toEqual({ expiredPoints: 0 });
+  });
+
+  it('expires nothing from an award the customer already spent', async () => {
+    // The regression this rewrite exists for. January's 100 points were spent
+    // in full; the 100 the account still holds are June's and are not due for
+    // another five months. The old code expired min(100, 100) and wiped them.
+    const january = {
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      accountId,
+      points: 100,
+      reason: 'Order paid',
+      referenceType: null,
+      referenceId: null,
+      createdAt: new Date('2026-01-05T00:00:00.000Z'),
+      expiresAt: new Date('2026-07-20T00:00:00.000Z'),
+    };
+    const june = {
+      id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+      accountId,
+      points: 100,
+      reason: 'Order paid',
+      referenceType: null,
+      referenceId: null,
+      createdAt: new Date('2026-06-05T00:00:00.000Z'),
+      expiresAt: new Date('2027-06-05T00:00:00.000Z'),
+    };
+    const spent = {
+      id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      accountId,
+      points: -100,
+      reason: 'Redeemed',
+      referenceType: 'REDEMPTION',
+      referenceId: null,
+      createdAt: new Date('2026-06-20T00:00:00.000Z'),
+      expiresAt: null,
+    };
+    prisma.loyaltyLedgerEntry.findMany
+      .mockResolvedValueOnce([{ ...january, account: account({ pointsBalance: 100 }) }])
+      .mockResolvedValueOnce([january, june, spent]);
+    prisma.loyaltyLedgerEntry.count.mockResolvedValue(0);
+    prisma.loyaltyAccount.findUnique.mockResolvedValue(account({ pointsBalance: 100 }));
+
+    await expect(service.expirePoints(now)).resolves.toEqual({ expiredPoints: 0 });
+    expect(prisma.loyaltyAccount.update).not.toHaveBeenCalled();
+  });
+
+  it('reports what a balance is worth and which benefit lines it meets', async () => {
+    prisma.loyaltyAccount.upsert.mockResolvedValue(
+      account({ pointsBalance: 10_450, lifetimePoints: 12_000 }),
+    );
+    prisma.userAchievement.findMany.mockResolvedValue([]);
+    prisma.loyaltyLedgerEntry.findMany.mockResolvedValue([
+      {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        points: 10_450,
+        createdAt: new Date('2026-07-02T00:00:00.000Z'),
+        expiresAt: new Date('2027-07-02T00:00:00.000Z'),
+      },
+    ]);
+    prisma.loyaltyLedgerEntry.aggregate.mockResolvedValue({ _sum: { points: 10_450 } });
+
+    const { points } = await service.getCustomerOverview(userId);
+
+    expect(points.pointsPerNaira).toBe(200);
+    // 10,450 points is NGN 52.25 — NGN 52 payable, 50 points short of the next
+    // whole naira, so 10,400 is what can actually be redeemed.
+    expect(points.balanceValue).toBe(52);
+    expect(points.redeemablePoints).toBe(10_400);
+    expect(points.benefits.deliveryFeeDiscount).toEqual({
+      threshold: 10_000,
+      eligible: true,
+      pointsToGo: 0,
+    });
+    expect(points.benefits.monthlyElite).toEqual({
+      threshold: 50_000,
+      eligible: false,
+      pointsToGo: 39_550,
+    });
+    expect(points.nextExpiry).toEqual({
+      at: '2027-07-02T00:00:00.000Z',
+      points: 10_450,
+    });
+  });
+
+  it('counts this month from midnight in Lagos, not UTC', async () => {
+    prisma.loyaltyAccount.upsert.mockResolvedValue(account({ pointsBalance: 0 }));
+    prisma.userAchievement.findMany.mockResolvedValue([]);
+
+    // 2026-08-01T00:30Z is still 01:30 on 1 August in Lagos, so the month
+    // starts at 23:00 UTC on 31 July — an hour earlier than the UTC boundary.
+    await service.getPointsSummary(
+      account() as unknown as LoyaltyAccount,
+      new Date('2026-08-01T00:30:00.000Z'),
+    );
+
+    expect(prisma.loyaltyLedgerEntry.aggregate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          createdAt: { gte: new Date('2026-07-31T23:00:00.000Z') },
+        }),
+      }),
+    );
   });
 
   it('lists history with pagination metadata', async () => {

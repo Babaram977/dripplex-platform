@@ -23,7 +23,33 @@ export const LOYALTY_EVENT_POINTS = {
   CASHBACK: 1,
 } as const;
 
+/**
+ * What a DX point is worth. Founder decision: 200 points = ₦1.
+ *
+ * Redemptions are required to be whole multiples of this, so no fraction of a
+ * naira is ever silently rounded away from a customer.
+ */
+export const LOYALTY_POINTS_PER_NAIRA = 200;
+
+/** Founder decision: points are good for a year from the day they are earned. */
 export const LOYALTY_POINT_EXPIRY_DAYS = 365;
+
+/**
+ * Founder-decided customer benefit thresholds.
+ *
+ * `DELIVERY_DISCOUNT_BALANCE` is measured against the points a customer is
+ * holding; `MONTHLY_ELITE_EARNED` against the points they earned within the
+ * current calendar month in Lagos time. The *size* of each benefit is not
+ * fixed here — it is configured per campaign — so only the qualifying line
+ * lives in code.
+ */
+export const LOYALTY_BENEFIT_THRESHOLDS = {
+  DELIVERY_DISCOUNT_BALANCE: 10_000,
+  MONTHLY_ELITE_EARNED: 50_000,
+} as const;
+
+/** How often the expiry sweep looks for points that have fallen due. */
+export const LOYALTY_EXPIRY_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 export const LOYALTY_TIER_THRESHOLDS: Record<LoyaltyTier, number> = {
   [LoyaltyTier.BRONZE]: 0,
@@ -51,3 +77,11 @@ export const LOYALTY_REFERENCE_TYPES = {
   ACHIEVEMENT: 'ACHIEVEMENT',
   EXPIRATION: 'POINT_EXPIRATION',
 } as const;
+
+/**
+ * How a redemption is labelled on the *wallet* side of the ledger. The wallet
+ * credit is keyed on this plus the loyalty ledger entry's id, and
+ * `wallet_ledger_entries` has a unique index over that pair — so a redemption
+ * can never pay out twice, whatever happens between the two ledgers.
+ */
+export const LOYALTY_WALLET_REFERENCE_TYPE = 'LOYALTY_REDEMPTION';

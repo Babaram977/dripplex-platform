@@ -821,13 +821,64 @@ export interface LoyaltyAccountOverviewDto {
   account: LoyaltyAccountDto;
   nextTier: LoyaltyNextTierDto | null;
   achievements: UserAchievementDto[];
+  points: LoyaltyPointsSummaryDto;
 }
 
+/**
+ * What a DX point balance is actually worth, and what it takes to use it.
+ * Every figure is derived from the loyalty ledger by the backend — the app
+ * shows these, it does not compute them, so the rate and the thresholds can
+ * only ever be stated in one place.
+ */
+export interface LoyaltyPointsSummaryDto {
+  balance: number;
+  /** Founder decision: 200 points = NGN 1. */
+  pointsPerNaira: number;
+  /** Naira the balance is worth, rounded down to whole naira. */
+  balanceValue: number;
+  /** The largest multiple of `pointsPerNaira` redeemable right now. */
+  redeemablePoints: number;
+  minimumRedeemablePoints: number;
+  /** Points earned so far this calendar month, Lagos time. */
+  earnedThisMonth: number;
+  nextExpiry: { at: string; points: number } | null;
+  benefits: LoyaltyBenefitStatusDto;
+}
+
+export interface LoyaltyBenefitThresholdDto {
+  threshold: number;
+  eligible: boolean;
+  pointsToGo: number;
+}
+
+export interface LoyaltyBenefitStatusDto {
+  deliveryFeeDiscount: LoyaltyBenefitThresholdDto;
+  monthlyElite: LoyaltyBenefitThresholdDto;
+}
+
+/**
+ * The real shape of `POST /customer/loyalty/redeem`. Redemption pays into the
+ * customer's wallet rather than returning the account alone, so the response
+ * says what the points were worth and what the wallet holds now.
+ */
+export interface LoyaltyRedemptionResultDto {
+  overview: LoyaltyAccountOverviewDto;
+  pointsRedeemed: number;
+  amountCredited: number;
+  wallet: WalletDto;
+}
+
+/**
+ * `POST /customer/loyalty/redeem` accepts a points figure and nothing else.
+ *
+ * This used to also declare `reason`, `referenceType` and `referenceId`, none
+ * of which the endpoint has ever accepted — the backend's `RedeemPointsDto`
+ * has only ever had `points`, and the global validation pipe runs with
+ * `forbidNonWhitelisted`, so any caller that filled those in got a 400 rather
+ * than the redemption the type promised.
+ */
 export interface RedeemLoyaltyPointsRequest {
   points: number;
-  reason: string;
-  referenceType?: string;
-  referenceId?: string;
 }
 
 export type WalletOwnerType = 'CUSTOMER' | 'MERCHANT' | 'RIDER' | 'DRIVER' | 'PLATFORM';

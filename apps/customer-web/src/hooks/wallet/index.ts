@@ -8,7 +8,12 @@ export {
   useVerifyWalletFunding,
   useSetWalletLimits,
 } from './use-wallet-mutations';
-export { useLoyaltyAccount, useReferralCode, useReferralStats } from './use-loyalty';
+export {
+  useLoyaltyAccount,
+  useRedeemLoyaltyPoints,
+  useReferralCode,
+  useReferralStats,
+} from './use-loyalty';
 export {
   useBankAccounts,
   useAddBankAccount,

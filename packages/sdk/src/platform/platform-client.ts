@@ -58,6 +58,7 @@ import type {
   PromotionRedemptionDto,
   RecentSearchDto,
   RedeemPromotionRequest,
+  LoyaltyRedemptionResultDto,
   RedeemLoyaltyPointsRequest,
   ReferralCampaignDto,
   ReferralDto,
@@ -679,8 +680,13 @@ export class LoyaltyClient {
     );
   }
 
-  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyAccountOverviewDto> {
-    return this.http.request<LoyaltyAccountOverviewDto>('/customer/loyalty/redeem', {
+  /**
+   * Redeems points into the customer's wallet at the platform rate. The result
+   * carries the naira credited and the wallet's new balance, not just the
+   * loyalty account — redemption pays out, it is not only a deduction.
+   */
+  public redeem(body: RedeemLoyaltyPointsRequest): Promise<LoyaltyRedemptionResultDto> {
+    return this.http.request<LoyaltyRedemptionResultDto>('/customer/loyalty/redeem', {
       method: 'POST',
       body,
     });

@@ -2201,6 +2201,33 @@ export interface LoyaltyOverviewDto {
       updatedAt: string;
     };
   }[];
+  points: LoyaltyPointsSummaryDto;
+}
+
+// What the balance is worth and when it lapses. Every figure is computed by the
+// backend from the loyalty ledger — the rate (200 points = ₦1), the thresholds
+// and the expiry dates all live server-side, so the app never states a number
+// the backend would disagree with.
+export interface LoyaltyPointsSummaryDto {
+  balance: number;
+  pointsPerNaira: number;
+  balanceValue: number;
+  redeemablePoints: number;
+  minimumRedeemablePoints: number;
+  earnedThisMonth: number;
+  nextExpiry: { at: string; points: number } | null;
+  benefits: {
+    deliveryFeeDiscount: { threshold: number; eligible: boolean; pointsToGo: number };
+    monthlyElite: { threshold: number; eligible: boolean; pointsToGo: number };
+  };
+}
+
+// Redemption pays into the customer's wallet; the response says how much.
+export interface LoyaltyRedemptionResultDto {
+  overview: LoyaltyOverviewDto;
+  pointsRedeemed: number;
+  amountCredited: number;
+  wallet: { id: string; availableBalance: number; currency: string };
 }
 
 // ── UTILITIES (bill payments, DPX-UTILITIES-001/-002) ────────────────────────
@@ -4419,7 +4446,10 @@ export const api = {
   },
 
   // Points accrue automatically server-side on domain events (order paid +50,
-  // delivery completed +25, registration +100, coupon +10). The app only reads.
+  // delivery completed +25, registration +100, coupon +10) and lapse 365 days
+  // after they are earned. Redeeming pays into the customer's wallet at
+  // 200 points = ₦1, in whole naira only — `points.redeemablePoints` from
+  // `get()` is the exact figure the backend will accept.
   loyalty: {
     get: () => dx<LoyaltyOverviewDto>('GET', '/customer/loyalty'),
     history: (params?: { page?: number; pageSize?: number }) =>
@@ -4430,7 +4460,7 @@ export const api = {
         params,
       ),
     redeem: (points: number) =>
-      dx<LoyaltyOverviewDto>('POST', '/customer/loyalty/redeem', { points }),
+      dx<LoyaltyRedemptionResultDto>('POST', '/customer/loyalty/redeem', { points }),
   },
 };
 

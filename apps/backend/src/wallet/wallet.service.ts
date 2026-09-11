@@ -28,6 +28,17 @@ interface WalletMutationResult {
   applied: boolean;
 }
 
+/**
+ * The outcome of a mutation applied inside somebody else's transaction.
+ * `applied: false` means the reference had already been written and nothing
+ * moved — a replay, not a failure.
+ */
+export interface WalletMutationOutcome {
+  wallet: WalletDto;
+  ledgerId: string;
+  applied: boolean;
+}
+
 export interface WalletDto {
   id: string;
   ownerType: WalletOwnerType;
@@ -511,7 +522,6 @@ export class WalletService {
   ): Promise<WalletDto> {
     const amount = this.toPositiveDecimal(input.amount);
     const currency = this.normalizeCurrency(input.currency);
-    const actorUserId = input.context?.userId ?? input.ownerId;
     const result = await this.prisma.$transaction(
       async (tx) =>
         await this.applyMutation(tx, {
@@ -528,15 +538,33 @@ export class WalletService {
         }),
     );
 
+    await this.publishMutation(input, type, direction, result);
+    return toWalletDto(result.wallet);
+  }
+
+  /**
+   * Audit trail and domain event for a mutation that has already been applied.
+   * Separate from applying it so a caller that owns the transaction can commit
+   * first and announce afterwards — announcing inside the transaction would
+   * tell the rest of the system about money that a later rollback un-moves.
+   *
+   * A replay announces nothing: the first attempt already did.
+   */
+  private async publishMutation(
+    input: WalletMutationInput,
+    type: WalletTransactionType,
+    direction: WalletDirection,
+    result: WalletMutationResult,
+  ): Promise<void> {
     if (!result.applied) {
-      return toWalletDto(result.wallet);
+      return;
     }
 
     await this.auditService.record(
       direction === WalletDirection.CREDIT
         ? WALLET_AUDIT_ACTIONS.CREDITED
         : WALLET_AUDIT_ACTIONS.DEBITED,
-      { ...(input.context ?? {}), userId: actorUserId },
+      { ...(input.context ?? {}), userId: input.context?.userId ?? input.ownerId },
       {
         resource: 'wallet',
         resourceId: result.wallet.id,
@@ -545,8 +573,8 @@ export class WalletService {
           ownerId: input.ownerId,
           type,
           direction,
-          amount: amount.toNumber(),
-          currency,
+          amount: this.toPositiveDecimal(input.amount).toNumber(),
+          currency: this.normalizeCurrency(input.currency),
           referenceType: input.referenceType ?? null,
           referenceId: input.referenceId ?? null,
         },
@@ -560,8 +588,72 @@ export class WalletService {
       result.wallet,
       result.ledger,
     );
+  }
 
-    return toWalletDto(result.wallet);
+  /**
+   * Credit a wallet inside a transaction the caller already owns.
+   *
+   * This exists for the one case where a credit must succeed or fail together
+   * with a write in another ledger: redeeming loyalty points burns points and
+   * pays naira, and those two must not be able to come apart. Calling
+   * `credit()` there would open a second transaction, and a crash between the
+   * two would either destroy a customer's points for nothing or pay them
+   * without taking the points.
+   *
+   * The caller is responsible for calling `publishCredit` once the transaction
+   * has committed. Nothing about the balance depends on that — it is the audit
+   * record and the notification, not the money.
+   */
+  public async creditWithin(
+    tx: WalletTx,
+    input: WalletMutationInput,
+  ): Promise<WalletMutationOutcome> {
+    const result = await this.applyCreditInTx(tx, input);
+    return {
+      wallet: toWalletDto(result.wallet),
+      ledgerId: result.ledger.id,
+      applied: result.applied,
+    };
+  }
+
+  /** Side effects for a `creditWithin` that actually moved money. */
+  public async publishCredit(
+    input: WalletMutationInput,
+    outcome: WalletMutationOutcome,
+  ): Promise<void> {
+    if (!outcome.applied) {
+      return;
+    }
+    const wallet = await this.prisma.wallet.findUnique({ where: { id: outcome.wallet.id } });
+    const ledger = await this.prisma.walletLedgerEntry.findUnique({
+      where: { id: outcome.ledgerId },
+    });
+    if (!wallet || !ledger) {
+      return;
+    }
+    await this.publishMutation(input, WalletTransactionType.CREDIT, WalletDirection.CREDIT, {
+      wallet,
+      ledger,
+      applied: true,
+    });
+  }
+
+  private async applyCreditInTx(
+    tx: WalletTx,
+    input: WalletMutationInput,
+  ): Promise<WalletMutationResult> {
+    return await this.applyMutation(tx, {
+      ownerType: input.ownerType,
+      ownerId: input.ownerId,
+      currency: this.normalizeCurrency(input.currency),
+      amount: this.toPositiveDecimal(input.amount),
+      type: WalletTransactionType.CREDIT,
+      direction: WalletDirection.CREDIT,
+      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.referenceType !== undefined ? { referenceType: input.referenceType } : {}),
+      ...(input.referenceId !== undefined ? { referenceId: input.referenceId } : {}),
+      ...(input.metadata !== undefined ? { metadata: input.metadata } : {}),
+    });
   }
 
   /**

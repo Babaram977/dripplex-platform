@@ -9,6 +9,7 @@ import {
   LoyaltyService,
   type LoyaltyAccountOverview,
   type LoyaltyLedgerEntryDto,
+  type LoyaltyRedemptionResult,
 } from './loyalty.service';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
@@ -39,13 +40,19 @@ export class CustomerLoyaltyController {
     return { success: true, data };
   }
 
+  /**
+   * Redeems points into the customer's own wallet at 200 points to the naira.
+   * The response carries the credited amount and the wallet's new balance, so
+   * the app can show what the redemption was actually worth rather than
+   * inferring it.
+   */
   @Post('redeem')
   @RequirePermissions(LOYALTY_PERMISSIONS.CUSTOMER_REDEEM)
   public async redeem(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: RedeemPointsDto,
     @Req() request: Request,
-  ): Promise<ApiSuccessResponse<LoyaltyAccountOverview>> {
+  ): Promise<ApiSuccessResponse<LoyaltyRedemptionResult>> {
     const data = await this.loyaltyService.redeemPoints(
       user.id,
       dto.points,
