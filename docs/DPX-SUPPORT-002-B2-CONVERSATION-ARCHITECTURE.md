@@ -274,6 +274,20 @@ whether submitted data is used for training; sensitive-information handling; the
 deletion and erasure process; our retention period; the provider's deletion
 guarantees; and incident and audit requirements.
 
+## The controls are not the decision
+
+Recorded explicitly, because it is the reading somebody will otherwise make:
+
+> **`redactedAt`, `visibility` and the rest of the retention fields do not
+> constitute an NDPR retention decision.** They are the mechanism by which a
+> decision can be applied. The decision itself does not exist yet.
+
+Shipping the fields is what makes the policy implementable without breaking
+immutability. It is not evidence that anyone has decided what is retained, for
+how long, what leaves the platform, or what a provider may do with it. A future
+reader finding a `redactedAt` column and concluding "retention is handled" would
+be wrong in the most expensive possible direction.
+
 ## Hard architectural gate
 
 > **No production transcript may be sent to an AI provider until that decision
