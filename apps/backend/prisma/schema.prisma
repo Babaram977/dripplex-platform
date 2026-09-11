@@ -3870,10 +3870,18 @@ enum ReferralRedemptionStatus {
 /// earn them in. Founder decision, 2026-08-26 — a driver's referral reward is
 /// wallet cash in their DRIVER wallet, paid on the referred customer's first
 /// completed ride.
+/// Who holds a referral code. Fixed when the code is created, and it decides
+/// which wallet the reward is paid into — so a persona issued a code under
+/// another's would have their reward filed under the wrong one.
 enum ReferralOwnerType {
   CUSTOMER
   DRIVER
   RIDER
+  MERCHANT
+  /// A fleet owner as a person. Their reward lands in their own wallet, not in
+  /// the fleet's receivables: a referral is personal marketing, while a fleet's
+  /// receivables are what DrippleX owes it for work its riders did.
+  FLEET_OWNER
 }
 
 /// One row per user who has generated a referral code (lazily created on

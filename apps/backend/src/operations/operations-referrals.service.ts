@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import type { PaginatedResult } from '@dripplex/types';
 
-export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER';
+export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
 
 /**
  * One persona's referral programme, as a whole.
@@ -74,6 +74,8 @@ const PERSONA_BY_OWNER: Record<ReferralOwnerType, ReferralPersona> = {
   [ReferralOwnerType.CUSTOMER]: 'CUSTOMER',
   [ReferralOwnerType.DRIVER]: 'DRIVER',
   [ReferralOwnerType.RIDER]: 'RIDER',
+  [ReferralOwnerType.MERCHANT]: 'MERCHANT',
+  [ReferralOwnerType.FLEET_OWNER]: 'FLEET_OWNER',
 };
 
 /**
@@ -88,11 +90,11 @@ const PERSONA_BY_OWNER: Record<ReferralOwnerType, ReferralPersona> = {
  *
  * Both are reported here, apart, because they are apart.
  *
- * **Merchants and fleet owners have no referral programme.** Not "none yet
- * configured" — there is no `ReferralOwnerType` for them, no code, and no
- * decision about what either would earn for referring whom. They are named in
- * `personasWithoutProgramme` rather than shown as zeroes, because a row of
- * zeroes reads as "nobody is referring" when the truth is "nobody can".
+ * Every earning persona now has a programme (DPX-REFERRAL-002 gave merchants
+ * and fleet owners theirs), so `personasWithoutProgramme` is empty — kept in
+ * the contract rather than removed, because it is what stops a future persona
+ * without a code being reported as a row of zeroes. A row of zeroes reads as
+ * "nobody is referring" when the truth is "nobody can".
  */
 @Injectable()
 export class OperationsReferralsService {
@@ -107,7 +109,7 @@ export class OperationsReferralsService {
     return {
       personas,
       driverCampaigns,
-      personasWithoutProgramme: ['MERCHANT', 'FLEET_OWNER'],
+      personasWithoutProgramme: [],
     };
   }
 

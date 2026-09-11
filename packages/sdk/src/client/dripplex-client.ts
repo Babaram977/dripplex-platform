@@ -65,6 +65,7 @@ import {
   DriverCampaignClient,
   LoyaltyClient,
   MerchantLoyaltyClient,
+  MerchantReferralsClient,
   NotificationsClient,
   PromotionsClient,
   ReferralsClient,
@@ -157,6 +158,7 @@ export class DripplexClient {
   public readonly promotions: PromotionsClient;
   public readonly adminPromotions: AdminPromotionsClient;
   public readonly referrals: ReferralsClient;
+  public readonly merchantReferrals: MerchantReferralsClient;
   public readonly adminReferrals: AdminReferralsClient;
   public readonly driverCampaign: DriverCampaignClient;
   public readonly adminDriverCampaign: AdminDriverCampaignClient;
@@ -242,6 +244,7 @@ export class DripplexClient {
     this.promotions = new PromotionsClient(this.http);
     this.adminPromotions = new AdminPromotionsClient(this.http);
     this.referrals = new ReferralsClient(this.http);
+    this.merchantReferrals = new MerchantReferralsClient(this.http);
     this.adminReferrals = new AdminReferralsClient(this.http);
     this.driverCampaign = new DriverCampaignClient(this.http);
     this.adminDriverCampaign = new AdminDriverCampaignClient(this.http);

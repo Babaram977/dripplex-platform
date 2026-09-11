@@ -354,6 +354,55 @@ describe('ReferralsService', () => {
       );
     });
 
+    it('pays a MERCHANT referrer into their merchant wallet, not a customer one', async () => {
+      // DPX-REFERRAL-002. A shop telling the people at its counter to sign up
+      // is the most natural referral on the platform, and now that DX points
+      // are spendable in store the merchant has a direct reason to want those
+      // customers on DrippleX. It has to land in the merchant wallet — that is
+      // the balance their portal shows and the one they can withdraw.
+      prisma.referralRedemption.findUnique.mockResolvedValue({
+        id: 'redemption-7',
+        status: ReferralRedemptionStatus.PENDING,
+        referral: { userId: 'merchant-1', ownerType: ReferralOwnerType.MERCHANT },
+      });
+      prisma.ride.count.mockResolvedValue(1);
+
+      await service.handleRefereeRideCompleted('customer-7');
+
+      expect(walletService.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerType: WalletOwnerType.MERCHANT,
+          ownerId: 'merchant-1',
+          amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
+        }),
+      );
+    });
+
+    it('pays a FLEET_OWNER referrer into their personal wallet, which is the only one they have', async () => {
+      // A fleet has no wallet: what DrippleX owes it arrives as an Ops-approved
+      // settlement receivable for work its riders did. A referral is not that —
+      // it is the owner's own marketing, earned by the person — so it is paid
+      // into the wallet that person can actually withdraw from. Filing it as a
+      // receivable would put personal earnings behind the fleet's approval
+      // queue and into the fleet's books.
+      prisma.referralRedemption.findUnique.mockResolvedValue({
+        id: 'redemption-8',
+        status: ReferralRedemptionStatus.PENDING,
+        referral: { userId: 'fleet-owner-1', ownerType: ReferralOwnerType.FLEET_OWNER },
+      });
+      prisma.ride.count.mockResolvedValue(1);
+
+      await service.handleRefereeRideCompleted('customer-8');
+
+      expect(walletService.credit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ownerType: WalletOwnerType.CUSTOMER,
+          ownerId: 'fleet-owner-1',
+          amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
+        }),
+      );
+    });
+
     it('pays a driver nothing until the customer they referred actually rides', async () => {
       // Registration alone must never pay: a driver could otherwise sign up
       // accounts from their own phone and collect ₦350 each.

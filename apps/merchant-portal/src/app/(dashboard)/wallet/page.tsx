@@ -16,6 +16,8 @@ import * as React from 'react';
 
 import type {
   BankAccountDto,
+  ReferralDto,
+  ReferralStatsDto,
   RedemptionCodePreviewDto,
   StoreRedemptionResultDto,
   BankOptionDto,
@@ -131,6 +133,7 @@ export default function WalletPage(): React.JSX.Element {
       ) : (
         <>
           <BalanceCard wallet={wallet} />
+          <ReferralCard />
           <RedeemPointsCard
             currency={wallet?.currency ?? 'NGN'}
             onRedeemed={() => {
@@ -299,6 +302,110 @@ function RedeemPointsCard({
             {formatMoney(result.amount, currency)} added to your wallet from {result.holderName}
             &apos;s {result.points.toLocaleString('en-NG')} DX points.
           </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * DPX-REFERRAL-002 — the merchant's own referral code.
+ *
+ * A shop telling the people at its counter to sign up is the most natural
+ * referral on the platform, and now that DX points are spendable in store the
+ * merchant has a direct reason to want those customers on DrippleX.
+ *
+ * The reward lands in this same merchant wallet, and only once the referred
+ * customer actually takes their first ride — stated plainly, because a
+ * merchant who thinks signups alone pay will conclude the scheme is broken.
+ */
+function ReferralCard(): React.JSX.Element | null {
+  const [referral, setReferral] = React.useState<ReferralDto | null>(null);
+  const [stats, setStats] = React.useState<ReferralStatsDto | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const [code, counts] = await Promise.all([sdk.referrals.me(), sdk.referrals.stats()]);
+        setReferral(code);
+        setStats(counts);
+      } catch (loadError) {
+        setError(describeSdkError(loadError).description);
+      }
+    })();
+  }, []);
+
+  if (error !== null) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Refer customers</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-destructive text-sm" role="alert">
+            {error}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (referral === null) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Refer customers</CardTitle>
+        <p className="text-muted-foreground text-sm">
+          Share your code with shoppers. You earn{' '}
+          {formatMoney(stats?.referrerRewardAmount ?? 0, 'NGN')} per customer, paid into this wallet
+          once they take their first ride — not at signup.
+        </p>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="bg-muted/60 rounded-lg border px-4 py-2 font-mono text-lg tracking-[0.2em]">
+            {referral.code}
+          </span>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void navigator.clipboard.writeText(referral.code).then(() => {
+                setCopied(true);
+                setTimeout(() => {
+                  setCopied(false);
+                }, 2000);
+              });
+            }}
+          >
+            {copied ? 'Copied' : 'Copy code'}
+          </Button>
+        </div>
+        {stats ? (
+          <div className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+            <div>
+              <p className="text-muted-foreground text-xs">Signed up with your code</p>
+              <p className="text-lg font-medium">
+                {stats.totalRedemptions.toLocaleString('en-NG')}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Rewarded</p>
+              <p className="text-lg font-medium">
+                {stats.rewardedRedemptions.toLocaleString('en-NG')}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Still to ride</p>
+              <p className="text-lg font-medium">
+                {stats.pendingRedemptions.toLocaleString('en-NG')}
+              </p>
+            </div>
+          </div>
         ) : null}
       </CardContent>
     </Card>

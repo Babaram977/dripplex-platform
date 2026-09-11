@@ -112,18 +112,25 @@ describe('OperationsReferralsService', () => {
 
     // A persona missing from the list reads as "not a thing"; a persona at zero
     // reads as "nobody is referring yet", and those are different answers.
-    expect(personas.map((row) => row.persona).sort()).toEqual(['CUSTOMER', 'DRIVER', 'RIDER']);
+    expect(personas.map((row) => row.persona).sort()).toEqual([
+      'CUSTOMER',
+      'DRIVER',
+      'FLEET_OWNER',
+      'MERCHANT',
+      'RIDER',
+    ]);
   });
 
-  it('names the personas that have no referral programme at all', async () => {
+  it('has no persona left without a programme', async () => {
     if (!databaseAvailable) return;
 
     const { personasWithoutProgramme } = await service.overview();
 
-    // Merchants and fleet owners have no ReferralOwnerType, no code and no
-    // decided reward. Showing them as a row of zeroes would say "nobody is
-    // referring" when the truth is "nobody can".
-    expect(personasWithoutProgramme).toEqual(['MERCHANT', 'FLEET_OWNER']);
+    // DPX-REFERRAL-002 gave merchants and fleet owners theirs, so every earning
+    // persona can now be credited for bringing DrippleX a customer. The field
+    // stays in the contract because it is what stops a *future* persona without
+    // a code being reported as a row of zeroes.
+    expect(personasWithoutProgramme).toEqual([]);
   });
 
   it('rates conversion on what was rewarded, not what was clicked', async () => {
@@ -163,5 +170,21 @@ describe('OperationsReferralsService', () => {
     // Null, not zero: riders have no Driver Growth Campaign, and ₦0 earned
     // would claim they took part and earned nothing.
     expect(riders.items.every((item) => item.rewardAmountEarned === null)).toBe(true);
+  });
+
+  it('gives merchants and fleet owners their own leaderboards', async () => {
+    if (!databaseAvailable) return;
+
+    const merchantId = await referrerWith(ReferralOwnerType.MERCHANT, 2, 1);
+    const fleetOwnerId = await referrerWith(ReferralOwnerType.FLEET_OWNER, 1, 0);
+
+    const merchants = await service.performers('MERCHANT', 1, 50);
+    const fleets = await service.performers('FLEET_OWNER', 1, 50);
+
+    expect(merchants.items.some((item) => item.userId === merchantId)).toBe(true);
+    expect(fleets.items.some((item) => item.userId === fleetOwnerId)).toBe(true);
+    // And neither shows up in the other's, for the same reason the personas
+    // are split at all: their rewards are paid into different wallets.
+    expect(merchants.items.some((item) => item.userId === fleetOwnerId)).toBe(false);
   });
 });

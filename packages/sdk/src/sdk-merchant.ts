@@ -23,6 +23,7 @@ export function createMerchantSdk(config: Partial<SdkConfig> = {}): MerchantSdk 
     wallet: client.wallet,
     commercial: client.merchantCommercial,
     loyalty: client.merchantLoyalty,
+    referrals: client.merchantReferrals,
   };
 }
 
@@ -41,6 +42,7 @@ export interface MerchantSdk {
   /** DPX-COMMERCIAL-001 Slice 5 — the merchant's own commission account/ledger. */
   commercial: DripplexClient['merchantCommercial'];
   loyalty: DripplexClient['merchantLoyalty'];
+  referrals: DripplexClient['merchantReferrals'];
 }
 
 export function resolveMerchantSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

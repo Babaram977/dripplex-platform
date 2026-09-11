@@ -13,7 +13,7 @@ const PAYOUT_STATUSES = [
   'REJECTED',
   'CANCELLED',
 ] as const;
-const REFERRAL_PERSONAS = ['CUSTOMER', 'DRIVER', 'RIDER'] as const;
+const REFERRAL_PERSONAS = ['CUSTOMER', 'DRIVER', 'RIDER', 'MERCHANT', 'FLEET_OWNER'] as const;
 
 function toNumber(value: unknown): unknown {
   return typeof value === 'string' || typeof value === 'number' ? Number(value) : value;

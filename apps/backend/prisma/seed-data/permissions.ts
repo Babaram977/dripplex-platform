@@ -84,6 +84,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'driver:referrals:use', description: "A driver's own referral code" },
   { code: 'rider:referrals:use', description: "A rider's own referral code" },
+  {
+    code: 'merchant:referrals:use',
+    description: "A merchant's own standing referral code, paid into their merchant wallet",
+  },
+  {
+    code: 'fleet:referrals:use',
+    description: "A fleet owner's own standing referral code, paid into their personal wallet",
+  },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {

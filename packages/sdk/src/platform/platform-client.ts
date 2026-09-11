@@ -533,6 +533,26 @@ export class ReferralsClient {
   }
 }
 
+/**
+ * DPX-REFERRAL-002 — a merchant's own referral code.
+ *
+ * Separate from `ReferralsClient` because the endpoint is separate: a code's
+ * owner type is fixed when it is created and decides which wallet the reward
+ * lands in, so a merchant asking on the customer route would be issued a
+ * customer's code and paid into a wallet their portal does not show.
+ */
+export class MerchantReferralsClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public me(): Promise<ReferralDto> {
+    return this.http.request<ReferralDto>('/merchant/referrals/me');
+  }
+
+  public stats(): Promise<ReferralStatsDto> {
+    return this.http.request<ReferralStatsDto>('/merchant/referrals/stats');
+  }
+}
+
 export class AdminReferralsClient {
   public constructor(private readonly http: HttpClient) {}
 

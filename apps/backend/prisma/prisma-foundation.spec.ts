@@ -142,7 +142,13 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // earned. Read-only: approving a payout stays on the withdrawal and
     // fleet-settlement endpoints, so an operator can be given the queue
     // without being given the ability to pay anybody.
-    expect(PERMISSION_SEEDS).toHaveLength(148);
+    // 148 -> 150: `merchant:referrals:use` and `fleet:referrals:use`
+    // (DPX-REFERRAL-002). One per persona for the reason every referral
+    // permission is split: `Referral.ownerType` is fixed when the code is
+    // created and decides which wallet the reward lands in, so a persona
+    // issued a code under another's permission would have their reward filed
+    // under the wrong one.
+    expect(PERMISSION_SEEDS).toHaveLength(150);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
@@ -154,6 +160,8 @@ describe('Prisma schema foundation (S1-C1)', () => {
         'loyalty:redemption-code:create',
         'merchant:loyalty:redeem',
         'operations:finance:read',
+        'merchant:referrals:use',
+        'fleet:referrals:use',
       ]),
     );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(

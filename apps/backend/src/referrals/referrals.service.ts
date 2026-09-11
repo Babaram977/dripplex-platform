@@ -217,6 +217,12 @@ export class ReferralsService {
       [ReferralOwnerType.DRIVER]: WalletOwnerType.DRIVER,
       [ReferralOwnerType.RIDER]: WalletOwnerType.RIDER,
       [ReferralOwnerType.CUSTOMER]: WalletOwnerType.CUSTOMER,
+      [ReferralOwnerType.MERCHANT]: WalletOwnerType.MERCHANT,
+      // A fleet owner has no fleet wallet — a fleet's money reaches it as an
+      // Ops-approved settlement receivable for work its riders did. A referral
+      // is not that: it is the owner's own marketing, earned by the person, so
+      // it is paid into the personal wallet they can actually withdraw from.
+      [ReferralOwnerType.FLEET_OWNER]: WalletOwnerType.CUSTOMER,
     } as const;
     const referrerWallet = REFERRER_WALLETS[redemption.referral.ownerType];
 

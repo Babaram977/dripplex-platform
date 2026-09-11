@@ -126,6 +126,14 @@ const PERMISSION_SEEDS = [
   { code: 'admin:promotions:manage', description: 'Manage platform promotions' },
   { code: 'driver:referrals:use', description: "A driver's own referral code" },
   { code: 'rider:referrals:use', description: "A rider's own referral code" },
+  {
+    code: 'merchant:referrals:use',
+    description: "A merchant's own standing referral code, paid into their merchant wallet",
+  },
+  {
+    code: 'fleet:referrals:use',
+    description: "A fleet owner's own standing referral code, paid into their personal wallet",
+  },
   { code: 'customer:referrals:use', description: 'Read own referral code and stats' },
   { code: 'admin:referrals:manage', description: 'View referral redemptions (admin)' },
   {
@@ -451,6 +459,7 @@ const ROLE_PERMISSION_GRANTS = {
     'merchant:bank:manage',
     'merchant:wallet:read',
     'merchant:loyalty:redeem',
+    'merchant:referrals:use',
     'merchant:wallet:withdraw',
     'integrations:read',
     'integrations:write',
@@ -686,6 +695,7 @@ const ROLE_PERMISSION_GRANTS = {
     'customer:wallet:withdraw',
     'merchant:wallet:read',
     'merchant:loyalty:redeem',
+    'merchant:referrals:use',
     'rider:wallet:read',
     'driver:wallet:read',
     'rider:wallet:withdraw',
@@ -783,7 +793,13 @@ const ROLE_PERMISSION_GRANTS = {
     'platform:settings:write',
   ],
   inspection_officer: ['profile:read', 'profile:write', 'inspection:checklist:manage'],
-  fleet_owner: ['profile:read', 'profile:write', 'fleet:own:read', 'fleet:own:manage'],
+  fleet_owner: [
+    'profile:read',
+    'profile:write',
+    'fleet:own:read',
+    'fleet:own:manage',
+    'fleet:referrals:use',
+  ],
   inspection_supervisor: [
     'profile:read',
     'profile:write',

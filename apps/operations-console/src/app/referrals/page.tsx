@@ -40,6 +40,8 @@ const PERSONAS: { value: ReferralPersona; label: string }[] = [
   { value: 'CUSTOMER', label: 'Customers' },
   { value: 'DRIVER', label: 'Drivers' },
   { value: 'RIDER', label: 'Riders' },
+  { value: 'MERCHANT', label: 'Merchants' },
+  { value: 'FLEET_OWNER', label: 'Fleet owners' },
 ];
 
 function naira(value: number): string {
@@ -166,7 +168,7 @@ export default function ReferralsPage(): React.JSX.Element {
 
         {overview.data ? (
           <>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {overview.data.personas.map((row) => (
                 <Card key={row.persona}>
                   <CardHeader>

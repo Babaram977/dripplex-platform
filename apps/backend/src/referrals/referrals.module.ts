@@ -13,6 +13,8 @@ import { DriverCampaignTripSubscriber } from './driver-campaign-trip.subscriber'
 import { DriverCampaignController } from './driver-campaign.controller';
 import { DriverCampaignService } from './driver-campaign.service';
 import { DriverReferralsController } from './driver-referrals.controller';
+import { FleetReferralsController } from './fleet-referrals.controller';
+import { MerchantReferralsController } from './merchant-referrals.controller';
 import { ReferralRewardSubscriber } from './referral-reward.subscriber';
 import { ReferralsService } from './referrals.service';
 import { RiderReferralsController } from './rider-referrals.controller';
@@ -23,6 +25,8 @@ import { RiderReferralsController } from './rider-referrals.controller';
     CustomerReferralsController,
     DriverReferralsController,
     RiderReferralsController,
+    MerchantReferralsController,
+    FleetReferralsController,
     AdminReferralsController,
     DriverCampaignController,
     AdminDriverCampaignController,

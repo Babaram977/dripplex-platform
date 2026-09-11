@@ -613,7 +613,17 @@ export interface ReferralStatsDto {
   totalRedemptions: number;
   pendingRedemptions: number;
   rewardedRedemptions: number;
+  /** What a referred friend earns for signing up with this code. */
   refereeRewardAmount: number;
+  /**
+   * What the sharer earns when that friend completes their first ride.
+   *
+   * The endpoint has always returned this — the shared type simply never
+   * declared it, so any client reading it had to hardcode the amount or go
+   * without. Both figures come from the backend for the same reason: a reward
+   * amount stated in a client is one that keeps being stated after it changes.
+   */
+  referrerRewardAmount: number;
 }
 
 export interface ReferralRedemptionDto {
@@ -812,8 +822,12 @@ export interface OperationsPayoutQueueQuery {
   status?: PayoutRequestStatus;
 }
 
-/** The personas that actually have a referral code today. */
-export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER';
+/**
+ * The personas that hold a referral code. Every earning persona has one since
+ * DPX-REFERRAL-002; the owner type is fixed when a code is created and decides
+ * which wallet the reward is paid into.
+ */
+export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
 
 export interface ReferralPersonaPerformanceDto {
   persona: ReferralPersona;

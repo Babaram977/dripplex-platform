@@ -16,6 +16,16 @@ export const REFERRAL_PERMISSIONS = {
    *  `Referral.ownerType` is fixed at creation and decides which wallet the
    *  ₦350 is paid into. */
   RIDER_USE: 'rider:referrals:use',
+  /** A merchant's own referral code. Same reasoning as the split above:
+   *  `Referral.ownerType` is fixed at creation and decides which wallet the
+   *  ₦350 lands in — a merchant's goes to the merchant wallet their portal
+   *  shows and can withdraw from. */
+  MERCHANT_USE: 'merchant:referrals:use',
+  /** A fleet owner's own referral code. Their reward is paid into their
+   *  personal customer wallet rather than the fleet's receivables: a referral
+   *  is the owner's own marketing, while receivables are what DrippleX owes
+   *  the fleet for work its riders did. */
+  FLEET_OWNER_USE: 'fleet:referrals:use',
   ADMIN_MANAGE: 'admin:referrals:manage',
 } as const;
 
