@@ -17,8 +17,10 @@ import {
   AdjustLoyaltyPointsDto,
   CreateLoyaltyAchievementDto,
   UpdateLoyaltyAchievementDto,
+  UpdateLoyaltyEarningProgrammeDto,
   UpdateLoyaltySettingDto,
 } from './dto/loyalty.dto';
+import { LoyaltyEarningService, type LoyaltyEarningProgrammeDto } from './loyalty-earning.service';
 import { LoyaltySettingsService, type LoyaltySettingDto } from './loyalty-settings.service';
 import { LOYALTY_PERMISSIONS } from './loyalty.constants';
 import {
@@ -29,6 +31,7 @@ import {
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
+import type { LoyaltyEarnerPersona } from '@prisma/client';
 import type { Request } from 'express';
 
 @Controller('admin/loyalty')
@@ -36,7 +39,36 @@ export class AdminLoyaltyController {
   constructor(
     private readonly loyaltyService: LoyaltyService,
     private readonly settings: LoyaltySettingsService,
+    private readonly earning: LoyaltyEarningService,
   ) {}
+
+  /**
+   * Whether a partner persona earns DX Points, and for what.
+   *
+   * Every programme is off until somebody switches it on, which is what Nora's
+   * "approved programme" and "where a campaign permits" both mean in practice.
+   */
+  @Get('earning-programmes')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async listEarningProgrammes(): Promise<ApiSuccessResponse<LoyaltyEarningProgrammeDto[]>> {
+    const data = await this.earning.list();
+    return { success: true, data };
+  }
+
+  @Patch('earning-programmes/:persona')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async updateEarningProgramme(
+    @Param('persona') persona: LoyaltyEarnerPersona,
+    @Body() dto: UpdateLoyaltyEarningProgrammeDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<LoyaltyEarningProgrammeDto>> {
+    const data = await this.earning.update(persona, dto, user.id, {
+      ...this.auditContext(request),
+      userId: user.id,
+    });
+    return { success: true, data };
+  }
 
   /**
    * What DX Points convert to, and whether they may.

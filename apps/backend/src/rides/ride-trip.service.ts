@@ -343,6 +343,11 @@ export class RideTripService {
         customerId: ride.customerId,
         rideId: ride.id,
         totalFare: String(ride.totalFare),
+        // DPX-LOYALTY-007 — the driver is on the ride and every other
+        // subscriber had to re-read it to find out who worked the trip. A
+        // partner earning programme cannot credit somebody the event does not
+        // name.
+        ...(ride.driverId === null ? {} : { driverId: ride.driverId }),
       });
     }
   }

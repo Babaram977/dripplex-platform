@@ -10,8 +10,10 @@ import { AdminLoyaltyRewardsController } from './admin-loyalty-rewards.controlle
 import { AdminLoyaltyController } from './admin-loyalty.controller';
 import { CustomerLoyaltyRewardsController } from './customer-loyalty-rewards.controller';
 import { CustomerLoyaltyController } from './customer-loyalty.controller';
+import { LoyaltyEarningService } from './loyalty-earning.service';
 import { LoyaltyEventsSubscriber } from './loyalty-events.subscriber';
 import { LoyaltyExpirySweepService } from './loyalty-expiry-sweep.service';
+import { LoyaltyPartnerEarningSubscriber } from './loyalty-partner-earning.subscriber';
 import { LoyaltyRewardsService } from './loyalty-rewards.service';
 import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LoyaltyStoreRedemptionService } from './loyalty-store-redemption.service';
@@ -30,6 +32,8 @@ import { MerchantLoyaltyController } from './merchant-loyalty.controller';
   providers: [
     LoyaltyService,
     LoyaltySettingsService,
+    LoyaltyEarningService,
+    LoyaltyPartnerEarningSubscriber,
     LoyaltyStoreRedemptionService,
     LoyaltyRewardsService,
     LoyaltyEventsSubscriber,
@@ -38,6 +42,7 @@ import { MerchantLoyaltyController } from './merchant-loyalty.controller';
   exports: [
     LoyaltyService,
     LoyaltySettingsService,
+    LoyaltyEarningService,
     LoyaltyStoreRedemptionService,
     LoyaltyRewardsService,
   ],

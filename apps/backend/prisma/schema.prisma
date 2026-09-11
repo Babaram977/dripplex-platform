@@ -3696,6 +3696,65 @@ model LoyaltySetting {
   @@map("loyalty_settings")
 }
 
+/// Who can earn DX Points besides a customer.
+///
+/// Nora's policy, 2026-09-11: drivers and riders earn only under an approved
+/// programme, merchants only where a campaign permits, fleets only via explicit
+/// incentive programmes. The common thread is that a partner earns nothing by
+/// default — which is also exactly what the platform did before this shipped,
+/// so switching one on is a decision somebody makes rather than one they have
+/// to remember to undo.
+enum LoyaltyEarnerPersona {
+  DRIVER
+  RIDER
+  MERCHANT
+  /// The person, not the company. A fleet has no loyalty account; what it earns
+  /// reaches its owner, the same way a fleet owner's referral reward does.
+  FLEET_OWNER
+}
+
+/// DPX-LOYALTY-007 — whether a partner persona earns DX Points, and for what.
+///
+/// One row per persona, and **every one seeded inactive**. That is the whole
+/// design: "approved programme" and "where a campaign permits" both mean the
+/// same operational thing, which is that somebody switched it on and the switch
+/// is auditable.
+model LoyaltyEarningProgramme {
+  id      String               @id @db.Uuid
+  persona LoyaltyEarnerPersona @unique
+
+  /// Nothing is earned while this is false, which is how every row starts.
+  active Boolean @default(false)
+
+  /// Points for finishing the thing this persona does — a completed ride, a
+  /// delivered job, a completed order. Zero means the programme does not reward
+  /// volume, which is a real setting beside a review-only programme.
+  pointsPerCompletedJob Int @default(0) @map("points_per_completed_job")
+
+  /// Points for a customer review at or above `minReviewRating`.
+  ///
+  /// Founder decision 2026-09-11: "review can boost driver dx points but cannot
+  /// affect the star rating." Points are the reward; the star rating stays a
+  /// measurement. Nothing in this table is readable from the rating engine, and
+  /// nothing here writes to it.
+  pointsPerQualifyingReview Int @default(0) @map("points_per_qualifying_review")
+
+  /// The rating a review has to reach to earn anything. 4 by default, so a
+  /// complaint does not pay.
+  minReviewRating Int @default(4) @map("min_review_rating")
+
+  /// The most this persona may earn in a rolling 24 hours, per person. Null is
+  /// uncapped. A cap matters more here than on the customer side: a busy driver
+  /// finishes far more jobs in a day than a customer places orders.
+  dailyPointsCap Int? @map("daily_points_cap")
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("loyalty_earning_programmes")
+}
+
 model LoyaltyAccount {
   id             String               @id @default(uuid()) @db.Uuid
   userId         String               @unique @map("user_id") @db.Uuid

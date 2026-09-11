@@ -8,6 +8,8 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { DRIVER_RATING_TAGS, RIDE_AUDIT_ACTIONS } from './ride.constants';
@@ -29,6 +31,10 @@ export class RideRatingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    // Optional so every existing construction of this service keeps working;
+    // a missing bus means the rating is still recorded and only the loyalty
+    // announcement is skipped, which is the right way round.
+    private readonly eventBus?: DomainEventBus,
   ) {}
 
   public async rateDriver(
@@ -117,6 +123,23 @@ export class RideRatingService {
         RIDE_AUDIT_ACTIONS.RATED,
         { ...context, userId: raterId },
         { resource: 'ride', resourceId: ride.id, metadata: { raterRole, rating: dto.rating } },
+      );
+
+      // DPX-LOYALTY-007 — announced, not acted on. Founder decision: a review
+      // can boost a driver's DX Points and must not affect their star rating.
+      // Emitting keeps that true by construction: this service records the
+      // rating, loyalty subscribes and only ever adds points, and neither can
+      // reach into the other.
+      await this.eventBus?.emit(
+        DOMAIN_EVENTS.RIDE_RATED,
+        {
+          rideId: ride.id,
+          ratingId: rating.id,
+          rateeId,
+          raterRole,
+          rating: String(dto.rating),
+        },
+        { actorUserId: raterId },
       );
 
       return toRideRatingDto(rating);

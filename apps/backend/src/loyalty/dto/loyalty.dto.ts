@@ -207,3 +207,35 @@ export class AdjustLoyaltyPointsDto {
   @MaxLength(255)
   public reason!: string;
 }
+
+/** DPX-LOYALTY-007 — whether a partner persona earns DX Points, and for what.
+ *  Every field optional: switching a programme on must not require restating
+ *  the point sizes, and restating them is how one gets changed by accident. */
+export class UpdateLoyaltyEarningProgrammeDto {
+  @IsOptional()
+  @IsBoolean()
+  public active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  public pointsPerCompletedJob?: number;
+
+  /** Founder decision: a review boosts DX Points and never the star rating. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  public pointsPerQualifyingReview?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  public minReviewRating?: number;
+
+  /** Null removes the cap. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public dailyPointsCap?: number | null;
+}

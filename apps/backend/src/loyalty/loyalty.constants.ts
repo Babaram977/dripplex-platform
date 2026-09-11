@@ -30,6 +30,7 @@ export const LOYALTY_AUDIT_ACTIONS = {
   SETTINGS_UPDATED: 'loyalty.settings_updated',
   POINTS_ADJUSTED: 'loyalty.points_adjusted',
   POINTS_REVERSED: 'loyalty.points_reversed',
+  EARNING_PROGRAMME_UPDATED: 'loyalty.earning_programme_updated',
 } as const;
 
 export const LOYALTY_EVENT_POINTS = {
@@ -106,6 +107,14 @@ export const LOYALTY_REFERENCE_TYPES = {
   /** An Operations adjustment. No reference id — it points at nothing but the
    *  decision, which is recorded on the audit trail instead. */
   ADJUSTMENT: 'ADJUSTMENT',
+  /** A partner's own earning, keyed on the ride/job/order they did. Distinct
+   *  from the customer-side ORDER/DELIVERY types keyed on the same ids, so one
+   *  order can pay its customer and its merchant without either looking like a
+   *  duplicate of the other. */
+  PARTNER_RIDE: 'PARTNER_RIDE',
+  PARTNER_DELIVERY: 'PARTNER_DELIVERY',
+  PARTNER_ORDER: 'PARTNER_ORDER',
+  PARTNER_REVIEW: 'PARTNER_REVIEW',
 } as const;
 
 /**
