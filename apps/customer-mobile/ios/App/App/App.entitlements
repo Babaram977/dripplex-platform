@@ -2,8 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Release / App Store. Apple rejects a store build whose APNs environment
+	     is `development`, and TestFlight uses the production APNs gateway too.
+	     Debug builds use AppDebug.entitlements, which keeps the sandbox. -->
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>production</string>
 	<key>com.apple.developer.associated-domains</key>
 	<array>
 		<string>applinks:app.dripplex.com</string>

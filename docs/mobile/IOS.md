@@ -28,6 +28,21 @@ pnpm exec cap open ios
 
 `CODE_SIGN_STYLE = Automatic` in project — configure team in Xcode.
 
+## Correction, 2026-09-11 — the entitlements were never applied
+
+The "Verified configuration" table below previously marked Universal Links and
+Push as ✅ on the strength of `App.entitlements` existing and containing the
+right keys. It does, and it was attached to nothing: neither the Debug nor the
+Release build configuration set `CODE_SIGN_ENTITLEMENTS`, and there is no
+`.xcconfig` outside Pods that set it either.
+
+A file that exists, reads correctly and is never loaded looks exactly like a
+file that works. The same shape of fault put `GEOCODER` at `undefined` in
+production for the whole life of the merchant "Find on map" button. Worth
+naming, because the table said verified and nothing was.
+
+Both configurations are now wired, and the App Store value is in place.
+
 ## Verified configuration
 
 | Item                   | Status                                                |
@@ -35,8 +50,8 @@ pnpm exec cap open ios
 | Bundle identifier      | ✅                                                    |
 | Launch screen          | ✅ `LaunchScreen.storyboard`                          |
 | App icons              | ✅ DrippleX mark, 1024×1024 RGB — verified 2026-08-29 |
-| Universal Links        | ✅ entitlements + intent template                     |
-| Push (APNs)            | ✅ `UIBackgroundModes` + entitlements (`development`) |
+| Universal Links        | ✅ entitlements wired + intent template               |
+| Push (APNs)            | ✅ `UIBackgroundModes` + entitlements (`production`)  |
 | Privacy Manifest       | ✅ `PrivacyInfo.xcprivacy`                            |
 | App Transport Security | ✅ HTTPS only (localhost exception)                   |
 | Non-exempt encryption  | ✅ `ITSAppUsesNonExemptEncryption = false`            |
@@ -69,12 +84,12 @@ it.
 
 ### Blockers that the DUNS does not remove
 
-| Blocker                                | Note                                                                                                                                                                                                                                                                                                                                                  |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **No macOS**                           | `xcodebuild archive` cannot run on Linux. CI validates the iOS scaffold only (the "iOS project preflight" job). Reaching a `.ipa` needs Mac hardware, MacStadium or Xcode Cloud — a purchase decision, not a code change.                                                                                                                             |
-| ~~App icons~~                          | **Not a blocker — this row was wrong when written.** The iOS asset catalog holds the real DrippleX mark at 1024×1024 RGB, and `verify-icons.mjs` passes all 32 native brand assets. Founder decision 2026-08-29: ship the current mark (D + speed lines, no X). The X lives on the driver bubble; the icon is modernised once the business is stable. |
-| **`aps-environment` is `development`** | `App.entitlements`. The App Store requires `production`. A one-line change, deliberately not made while the only builds are internal.                                                                                                                                                                                                                 |
-| **Signing team unset**                 | `CODE_SIGN_STYLE = Automatic`; the team is configured in Xcode, which needs the enrolled account.                                                                                                                                                                                                                                                     |
+| Blocker                                | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **No macOS**                           | `xcodebuild archive` cannot run on Linux. CI validates the iOS scaffold only (the "iOS project preflight" job). Reaching a `.ipa` needs Mac hardware, MacStadium or Xcode Cloud — a purchase decision, not a code change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ~~App icons~~                          | **Not a blocker — this row was wrong when written.** The iOS asset catalog holds the real DrippleX mark at 1024×1024 RGB, and `verify-icons.mjs` passes all 32 native brand assets. Founder decision 2026-08-29: ship the current mark (D + speed lines, no X). The X lives on the driver bubble; the icon is modernised once the business is stable.                                                                                                                                                                                                                                                                                                                                                                                       |
+| ~~`aps-environment` is `development`~~ | **Fixed 2026-09-11, and it was worse than this row said.** `App.entitlements` was never wired into the build: no `CODE_SIGN_ENTITLEMENTS` in either configuration, and no `.xcconfig` setting one. The file existed, read correctly, and was applied to nothing — so push and Universal Links would both have been absent from any build, and flipping the one value would have changed nothing. Both configurations now reference an entitlements file: Release uses `App.entitlements` (`production`, required by the App Store and by TestFlight), Debug uses the new `AppDebug.entitlements` (`development`), because a debug build signed against a development profile while declaring `production` fails on an entitlement mismatch. |
+| **Signing team unset**                 | `CODE_SIGN_STYLE = Automatic`; the team is configured in Xcode, which needs the enrolled account.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 
 Nothing here blocks Android, which is what the launch runs on.
 
