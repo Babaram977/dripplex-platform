@@ -119,18 +119,21 @@ ticket now, not a fact remembered from when it was first filed.
 A dedicated capability, separate from answering tickets. Conceptually:
 
 ```
-support:tickets:use         file and read your own
-admin:support:tickets:manage  answer anyone's
-<new>                       hand a live conversation back to automation
+support:tickets:use            file and read your own
+admin:support:tickets:manage   answer anyone's
+support:tickets:ai-handoff     hand a live conversation to automation
 ```
 
-Exact RBAC naming is an implementation detail; the **separation** is the
-decision. Handing a live conversation back to a machine is a different kind of
+`ai-handoff`, not `ai-return`: the permission names the capability, not one
+direction through the lifecycle. It authorises `HUMAN_HANDLING → AI_HANDLING`
+and stays distinct from using or managing tickets. Handing a live conversation back to a machine is a different kind of
 act from replying to it, and should not ride along with the grant every
 Operations responder already holds.
 
-Held initially by Operations staff explicitly authorised for AI handoff. Not by
-customer, rider, driver, merchant, fleet owner, or an ordinary ticket responder.
+**Granted to nobody by default**, including ordinary support responders. It is
+assigned explicitly to the appropriate Operations role once the operational
+policy exists — not as part of this work. A seeded-but-ungranted permission is
+the correct end state for B2, and a test asserts no persona role holds it.
 
 **A user cannot cause a transition by writing one.** "Let the AI handle this" is
 a message, and messages are text. They may ask; the server decides. This is the
@@ -149,9 +152,27 @@ same rule as B1's persona derivation, applied to state.
 | `ASSISTANT`   | `null`                   | the server's orchestrator, in-process only |
 | `SYSTEM`      | `null`                   | the server, on state transitions           |
 
-`authorId` is never read from the request body. `SYSTEM` messages are part of the
-transcript the user sees — a conversation that silently changes hands is worse
-than one that says so.
+`authorId` is never read from the request body.
+
+## Visibility is its own field, not an inference from `authorType`
+
+`SYSTEM` covers two different things, and conflating them would leak the second:
+
+```
+SYSTEM message
+   ├── user-visible event        "Your request has been transferred to a
+   │                              support specialist."  ·  "Reopened."
+   └── internal audit / control   operational metadata, never shown
+```
+
+So every message carries an explicit `visibility` classification. Deriving it
+from `authorType` would mean that the day a `SYSTEM` event needs to carry
+operational detail, it becomes visible to the user by default — a leak caused by
+an omission rather than a decision.
+
+A conversation that silently changes hands is worse than one that says so, which
+is why the transition events are user-visible. That is a choice made per message,
+not a property of being a `SYSTEM` message.
 
 ## Append-only, and how it will be enforced
 
@@ -176,13 +197,26 @@ Prisma cannot see the trigger, so it will never report it missing either. A
 database rebuilt from `schema.prisma` rather than from the migrations would have
 no protection at all and no check would complain. Therefore:
 
-- the trigger is the mechanism, because it binds even the table owner until it is
-  explicitly dropped;
-- `REVOKE` is **not** the mechanism. The owner can re-grant themselves in one
-  statement, so it guards against accident, not intent;
-- a test asserts the trigger exists and that an `UPDATE` against a message
-  actually raises. The protection has to be proven present, not assumed, exactly
-  because `migrate diff` will not do it for us.
+- **the trigger is the mechanism.** `INSERT` allowed, `UPDATE` rejected, `DELETE`
+  rejected. It binds even the table owner until explicitly dropped;
+- **`REVOKE` is defence in depth, not the security boundary.** The owner can
+  re-grant themselves in one statement, so it guards against accident, not
+  intent;
+- **CI asserts both, separately**: that the trigger exists, and that an attempted
+  `UPDATE` and an attempted `DELETE` are actually rejected. Existence and
+  behaviour are different claims and one does not imply the other.
+
+### Operational invariant — read this before rebuilding a database
+
+> **Any database recreation must apply the migrations. Reconstructing a database
+> from `schema.prisma` alone produces a table with no immutability protection,
+> and `prisma migrate diff` will report "No difference detected" anyway.**
+
+This is written down because the failure is silent and the reassuring message is
+the trap: a future engineer seeing "No difference detected" could reasonably
+conclude the schema is fully verified. For this control it proves nothing.
+`migrate diff` is not evidence that the immutability boundary exists — the CI
+test above is.
 
 ## Ordering
 
@@ -233,12 +267,39 @@ or whether it was trained on. B2 must not be designed as though "we can delete i
 later" is a complete answer to a retention question — it is only an answer about
 our own half.
 
-The policy decision must therefore establish, at minimum: what transcript data is
-retained and for how long; what is sent to an external provider; which provider
-and model; the provider's own retention; whether provider training occurs;
-cross-border transfer; sensitive-information handling; the deletion and erasure
-process; minimisation; and any legal or operational retention obligation that
-cuts the other way.
+The policy decision must therefore establish, at minimum: data minimisation; the
+categories of support data sent externally; the provider and model; the
+processing location; cross-border transfer; the provider's own retention;
+whether submitted data is used for training; sensitive-information handling; the
+deletion and erasure process; our retention period; the provider's deletion
+guarantees; and incident and audit requirements.
+
+## Hard architectural gate
+
+> **No production transcript may be sent to an AI provider until that decision
+> exists and is approved.**
+
+This is a gate in the architecture, not a note in a plan. It binds regardless of
+schedule pressure, regardless of a provider being wired up and working, and
+regardless of anyone judging the risk acceptable in the moment. The decision is
+the precondition; nothing else substitutes for it.
+
+## Immutability is not the opposite of redaction
+
+The trigger makes the original message unchangeable. That must not be read as
+"redaction is impossible", because a retention or NDPR obligation may later
+require content to stop being shown or stop being served.
+
+```
+Original message
+   ├── immutable historical record        ← the trigger protects this
+   └── controlled visibility / redaction metadata   ← alongside, not instead
+```
+
+Redaction is expressed as state beside the message, never by mutating it. The
+exact legal mechanism can wait for the policy; what B2 must not do is ship a
+design that implies the only way to satisfy a redaction requirement is to break
+immutability — because at that point somebody drops the trigger.
 
 ---
 
@@ -303,11 +364,13 @@ of §5.
 
 Ownership and cross-persona isolation · every legal transition · every illegal
 one refused · the `CHECK` tested **directly against the database**, not only
-through the service · `requiresHumanHandling` never written by B2 · append-only
-proven by an attempted `UPDATE` that raises · the trigger proven present ·
+through the service · `requiresHumanHandling` never written by B2 · the trigger
+proven present · an attempted `UPDATE` proven rejected · an attempted `DELETE`
+proven rejected · internal `SYSTEM` messages proven absent from the user-facing
+transcript · `support:tickets:ai-handoff` held by no persona role ·
 ordering under concurrent appends · idempotent retry · idempotent escalation ·
-two operators claiming at once · the AI-return permission held by no persona
-role · audit entries · import boundary · fresh-database migration and parity.
+two operators claiming at once · audit entries · import boundary ·
+fresh-database migration and parity.
 
 Every guard mutation-proven, as in B1.
 
@@ -315,11 +378,16 @@ Every guard mutation-proven, as in B1.
 
 # Still open
 
-1. **Are `SYSTEM` messages visible to the user?** Assumed yes (§5).
-2. **RBAC name** for the AI-return capability — the separation is decided, the
-   string is not.
-3. **Retention policy itself**, pending the NDPR/provider decision (§7). The
-   schema is designed to accept the answer; the answer is not B2's to invent.
+**One item, and it is not B2's to invent: the retention and provider policy**
+(§7). The schema is designed to accept whatever that decision says. Until it
+exists and is approved, no production transcript reaches a provider.
+
+Everything else raised at review is now decided and recorded above: reopening
+reuses the conversation · the ticket owns handling state and the constraint is
+row-local · B2 never clears `requiresHumanHandling` · the trigger is the
+immutability boundary and `migrate diff` is not evidence of it · visibility is an
+explicit field · `support:tickets:ai-handoff` is the capability, granted to
+nobody by default · immutability and redaction are separate concerns.
 
 No provider, no model, no AI route, no AI message writer, and no financial
 capability anywhere in B2.
