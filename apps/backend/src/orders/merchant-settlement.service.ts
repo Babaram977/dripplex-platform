@@ -35,7 +35,11 @@ import {
 } from './order.constants';
 import { toOrderSettlementDto } from './order.mapper';
 
-import type { OrderSettlementDto, PaginatedResult } from '@dripplex/types';
+import type {
+  MerchantCommissionTermsDto,
+  OrderSettlementDto,
+  PaginatedResult,
+} from '@dripplex/types';
 import type { Order, OrderSettlement } from '@prisma/client';
 
 /// DPX-COMMERCIAL-001 Slice 2 §0.2 — the online/digitally-verified payment
@@ -482,6 +486,56 @@ export class MerchantSettlementService implements OnModuleInit {
    * real `orderNumber` so the merchant never has to look up a raw order
    * UUID to answer "why did I receive ₦9,000 instead of ₦10,000."
    */
+  /**
+   * What DrippleX actually charges this merchant — the number their own app
+   * shows them.
+   *
+   * The super-app printed a hardcoded "Commission 10% / Net to merchant 90%",
+   * which was only ever true for a merchant on the default standing rate with
+   * no campaign running. Ops can change the standing rate without a redeploy,
+   * and a commission campaign can target named merchants, so the figure on
+   * screen could differ from the one being deducted — with the merchant having
+   * no way to tell.
+   *
+   * Resolved through exactly the path `settleOrder` uses, with the same
+   * identifiers, so the answer is the rate that would be charged rather than a
+   * second opinion about it.
+   *
+   * One honest limit, and the reason `paymentMethod` is absent: a campaign may
+   * be conditioned on how an order was paid, and there is no order here to ask
+   * about. The resolver fails such a rule closed and reports the standing rate,
+   * which is the figure both sides already agreed to — so this can understate a
+   * discount on some orders, and never overstates what is owed.
+   */
+  public async getCommissionTerms(merchantUserId: string): Promise<MerchantCommissionTermsDto> {
+    const profile = await this.prisma.merchantProfile.findUnique({
+      where: { userId: merchantUserId },
+    });
+    if (!profile) {
+      throw new NotFoundDomainException('Merchant profile not found');
+    }
+
+    const setting = await this.commissionSettings.getEffective();
+    const standingRate = Number(setting.commissionRate);
+    // `OrderSettlement.merchantId` is the profile id, and `settleOrder` passes
+    // that same id as both `userId` and `merchantId`. Matching it exactly is
+    // what makes this the charged rate rather than a lookalike.
+    const resolved = await this.commissionRates.resolve(
+      CommissionScope.MERCHANT_ORDER,
+      standingRate,
+      { userId: profile.id, merchantId: profile.id },
+    );
+
+    const round = (value: number): number => Math.round(value * 10_000) / 10_000;
+    return {
+      commissionRate: round(resolved.rate),
+      merchantShareRate: round(1 - resolved.rate),
+      standingRate: round(standingRate),
+      campaignId: resolved.campaignId,
+      campaignName: resolved.campaignName,
+    };
+  }
+
   public async listSettlements(
     merchantUserId: string,
     page: number,

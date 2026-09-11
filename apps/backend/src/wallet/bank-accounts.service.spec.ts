@@ -63,10 +63,17 @@ describe('BankAccountsService', () => {
       $transaction: jest.fn(),
     };
     auditService = { record: jest.fn().mockResolvedValue(undefined) };
-    // Unconfigured by default, which is the pre-Phase-0 world: the existing
-    // tests below describe behaviour that must not change when no resolver is
-    // available.
-    resolver = { configured: false, resolveAccountName: jest.fn(), listBanks: jest.fn() };
+    // Configured by default. Verification is mandatory for every persona as of
+    // the founder decision of 2026-09-11, so a resolver that cannot be reached
+    // is the exceptional case a test opts into, not the baseline.
+    resolver = {
+      configured: true,
+      resolveAccountName: jest.fn().mockResolvedValue({ accountName: 'IBRAHIM SAEED ABDULLAHI' }),
+      listBanks: jest.fn().mockResolvedValue([
+        { name: 'Guaranty Trust Bank', code: '058' },
+        { name: 'Access Bank', code: '044' },
+      ]),
+    };
     service = new BankAccountsService(
       prisma as unknown as PrismaService,
       auditService as unknown as AuditService,
@@ -236,26 +243,71 @@ describe('BankAccountsService', () => {
       });
     });
 
-    it('still saves self-attested when no resolver is configured', async () => {
+    // Founder decision 2026-09-11, reversing the Phase 0 compromise. This test
+    // previously asserted the opposite — that an unconfigured environment
+    // "still saves self-attested" — on the reasoning that degrading beat
+    // refusing. It did not: `PayoutFulfillment` already refuses to pay an
+    // unverified destination, so such a row was never a usable account. It was
+    // a withdrawal that failed later, or one an operator paid out by hand to a
+    // name nobody had checked.
+    it('refuses to link anything when no resolver is configured', async () => {
+      resolver.configured = false;
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+
+      await expect(
+        service.add(userId, {
+          bankName: 'GTBank',
+          accountName: 'Stab Tester',
+          accountNumber: '0123456789',
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+
+      expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
+    });
+
+    it('refuses an account number that is not a NUBAN, without asking the bank', async () => {
+      prisma.customerBankAccount.findFirst.mockResolvedValue(null);
+      prisma.customerBankAccount.count.mockResolvedValue(0);
+
+      // The DTO used to accept 6-20 digits, so a six-digit number reached here
+      // and was stored self-attested — name enquiry could never resolve it.
+      await expect(
+        service.add(userId, {
+          bankName: 'GTBank',
+          accountName: 'Stab Tester',
+          accountNumber: '012345',
+        }),
+      ).rejects.toBeInstanceOf(ValidationDomainException);
+
+      expect(resolver.resolveAccountName).not.toHaveBeenCalled();
+      expect(prisma.customerBankAccount.create).not.toHaveBeenCalled();
+    });
+
+    it('ignores a typed account name entirely, even when the bank agrees', async () => {
       prisma.customerBankAccount.findFirst.mockResolvedValue(null);
       prisma.customerBankAccount.count.mockResolvedValue(0);
       prisma.customerBankAccount.create.mockImplementation(
         ({ data }: { data: Record<string, unknown> }) => account(data),
       );
 
+      // No account name supplied at all: a correct client no longer sends one,
+      // because it was never what got stored.
       const result = await service.add(userId, {
         bankName: 'GTBank',
-        accountName: 'Stab Tester',
+        bankCode: '058',
         accountNumber: '0123456789',
       });
 
-      // Null is "nobody asked", not "the bank said no" — and it must not
-      // block an environment that has no Paystack credentials.
-      expect(result.accountNameVerified).toBe(false);
-      expect(result.accountName).toBe('Stab Tester');
+      expect(result.accountName).toBe('IBRAHIM SAEED ABDULLAHI');
+      expect(result.accountNameVerified).toBe(true);
     });
 
     it('offers no banks when no resolver is configured', async () => {
+      resolver.configured = false;
+      // An empty list is the signal that the form has nothing to offer. It used
+      // to mean "fall back to free text"; `add` now refuses in this state, so a
+      // client that still falls back is building a form that cannot succeed.
       await expect(service.listBanks()).resolves.toEqual([]);
       expect(resolver.listBanks).not.toHaveBeenCalled();
     });

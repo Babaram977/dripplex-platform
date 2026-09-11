@@ -2472,6 +2472,25 @@ export interface ResolvedBankAccountDto {
   bankCode: string;
 }
 
+/**
+ * What DrippleX charges this merchant, resolved for them specifically.
+ *
+ * Read from the platform rather than printed as static text: Ops can change the
+ * standing rate without a redeploy, and a commission campaign can target named
+ * merchants, so a hardcoded percentage is a number the app cannot stand behind.
+ */
+export interface MerchantCommissionTermsDto {
+  /** Fraction, not percent: 0.10 is 10%. */
+  commissionRate: number;
+  /** The merchant's share, `1 - commissionRate`. Supplied by the backend so
+   *  every surface subtracts it identically. */
+  merchantShareRate: number;
+  /** The Ops-approved standing rate, before any campaign. */
+  standingRate: number;
+  campaignId: string | null;
+  campaignName: string | null;
+}
+
 // ─── API Namespaces ───────────────────────────────────────────────────────────
 
 /**
@@ -2752,12 +2771,11 @@ export const api = {
         'GET',
         `/customer/wallet/bank-accounts/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
       ),
-    addBankAccount: (body: {
-      bankCode: string;
-      accountNumber: string;
-      bankName: string;
-      accountName: string;
-    }) => dx<CustomerBankAccountDto>('POST', '/customer/wallet/bank-accounts', body),
+    /** `accountName` is deliberately absent: the backend stores the name name
+     *  enquiry returns and ignores anything sent here, so a client that supplies
+     *  one is only inviting the two to disagree. */
+    addBankAccount: (body: { bankCode: string; accountNumber: string; bankName: string }) =>
+      dx<CustomerBankAccountDto>('POST', '/customer/wallet/bank-accounts', body),
     requestWithdrawal: (body: { amount: number; bankAccountId: string }) =>
       dx<WithdrawalRequestDto>('POST', '/customer/wallet/withdrawals', body),
     getWithdrawals: (params?: { page?: number; pageSize?: number; status?: string }) =>
@@ -3507,6 +3525,9 @@ export const api = {
     // now *requires* it: the bank must match the provider's list, the number
     // must be exactly 10 digits, and the stored account name is the bank's
     // answer rather than anything the merchant entered.
+    /** The commission rate actually in force for this merchant. */
+    getCommissionTerms: () =>
+      dx<MerchantCommissionTermsDto>('GET', '/merchant/settlements/commission'),
     listBankAccounts: () => dx<MerchantBankAccountDto[]>('GET', '/merchant/bank-account'),
     /** The banks the payment provider will actually accept, for the picker.
      * A typed bank name is how a settlement destination ends up unlinkable:

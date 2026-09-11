@@ -35,6 +35,7 @@ import type {
   MerchantKycDto,
   MerchantKycStatusDto,
   MerchantBankAccountDto,
+  MerchantCommissionTermsDto,
   BankOptionDto,
   ResolvedBankAccountDto,
   OrderPaymentProofDto,
@@ -379,6 +380,18 @@ function ReadOnlyField({ label, value, hint }: { label: string; value: string; h
 const MERCHANT_CATEGORY_OPTIONS = (Object.keys(MERCHANT_CATEGORY_LABEL) as MerchantCategory[]).map(
   (value) => ({ value, label: MERCHANT_CATEGORY_LABEL[value] }),
 );
+
+/**
+ * A commission fraction as the merchant reads it: 0.125 -> "12.5%".
+ *
+ * Trailing zeros are dropped because a rate is usually a round number and
+ * "10.00%" reads like a precision the figure does not have. Rates are stored
+ * with four decimal places, so two decimals here is the most that can matter.
+ */
+function asPercent(fraction: number): string {
+  const percent = Math.round(fraction * 10_000) / 100;
+  return `${String(percent)}%`;
+}
 
 function businessTypeLabel(bt: string | undefined | null): string {
   switch (bt) {
@@ -3941,6 +3954,7 @@ export function BankAccountPage() {
   const [loading, setLoading] = useState(true);
   // `editing` is false when viewing; true when the form is open (add or replace).
   const [editing, setEditing] = useState(false);
+  const [commission, setCommission] = useState<MerchantCommissionTermsDto | null>(null);
   const [banks, setBanks] = useState<BankOptionDto[]>([]);
   // Verification is a backend dependency, not a nicety: `create` refuses
   // outright when no resolver is configured. If the list cannot be fetched,
@@ -3972,6 +3986,15 @@ export function BankAccountPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // What this merchant is actually charged. Left null on failure so the card
+  // shows "—" rather than a confident wrong number.
+  useEffect(() => {
+    void api.merchant
+      .getCommissionTerms()
+      .then(setCommission)
+      .catch(() => undefined);
+  }, []);
 
   // The provider's own list. Fetched once, not per form opening.
   useEffect(() => {
@@ -4212,8 +4235,25 @@ export function BankAccountPage() {
           />
           {[
             ['Settlement cycle', 'After each completed order'],
-            ['Commission', '10% (set by Operations)'],
-            ['Net to merchant', '90% of order value'],
+            // Read from the platform, not printed here. Operations can change
+            // the standing rate without a redeploy and a commission campaign
+            // can target named merchants, so the old hardcoded "10% / 90%" was
+            // only ever right for a merchant on the default with nothing
+            // running — and a merchant had no way to tell it was wrong.
+            [
+              'Commission',
+              commission === null
+                ? '—'
+                : `${asPercent(commission.commissionRate)}${
+                    commission.campaignName === null ? '' : ` (${commission.campaignName})`
+                  }`,
+            ],
+            [
+              'Net to merchant',
+              commission === null
+                ? '—'
+                : `${asPercent(commission.merchantShareRate)} of order value`,
+            ],
           ].map(([l, v]) => (
             <div
               key={l}

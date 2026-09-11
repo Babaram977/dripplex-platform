@@ -23,6 +23,7 @@ const listBankAccounts = vi.fn();
 const listBanks = vi.fn();
 const resolveBankAccount = vi.fn();
 const createBankAccount = vi.fn();
+const getCommissionTerms = vi.fn();
 
 vi.mock('../lib/api', () => ({
   api: {
@@ -32,6 +33,7 @@ vi.mock('../lib/api', () => ({
       resolveBankAccount: (bankCode: string, accountNumber: string) =>
         resolveBankAccount(bankCode, accountNumber),
       createBankAccount: (body: unknown) => createBankAccount(body),
+      getCommissionTerms: () => getCommissionTerms(),
     },
   },
   uploadFile: vi.fn(),
@@ -58,6 +60,13 @@ describe('merchant settlement account', () => {
     vi.clearAllMocks();
     listBankAccounts.mockResolvedValue([]);
     listBanks.mockResolvedValue(BANKS);
+    getCommissionTerms.mockResolvedValue({
+      commissionRate: 0.075,
+      merchantShareRate: 0.925,
+      standingRate: 0.1,
+      campaignId: 'campaign-1',
+      campaignName: 'Ramadan partner rate',
+    });
     resolveBankAccount.mockResolvedValue(RESOLVED);
     createBankAccount.mockResolvedValue({
       id: 'bank-1',
@@ -181,5 +190,50 @@ describe('merchant settlement account', () => {
     render(<BankAccountPage />);
 
     expect(await screen.findByText(/payouts are on hold/)).toBeInTheDocument();
+  });
+
+  // Saeed, 2026-09-11: "connect to negotiated approved value from ops console".
+  // The Payout Information card printed "Commission 10% (set by Operations)"
+  // and "Net to merchant 90%" as static text. Operations can change the
+  // standing rate without a redeploy, and a commission campaign can target
+  // named merchants, so a merchant on any other rate was reading a number the
+  // platform had stopped standing behind.
+  describe('payout information', () => {
+    it('shows the rate this merchant is actually charged, not a compiled-in 10%', async () => {
+      render(<BankAccountPage />);
+
+      expect(await screen.findByText('7.5% (Ramadan partner rate)')).toBeInTheDocument();
+      expect(await screen.findByText('92.5% of order value')).toBeInTheDocument();
+      expect(screen.queryByText('10% (set by Operations)')).not.toBeInTheDocument();
+      expect(screen.queryByText('90% of order value')).not.toBeInTheDocument();
+    });
+
+    it('names no campaign when the merchant is simply on the standing rate', async () => {
+      getCommissionTerms.mockResolvedValue({
+        commissionRate: 0.1,
+        merchantShareRate: 0.9,
+        standingRate: 0.1,
+        campaignId: null,
+        campaignName: null,
+      });
+      render(<BankAccountPage />);
+
+      expect(await screen.findByText('10%')).toBeInTheDocument();
+      expect(await screen.findByText('90% of order value')).toBeInTheDocument();
+    });
+
+    it('shows a dash rather than a confident wrong number when the rate cannot be read', async () => {
+      getCommissionTerms.mockRejectedValue(new Error('offline'));
+      render(<BankAccountPage />);
+
+      // Falling back to the old hardcoded pair here would be the original bug
+      // with extra steps: a confident number the platform cannot stand behind.
+      await screen.findByText('Payout Information');
+      await waitFor(() => {
+        expect(screen.queryByText('90% of order value')).not.toBeInTheDocument();
+      });
+      expect(screen.queryByText('10%')).not.toBeInTheDocument();
+      expect(screen.queryByText('10% (set by Operations)')).not.toBeInTheDocument();
+    });
   });
 });

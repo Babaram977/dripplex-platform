@@ -390,6 +390,7 @@ export type {
   ListOrdersQuery,
   MerchantCancelOrderRequest,
   MerchantCommissionSettingDto,
+  MerchantCommissionTermsDto,
   MerchantOrderListQuery,
   OrderAuditAction,
   OrderCancelledBy,

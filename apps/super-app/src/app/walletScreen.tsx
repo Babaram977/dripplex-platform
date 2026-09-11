@@ -11,6 +11,8 @@ import type {
   WalletRecipientDto,
   WalletTransferReceiptDto,
   CustomerBankAccountDto,
+  BankOptionDto,
+  ResolvedBankAccountDto,
   LoyaltyOverviewDto,
   LoyaltyLedgerEntryDto,
 } from '../lib/api';
@@ -1587,13 +1589,12 @@ export function WithdrawScreen({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [showAddBank, setShowAddBank] = useState(false);
-  const [addForm, setAddForm] = useState({
-    bankName: '',
-    bankCode: '',
-    accountNumber: '',
-    accountName: '',
-  });
+  const [addForm, setAddForm] = useState({ bankCode: '', accountNumber: '' });
+  const [banks, setBanks] = useState<BankOptionDto[]>([]);
+  // The bank's answer. Nothing is submitted until there is one.
+  const [resolved, setResolved] = useState<ResolvedBankAccountDto | null>(null);
   const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -1611,6 +1612,15 @@ export function WithdrawScreen({
   useEffect(() => {
     load();
   }, [load]);
+
+  // The provider's own bank list. Empty means verification is unavailable, and
+  // the form says so rather than offering a free-text box the backend refuses.
+  useEffect(() => {
+    void api.wallet
+      .listBanks()
+      .then(setBanks)
+      .catch(() => setBanks([]));
+  }, []);
 
   const handleWithdraw = async () => {
     const raw = Number(amount.replace(/,/g, ''));
@@ -1630,25 +1640,48 @@ export function WithdrawScreen({
     }
   };
 
-  const handleResolve = () => {
+  /**
+   * Real name enquiry.
+   *
+   * What this replaced was a mock that shipped: it waited 1.2 seconds and wrote
+   * the literal string 'DRIPPLEX USER' into the account name, then displayed it
+   * in a green "verified" box. Nothing was ever asked of any bank. The typed
+   * bank name went out with a placeholder code of '000'.
+   */
+  const handleResolve = async () => {
+    if (addForm.bankCode === '' || !/^[0-9]{10}$/.test(addForm.accountNumber)) return;
     setResolving(true);
-    setTimeout(() => {
-      setAddForm((f) => ({ ...f, accountName: 'DRIPPLEX USER' }));
+    setResolveError('');
+    setResolved(null);
+    try {
+      setResolved(await api.wallet.resolveBankAccount(addForm.bankCode, addForm.accountNumber));
+    } catch (e: unknown) {
+      setResolveError(
+        (e as { message?: string }).message ??
+          'We could not confirm that account. Check the number and try again.',
+      );
+    } finally {
       setResolving(false);
-    }, 1200);
+    }
+  };
+
+  const resetAddBank = () => {
+    setAddForm({ bankCode: '', accountNumber: '' });
+    setResolved(null);
+    setResolveError('');
   };
 
   const handleAddBank = async () => {
-    if (!addForm.bankName || !addForm.accountNumber || !addForm.accountName) return;
+    // Only the bank's answer gets sent, and only once there is one.
+    if (resolved === null) return;
     try {
       await api.wallet.addBankAccount({
-        bankName: addForm.bankName,
-        bankCode: addForm.bankCode || '000',
+        bankName: resolved.bankName,
+        bankCode: resolved.bankCode,
         accountNumber: addForm.accountNumber,
-        accountName: addForm.accountName,
       });
       setShowAddBank(false);
-      setAddForm({ bankName: '', bankCode: '', accountNumber: '', accountName: '' });
+      resetAddBank();
       load();
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'Could not add bank account');
@@ -1873,41 +1906,111 @@ export function WithdrawScreen({
               >
                 Add Bank Account
               </div>
-              <InputField
-                label="Bank name"
-                value={addForm.bankName}
-                onChange={(v) => setAddForm((f) => ({ ...f, bankName: v }))}
-                placeholder="Type your bank name"
-                style={{ marginBottom: 12 }}
-              />
-              <InputField
-                label="Account number"
-                value={addForm.accountNumber}
-                onChange={(v) => setAddForm((f) => ({ ...f, accountNumber: v }))}
-                placeholder="10-digit number"
-                type="tel"
-                style={{ marginBottom: 8 }}
-              />
-              {addForm.accountNumber.length >= 10 && !addForm.accountName && (
-                <button
-                  onClick={handleResolve}
+              {banks.length === 0 ? (
+                <div
                   style={{
-                    background: `rgba(43,172,82,.1)`,
-                    border: `1px solid rgba(43,172,82,.25)`,
-                    borderRadius: 8,
-                    padding: '7px 14px',
-                    color: G3,
                     fontFamily: IT,
                     fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    marginBottom: 10,
+                    color: WARNING,
+                    marginBottom: 12,
                   }}
                 >
-                  {resolving ? 'Resolving…' : 'Verify account'}
-                </button>
+                  Bank verification is unavailable right now, so an account cannot be added. Please
+                  try again shortly.
+                </div>
+              ) : (
+                <>
+                  {/* A typed bank name cannot be verified: name enquiry needs the
+                      provider's code for the bank, and nobody can type one. */}
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: IT,
+                        fontSize: 12,
+                        color: MUTED,
+                        fontWeight: 500,
+                        letterSpacing: '0.04em',
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      Bank
+                    </span>
+                    <select
+                      value={addForm.bankCode}
+                      onChange={(e) => {
+                        const bankCode = e.target.value;
+                        setAddForm((f) => ({ ...f, bankCode }));
+                        setResolved(null);
+                        setResolveError('');
+                      }}
+                      style={{
+                        background: NAVY_SURFACE,
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 10,
+                        padding: '11px 12px',
+                        color: '#fff',
+                        fontFamily: IT,
+                        fontSize: 14,
+                        outline: 'none',
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        colorScheme: 'dark',
+                      }}
+                    >
+                      <option value="">Select your bank…</option>
+                      {banks.map((b) => (
+                        <option key={b.code} value={b.code}>
+                          {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <InputField
+                    label="Account number"
+                    value={addForm.accountNumber}
+                    onChange={(v) => {
+                      // NUBAN is exactly ten digits; the backend refuses anything else.
+                      const accountNumber = v.replace(/\D/g, '').slice(0, 10);
+                      setAddForm((f) => ({ ...f, accountNumber }));
+                      setResolved(null);
+                      setResolveError('');
+                    }}
+                    placeholder="10-digit NUBAN number"
+                    type="tel"
+                    style={{ marginBottom: 8 }}
+                  />
+                </>
               )}
-              {addForm.accountName && (
+              {resolveError !== '' && (
+                <div style={{ fontFamily: IT, fontSize: 12, color: ERROR, marginBottom: 10 }}>
+                  {resolveError}
+                </div>
+              )}
+              {addForm.bankCode !== '' &&
+                /^[0-9]{10}$/.test(addForm.accountNumber) &&
+                resolved === null && (
+                  <button
+                    onClick={() => void handleResolve()}
+                    disabled={resolving}
+                    style={{
+                      background: `rgba(43,172,82,.1)`,
+                      border: `1px solid rgba(43,172,82,.25)`,
+                      borderRadius: 8,
+                      padding: '7px 14px',
+                      color: G3,
+                      fontFamily: IT,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      marginBottom: 10,
+                    }}
+                  >
+                    {resolving ? 'Resolving…' : 'Verify account'}
+                  </button>
+                )}
+              {resolved !== null && (
                 <div
                   style={{
                     padding: '8px 12px',
@@ -1917,14 +2020,23 @@ export function WithdrawScreen({
                     marginBottom: 12,
                   }}
                 >
+                  {/* This box used to show a hardcoded 'DRIPPLEX USER'. It now
+                      shows what the bank actually returned, which is the only
+                      thing that makes a green box here mean anything. */}
                   <div style={{ fontFamily: PP, fontSize: 13, fontWeight: 700, color: SUCCESS }}>
-                    {addForm.accountName}
+                    {resolved.accountName}
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 11, color: MUTED, marginTop: 2 }}>
+                    {resolved.bankName} · confirmed by the bank
                   </div>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
-                  onClick={() => setShowAddBank(false)}
+                  onClick={() => {
+                    setShowAddBank(false);
+                    resetAddBank();
+                  }}
                   style={{
                     flex: 1,
                     background: NAVY_SURFACE,
@@ -1939,20 +2051,21 @@ export function WithdrawScreen({
                 >
                   Cancel
                 </button>
+                {/* Only the bank's confirmation unlocks saving. */}
                 <button
-                  onClick={handleAddBank}
-                  disabled={!addForm.accountName}
+                  onClick={() => void handleAddBank()}
+                  disabled={resolved === null}
                   style={{
                     flex: 1,
-                    background: addForm.accountName ? GREEN_GRAD : 'rgba(255,255,255,.05)',
+                    background: resolved !== null ? GREEN_GRAD : 'rgba(255,255,255,.05)',
                     border: 'none',
                     borderRadius: 10,
                     padding: '10px 0',
-                    color: addForm.accountName ? '#fff' : MUTED,
+                    color: resolved !== null ? '#fff' : MUTED,
                     fontFamily: IT,
                     fontSize: 13,
                     fontWeight: 600,
-                    cursor: addForm.accountName ? 'pointer' : 'not-allowed',
+                    cursor: resolved !== null ? 'pointer' : 'not-allowed',
                   }}
                 >
                   Save

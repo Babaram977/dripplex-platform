@@ -235,6 +235,27 @@ export interface UpdateMerchantCommissionSettingsRequest {
   commissionRate: number;
 }
 
+/**
+ * What DrippleX charges one merchant, as that merchant is shown it.
+ *
+ * Distinct from `MerchantCommissionSettingDto`, which is the Ops-facing
+ * singleton: this is the rate resolved *for a named merchant*, so a commission
+ * campaign aimed at them is already applied.
+ */
+export interface MerchantCommissionTermsDto {
+  /** The rate in force for this merchant, as a fraction (0.10 = 10%). */
+  commissionRate: number;
+  /** Their share of an order, `1 - commissionRate`. Returned rather than left
+   *  to the client so every surface subtracts it the same way. */
+  merchantShareRate: number;
+  /** The Ops-approved standing rate, before any campaign. Equal to
+   *  `commissionRate` when nothing special is running. */
+  standingRate: number;
+  /** The commission campaign currently overriding the standing rate, if any. */
+  campaignId: string | null;
+  campaignName: string | null;
+}
+
 export const ORDER_AUDIT_ACTIONS = {
   CREATED: 'order.created',
   CANCELLED: 'order.cancelled',

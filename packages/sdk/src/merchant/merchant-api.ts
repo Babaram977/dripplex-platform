@@ -18,6 +18,7 @@ import type {
   ListMerchantProductsQuery,
   ListMerchantsQuery,
   MerchantApprovalDto,
+  MerchantCommissionTermsDto,
   MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
@@ -128,6 +129,21 @@ export class MerchantApi {
     return this.http.request<BankAccountDto>('/merchant/bank-account', {
       method: 'POST',
       body,
+      auth: true,
+    });
+  }
+
+  /**
+   * The commission rate in force for this merchant.
+   *
+   * Read from the platform rather than printed as static text: Ops can change
+   * the standing rate without a redeploy, and a commission campaign can target
+   * named merchants, so a hardcoded percentage is a claim the platform stopped
+   * guaranteeing.
+   */
+  public getCommissionTerms(): Promise<MerchantCommissionTermsDto> {
+    return this.http.request<MerchantCommissionTermsDto>('/merchant/settlements/commission', {
+      method: 'GET',
       auth: true,
     });
   }

@@ -57,19 +57,69 @@ mutation actually changed the behaviour.
 
 Full super-app suite green (16 files, 181 tests), typecheck clean, production `vite build` clean.
 
-## 4. Open — needs a founder decision
+## 4. Both open items, closed
 
-**The Payout Information card hardcodes "Commission 10% (set by Operations)" and "Net to merchant
-90% of order value"** (`merchantScreen.tsx`). Commission is resolved per merchant —
-`CommissionRateResolverService` takes a `merchantId`, and campaign rates apply — so any merchant on
-a negotiated or campaign rate is being shown a number that is not theirs.
+Founder direction, 2026-09-11: _"1 - connect to negotiated approved value from ops console. 2 - why
+verification should be optional, all bank inputs should be verified by the payout provider NUBAN
+list authenticate account number to bring the real details which ops as the backend can pick and
+approve payout."_ Both were right, and both are now done.
 
-Left as-is rather than guessed at. It needs a decision on whether merchants should see their actual
-effective rate, and there is no read endpoint exposing it to a merchant today; building one is the
-dependency, not something to invent here.
+### 4.1 The commission rate comes from the platform
 
-**The customer add-bank form has the same shape** (`apps/super-app/src/app/walletScreen.tsx:1880`):
-free-text bank name, and `bankCode: addForm.bankCode || '000'` — a placeholder code standing in for
-a real one. The customer backend is more lenient than the merchant one (verification is optional
-there), so this is not the same live payout risk, but it is the same pattern and wants the same
-treatment. Not in scope for this change.
+`GET /merchant/settlements/commission` returns the rate resolved **for that merchant**, and the
+card renders it. The number a merchant reads is now the number they are charged.
+
+It is resolved through the same path `settleOrder` uses, with the same identifiers — notably the
+merchant **profile** id, which is what `OrderSettlement.merchantId` holds and what settlement passes
+as both `userId` and `merchantId`. Passing the user id instead looks identical while no campaign is
+running, which is exactly how the display would drift back out of step; a test with a campaign
+targeting the merchant pins it.
+
+There is no per-merchant negotiated _rate_ column — `negotiatedRate` exists on `Fleet` only. For a
+merchant, "the Ops-approved value" is the standing rate in `MerchantCommissionSetting` (edited from
+the console via `AdminMerchantCommissionSettingsController`) as overridden by a commission campaign,
+which can target named merchants through `rules.eligibleMerchantIds`. That is how an individually
+agreed merchant rate is expressed today, so the endpoint reports it rather than inventing a second
+mechanism.
+
+One stated limit: a campaign conditioned on **payment method** cannot be resolved without an order
+to ask about. The resolver fails such a rule closed and reports the standing rate, so this can
+understate a discount on some orders and never overstates what is owed. The standing rate is also
+returned beside the effective one, so a merchant can see a cut is a campaign rather than their new
+normal. When the rate cannot be read at all the card shows "—"; falling back to "10%" would be the
+original bug with extra steps.
+
+### 4.2 Verification is mandatory for every persona
+
+`BankAccountsService.add` — which backs **customers, riders and drivers** — used to store the
+person's own typing with `accountNameVerifiedAt: null` whenever no resolver was configured. The port
+documented this as deliberate: _"an unconfigured environment degrades to the previous self-attested
+behaviour rather than refusing every account."_ That reasoning does not survive contact with the
+payout path. `PayoutFulfillment.destination()` returns null for any account with
+`accountNameVerifiedAt === null`, so such a row was never a working destination — it was a
+withdrawal that failed late, or one an operator paid by hand to a name nobody had checked.
+
+Now: no resolver, no account. Ten digits exactly (the DTO accepted 6–20, which let a client submit
+numbers name enquiry could never resolve). The stored bank, code and account name are all the bank's
+answer; a typed `accountName` is accepted for older clients and discarded. Merchant and fleet were
+already strict — these three were the last self-attested path.
+
+**Deployment consequence, stated plainly:** where `PAYSTACK_SECRET_KEY` is unset, customers, riders
+and drivers can no longer link a bank account — as merchants and fleets already could not. That is
+the intended behaviour: an environment that cannot verify a payout destination should not be
+collecting them. It does mean this change makes an unconfigured environment visibly fail where it
+previously failed quietly and later.
+
+### 4.3 What was found on the way: a mock in the customer wallet
+
+The customer add-bank form's "Verify account" button was a **stub that shipped**. It ran a 1.2
+second `setTimeout` and wrote the literal string `'DRIPPLEX USER'` into the account name, then
+displayed it in a green confirmation box. No bank was ever asked. The typed bank name was posted
+with `bankCode: '000'` — a placeholder standing in for a real routing code.
+
+So a customer saw a verification that had not happened, for a destination nobody had checked. It is
+now a bank picker, ten digits, and a real call to `resolveBankAccount`, with the confirmed name and
+bank shown in that same box — and six tests, because a convincing green box is precisely the thing
+that cannot be caught by looking.
+
+The rider and driver panel (`payoutPanel.tsx`) was already correct and needed no change.

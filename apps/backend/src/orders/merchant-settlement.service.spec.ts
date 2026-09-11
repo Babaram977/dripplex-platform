@@ -778,4 +778,93 @@ describe('MerchantSettlementService', () => {
       expect(typeof account.blocked).toBe('boolean');
     });
   });
+
+  // Saeed, 2026-09-11: "connect to negotiated approved value from ops console".
+  // The super-app printed a hardcoded "Commission 10% / Net to merchant 90%".
+  // That is only true for a merchant on the default standing rate with no
+  // campaign running, and Ops can change both without a redeploy — so the
+  // number a merchant read could differ from the one being deducted, with no
+  // way for them to tell.
+  describe('getCommissionTerms', () => {
+    it('reports the rate Ops has approved, not a number compiled into the app', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.update(0.125, merchantUserId, {});
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      expect(terms.commissionRate).toBe(0.125);
+      // Returned rather than left to each client to subtract, so every surface
+      // shows the merchant the same share.
+      expect(terms.merchantShareRate).toBe(0.875);
+      expect(terms.standingRate).toBe(0.125);
+      expect(terms.campaignId).toBeNull();
+
+      await commissionSettings.update(0.1, merchantUserId, {});
+    });
+
+    it('agrees with what settlement actually charges', async () => {
+      if (!databaseAvailable) return;
+      // The whole point: two code paths reading one rate is how they drift.
+      // This pins the displayed figure to the deducted one.
+      await commissionSettings.update(0.075, merchantUserId, {});
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+      const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      expect(settlement).not.toBeNull();
+      expect(Number(settlement?.commissionRate)).toBe(terms.commissionRate);
+      expect(Number(settlement?.commissionAmount)).toBe(10_000 * terms.commissionRate);
+      expect(Number(settlement?.merchantAmount)).toBe(10_000 * terms.merchantShareRate);
+
+      await commissionSettings.update(0.1, merchantUserId, {});
+    });
+
+    // Without this, nothing distinguishes the merchant's profile id from their
+    // user id — both resolve to the standing rate while no campaign is running,
+    // so passing the wrong one is invisible. A campaign aimed at named
+    // merchants is keyed on the profile id, because that is what
+    // `OrderSettlement.merchantId` holds and what `settleOrder` passes.
+    it('picks up a campaign aimed at this merchant, keyed the way settlement keys it', async () => {
+      if (!databaseAvailable) return;
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: 'Ramadan partner rate',
+          scope: 'MERCHANT_ORDER',
+          commissionRate: 0.05,
+          status: 'ACTIVE',
+          priority: 10,
+          startsAt: new Date(Date.now() - 60 * 60 * 1000),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000),
+          rules: { eligibleMerchantIds: [merchantProfileId] },
+        },
+        select: { id: true },
+      });
+
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+
+        expect(terms.commissionRate).toBe(0.05);
+        expect(terms.merchantShareRate).toBe(0.95);
+        // The standing rate is still reported beside it, so a merchant can see
+        // the cut is a campaign rather than their new normal.
+        expect(terms.standingRate).toBe(0.1);
+        expect(terms.campaignId).toBe(campaign.id);
+        expect(terms.campaignName).toBe('Ramadan partner rate');
+
+        // And it is the rate actually charged, not a second opinion.
+        const order = await createOrder({ subtotal: 20_000, total: 20_000 });
+        const settlement = await service.settleOrder(order.id);
+        expect(Number(settlement?.commissionRate)).toBe(0.05);
+        expect(Number(settlement?.commissionAmount)).toBe(1_000);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('refuses rather than guessing when the caller has no merchant profile', async () => {
+      if (!databaseAvailable) return;
+      await expect(service.getCommissionTerms(customerId)).rejects.toThrow(/not found/i);
+    });
+  });
 });
