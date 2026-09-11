@@ -11,12 +11,27 @@ decision (§4).**
 Nora's revised business rules, 2026-09-11. A driver's tier is earned on **completed trips and a
 sustained customer rating together**, never volume alone:
 
-| Tier     | Commission | Completed trips | Rated trips | Average rating |
-| -------- | ---------- | --------------- | ----------- | -------------- |
-| STANDARD | 10%        | —               | —           | —              |
-| SILVER   | 9.5%       | 100             | 50          | 4.60           |
-| GOLD     | 9%         | 300             | 100         | 4.70           |
-| PLATINUM | 8.5%       | 600             | 200         | 4.80           |
+**Founder override, 2026-09-11** — Saeed raised every trip threshold well above Nora's proposed
+100/300/600: _"Driver rating goes with number of trips — standard is 500, Silver 1500, Gold 2500,
+Platinum 4500 trips."_
+
+| Tier         | Commission    | Completed trips | Rated trips | Average rating |
+| ------------ | ------------- | --------------- | ----------- | -------------- |
+| _(none yet)_ | platform rate | under 500       | —           | —              |
+| STANDARD     | 10%           | 500             | —           | —              |
+| SILVER       | 9.5%          | 1,500           | 50          | 4.60           |
+| GOLD         | 9%            | 2,500           | 100         | 4.70           |
+| PLATINUM     | 8.5%          | 4,500           | 200         | 4.80           |
+
+That changes what STANDARD _is_. It is no longer the tier a driver starts on but one they earn at
+500 completed trips, so a driver below that **holds no tier at all** and is charged the standing
+platform rate — exactly what they were charged before tiers existed. Nobody's commission moves
+because of this.
+
+**The rating bars are kept.** Saeed's note that reviews "cannot affect the star rating" protects the
+rating's integrity; it does not ask for the bar to be removed as a qualification, and a tier earned
+on volume alone is the thing Nora's design set out to prevent. If that reading is wrong it costs no
+deployment to fix: setting a rating bar to 0 in the tier table turns it off.
 
 Every one of those numbers is a database row, editable by Operations. Changing what DrippleX charges,
 or what it takes to earn a discount, must never require a deployment.

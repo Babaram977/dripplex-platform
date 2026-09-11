@@ -16,8 +16,17 @@ const TIER_ORDER: DriverTier[] = [
 ];
 
 export interface DriverTierStanding {
-  tier: DriverTier;
-  commissionRate: number;
+  /**
+   * Null when the driver has not reached the first tier yet.
+   *
+   * Founder decision 2026-09-11 raised STANDARD to 500 completed trips, so a
+   * tier is something a driver *earns* rather than something they start with.
+   * Reporting an unearned STANDARD would tell a brand-new driver they hold a
+   * status they have not reached.
+   */
+  tier: DriverTier | null;
+  /** Null alongside a null tier: the caller falls back to the platform rate. */
+  commissionRate: number | null;
   completedTrips: number;
   ratedTrips: number;
   /** Null when nobody has rated this driver yet — not zero, which would read as "rated badly". */
@@ -160,9 +169,9 @@ export class DriverTierService {
   /**
    * The tier this driver holds right now, and what it takes to move up.
    *
-   * Returns STANDARD's rate when the tier table has not been seeded rather than
-   * throwing: a missing configuration row must never stop a ride settling, and
-   * the caller falls back to the platform rate.
+   * Returns null when the tier table has not been seeded rather than throwing:
+   * a missing configuration row must never stop a ride settling, and the caller
+   * falls back to the platform rate.
    */
   public async standingFor(driverId: string): Promise<DriverTierStanding | null> {
     const settings = (await this.prisma.driverTierSetting.findMany({ where: { active: true } }))
@@ -191,31 +200,39 @@ export class DriverTierService {
     const attempted = completedTrips + cancelledByDriver;
     const cancellationRate = attempted === 0 ? 0 : cancelledByDriver / attempted;
 
-    const earned =
-      settings.find((setting) =>
-        this.qualifies(setting, { completedTrips, ratedTrips, averageRating, cancellationRate }),
-      ) ?? settings[settings.length - 1];
-    if (earned === undefined) {
-      return null;
-    }
+    // No fallback to the lowest tier. STANDARD now asks for 500 completed
+    // trips, so a driver below that has earned nothing yet — handing them a
+    // tier anyway would report a status they have not reached.
+    const earned = settings.find((setting) =>
+      this.qualifies(setting, { completedTrips, ratedTrips, averageRating, cancellationRate }),
+    );
 
     return {
-      tier: earned.tier,
-      commissionRate: Number(earned.commissionRate),
+      tier: earned?.tier ?? null,
+      commissionRate: earned === undefined ? null : Number(earned.commissionRate),
       completedTrips,
       ratedTrips,
       averageRating,
       cancellationRate: Math.round(cancellationRate * 10_000) / 10_000,
-      nextTier: this.nextTier(settings, earned, completedTrips, ratedTrips),
+      nextTier: this.nextTier(settings, earned ?? null, completedTrips, ratedTrips),
     };
   }
 
-  /** The rate to charge this driver, or null when no tier table is configured. */
+  /**
+   * The rate this driver's tier sets, or null when they have not earned one and
+   * the caller should use the platform rate.
+   */
   public async commissionRateFor(
     driverId: string,
   ): Promise<{ rate: number; tier: DriverTier } | null> {
     const standing = await this.standingFor(driverId);
-    return standing === null ? null : { rate: standing.commissionRate, tier: standing.tier };
+    if (standing === null) {
+      return null;
+    }
+    if (standing.tier === null || standing.commissionRate === null) {
+      return null;
+    }
+    return { rate: standing.commissionRate, tier: standing.tier };
   }
 
   private qualifies(
@@ -251,12 +268,16 @@ export class DriverTierService {
 
   private nextTier(
     settings: DriverTierSetting[],
-    earned: DriverTierSetting,
+    earned: DriverTierSetting | null,
     completedTrips: number,
     ratedTrips: number,
   ): DriverTierStanding['nextTier'] {
     const ascending = settings.slice().sort((a, b) => a.minCompletedTrips - b.minCompletedTrips);
-    const next = ascending.find((setting) => setting.minCompletedTrips > earned.minCompletedTrips);
+    // A driver with no tier yet is working toward the first one, not the second.
+    const next =
+      earned === null
+        ? ascending[0]
+        : ascending.find((setting) => setting.minCompletedTrips > earned.minCompletedTrips);
     if (next === undefined) {
       return null;
     }
