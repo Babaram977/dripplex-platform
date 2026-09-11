@@ -258,6 +258,195 @@ describe('SupportService', () => {
     );
   });
 
+  // --- DPX-SUPPORT-002 §3/§4: the deterministic money/safety gate ---------
+
+  it('forces human handling when the text is about money, whatever category was declared', async () => {
+    if (!databaseAvailable) return;
+
+    // The bypass this gate closes. Before it, requiresHumanHandling came from
+    // the declared category alone, so filing a double charge as TECHNICAL
+    // routed a payment dispute away from a human with one field.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'App problem',
+        description: 'My driver charged me twice for the same trip.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(true);
+    // The user's own words are preserved beside the platform's conclusion —
+    // the disagreement is the interesting part, and flattening it would erase
+    // the evidence the gate fired.
+    expect(ticket.category).toBe(SupportCategory.TECHNICAL);
+    expect(ticket.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+    expect(ticket.gateMatchedTerm).not.toBeNull();
+
+    const row = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
+    expect(row?.requiresHumanHandling).toBe(true);
+    expect(row?.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+  });
+
+  it('forces human handling on a safety report filed as OTHER', async () => {
+    if (!databaseAvailable) return;
+
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.OTHER,
+        subject: 'Something happened',
+        description: 'The driver threatened me and would not let me out of the car.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(true);
+    expect(ticket.gateDetectedCategory).toBe(SupportCategory.SAFETY);
+  });
+
+  it('widens only — a declared human category stays human when the gate is silent', async () => {
+    if (!databaseAvailable) return;
+
+    // Nothing may narrow a conversation out of human handling: not the gate's
+    // silence, not a classifier, not a confidence score.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.WALLET,
+        subject: 'Question',
+        description: 'Please explain how the weekly summary is put together.',
+      },
+      {},
+    );
+
+    expect(ticket.gateDetectedCategory).toBeNull();
+    expect(ticket.requiresHumanHandling).toBe(true);
+  });
+
+  it('leaves an ordinary question alone', async () => {
+    if (!databaseAvailable) return;
+
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'App issue',
+        description: 'The app crashes when I open my trip history.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(false);
+    expect(ticket.gateDetectedCategory).toBeNull();
+    expect(ticket.gateMatchedTerm).toBeNull();
+    expect(ticket.gateNotEnglish).toBe(false);
+  });
+
+  it('runs the gate on the legacy driver route too', async () => {
+    if (!databaseAvailable) return;
+
+    // /driver/support-tickets forces persona DRIVER and maps the old five
+    // categories. It must not also be a way around the gate.
+    const ticket = await service.createTicketFor(
+      driverId,
+      SupportPersona.DRIVER,
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'App bug',
+        description: 'Dem charge me but the money no enter my account.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(true);
+    expect(ticket.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+  });
+
+  it('sends a message it cannot read to a person rather than guessing', async () => {
+    if (!databaseAvailable) return;
+
+    // The gate reads English only (founder decision 2026-09-11). The honest
+    // answer to a language it does not read is "a person will look at this" —
+    // never a guess, and never silently letting it through to automation.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.OTHER,
+        subject: 'Matsala',
+        description: 'An sace kudina daga asusuna.',
+      },
+      {},
+    );
+
+    expect(ticket.requiresHumanHandling).toBe(true);
+    expect(ticket.gateNotEnglish).toBe(true);
+    // No category, because nothing was read — which is different from reading
+    // the message and finding nothing.
+    expect(ticket.gateDetectedCategory).toBeNull();
+  });
+
+  it('records the gate decision in the audit trail', async () => {
+    if (!databaseAvailable) return;
+
+    await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'Problem',
+        description: 'I was debited twice and want a refund.',
+      },
+      {},
+    );
+
+    expect(auditLogRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'support.ticket.created',
+        metadata: expect.objectContaining({
+          gateDetectedCategory: SupportCategory.PAYMENT,
+          requiresHumanHandling: true,
+        }),
+      }),
+    );
+  });
+
+  it('never lets human handling be turned back off once it is on', async () => {
+    if (!databaseAvailable) return;
+
+    // §3, LOCKED: the gate may widen into human handling; nothing may narrow
+    // out of it. Today that holds because UpdateSupportTicketDto has no such
+    // field — which is a property of a DTO, and DTOs get fields added. This
+    // pins the behaviour so adding one would have to break a test first.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'App problem',
+        description: 'I was charged twice for one trip.',
+      },
+      {},
+    );
+    expect(ticket.requiresHumanHandling).toBe(true);
+
+    await service.updateTicket(
+      ticket.id,
+      adminId,
+      {
+        status: SupportTicketStatus.IN_PROGRESS,
+        adminResponse: 'Looking into it.',
+        // Whatever an operator or a future DTO field might try to say.
+        requiresHumanHandling: false,
+        gateDetectedCategory: null,
+      } as never,
+      {},
+    );
+
+    const after = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
+    expect(after?.requiresHumanHandling).toBe(true);
+    expect(after?.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+  });
+
   // --- ownership isolation, across personas ------------------------------
 
   it('refuses to show one persona another persona’s ticket', async () => {

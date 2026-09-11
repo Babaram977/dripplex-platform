@@ -40,9 +40,22 @@ export interface SupportTicketDto {
   subject: string;
   description: string;
   status: SupportTicketStatus;
-  /** True for PAYMENT, WALLET and SAFETY. Decided server-side from the
-   *  category; the client cannot set or clear it. */
+  /** True for PAYMENT, WALLET and SAFETY, and true whenever the deterministic
+   *  money/safety gate fired. Decided server-side; the client cannot set or
+   *  clear it. */
   requiresHumanHandling: boolean;
+  /** DPX-SUPPORT-002 — what the deterministic gate found in the user's own
+   *  words, independent of the `category` they chose. `null` means it found
+   *  nothing, not that it did not run. A ticket declared `TECHNICAL` with
+   *  `gateDetectedCategory: 'PAYMENT'` is the case the gate exists for. */
+  gateDetectedCategory: SupportCategory | null;
+  /** The lexicon term that fired, so the decision can be explained later. */
+  gateMatchedTerm: string | null;
+  /** DPX-SUPPORT-002 — the gate reads English only. True when it could not
+   *  confidently read the message, which makes the ticket human-handled with no
+   *  detected category: the answer to a language we do not read is "a person
+   *  will look at this", never a guess. */
+  gateNotEnglish: boolean;
   contactEmail: string | null;
   contactPhone: string | null;
   appVersion: string | null;

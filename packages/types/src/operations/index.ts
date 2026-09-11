@@ -443,6 +443,11 @@ export interface SupportQueueItemDto extends OperationsCaseBaseDto {
   /** PAYMENT, WALLET and SAFETY. Decided server-side at submission — never
    *  answer one of these with automation. */
   requiresHumanHandling: boolean;
+  /** DPX-SUPPORT-002 — what the deterministic money/safety gate found in the
+   *  filer's own words. When this disagrees with `category`, the filer called
+   *  it one thing and the platform concluded another; that disagreement is why
+   *  the ticket is human-handled. */
+  gateDetectedCategory: SupportCategory | null;
   contactEmail: string | null;
   contactPhone: string | null;
   appVersion: string | null;
