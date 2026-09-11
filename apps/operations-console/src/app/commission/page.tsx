@@ -47,6 +47,7 @@ const SCOPES: { value: CommissionScope; label: string; charged: string }[] = [
   { value: 'MERCHANT_ORDER', label: 'Marketplace orders', charged: 'Merchants' },
   { value: 'DELIVERY', label: 'Deliveries', charged: 'Riders' },
   { value: 'RIDE', label: 'Rides', charged: 'Drivers' },
+  { value: 'FLEET', label: 'Fleet trading', charged: 'Fleet owners' },
 ];
 
 const STATUS_TONE: Record<
@@ -415,6 +416,11 @@ export default function CommissionCampaignsPage(): React.JSX.Element {
           <p className="mt-1 text-sm text-gray-600">
             A campaign changes what DrippleX charges a partner for a set period, then reverts on its
             own. The standing rates stay in place whenever no campaign is running.
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            Fleet trading works differently: a fleet&apos;s rate is banded on its monthly volume, so
+            a campaign there is charged only on the days it covers. The month keeps accumulating
+            across it and the band is still decided on the full month.
           </p>
         </div>
 

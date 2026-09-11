@@ -3041,9 +3041,13 @@ enum PromotionStatus {
 /// Which commission a CommissionCampaign overrides. One value per place the
 /// platform actually reads a rate at settlement time.
 ///
-/// Fleet commission is deliberately absent: it is banded on a fleet's monthly
-/// order volume and settles once the month closes, so a week-long campaign has
-/// no well-defined meaning against it. See docs/DPX-COMMISSION-001.
+///
+/// FLEET is the odd one: a fleet's rate is banded on its monthly order volume
+/// and settles when the month closes, so a campaign covering part of a month
+/// cannot simply replace it. Founder decision 2026-09-11 — a mid-month campaign
+/// "should add up to previously earned" — so it applies pro-rata to the days it
+/// covers, the month keeps accumulating across it, and the band is still
+/// decided on the full month's volume. See docs/DPX-COMMISSION-001.
 enum CommissionScope {
   /// The platform's cut of a marketplace order — the merchant's rate.
   MERCHANT_ORDER
@@ -3051,6 +3055,8 @@ enum CommissionScope {
   DELIVERY
   /// The platform's cut of a ride fare — the driver's rate.
   RIDE
+  /// The platform's cut of a fleet's trading. Applied pro-rata within a month.
+  FLEET
 }
 
 enum CommissionCampaignStatus {
@@ -4782,11 +4788,61 @@ model FleetCommissionPeriod {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  fleet Fleet @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  fleet    Fleet                          @relation(fields: [fleetId], references: [id], onDelete: Cascade)
+  segments FleetCommissionPeriodSegment[]
 
   @@unique([fleetId, periodStart])
   @@index([settledAt])
   @@map("fleet_commission_periods")
+}
+
+/// DPX-COMMISSION-001 — a month's trading, split by which commission rate was
+/// in force when each job happened.
+///
+/// A fleet's rate is banded on its *monthly* volume, so it is only knowable
+/// when the month closes. A campaign covering part of that month therefore
+/// cannot replace the band — founder decision 2026-09-11: a mid-month campaign
+/// "should add up to previously earned", meaning the month keeps accumulating
+/// across it and the campaign applies only to the days it covers.
+///
+/// That needs the month's revenue bucketed as it accrues, because the period
+/// row carries running totals and no per-job dates — by settlement time there
+/// is no way to ask which jobs fell inside a campaign window. So each job is
+/// counted into the bucket for whatever was in force at the moment it
+/// completed, the same increment-rather-than-recompute approach the period
+/// itself uses.
+///
+/// `campaignRate` is snapshotted rather than read back from the campaign: a
+/// campaign edited or archived later must not rewrite what was already earned
+/// under it.
+model FleetCommissionPeriodSegment {
+  id       String @id @default(uuid()) @db.Uuid
+  periodId String @map("period_id") @db.Uuid
+
+  /// The campaign in force for these jobs, or null for the standing band.
+  campaignId String? @map("commission_campaign_id") @db.Uuid
+
+  /// The same value as `campaignId`, with the standing band written as the
+  /// literal 'STANDING'. Postgres treats NULLs as distinct in a unique index,
+  /// so a nullable campaignId alone would let two standing buckets exist for
+  /// one month and quietly halve what the fleet is charged.
+  campaignKey String @map("commission_campaign_key") @db.VarChar(64)
+
+  /// Null for the standing bucket, whose rate is the band and is not known
+  /// until the month closes.
+  campaignRate Decimal? @map("campaign_rate") @db.Decimal(5, 4)
+
+  orderCount      Int     @default(0) @map("order_count")
+  chargeableTotal Decimal @default(0) @map("chargeable_total") @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  period FleetCommissionPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@unique([periodId, campaignKey])
+  @@index([periodId])
+  @@map("fleet_commission_period_segments")
 }
 
 // ── MKT-INT-001 Merchant Integration Platform ──────────────────────────────

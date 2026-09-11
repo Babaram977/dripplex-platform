@@ -68,6 +68,22 @@ export class CommissionRateResolverService {
     standingRate: number,
     context: CommissionRateContext = {},
   ): Promise<ResolvedCommissionRate> {
+    const campaign = await this.activeCampaign(scope, context);
+    return campaign ?? { rate: standingRate, campaignId: null, campaignName: null };
+  }
+
+  /**
+   * The campaign in force, if any, without needing a standing rate to fall back
+   * to.
+   *
+   * Fleets need this: their standing rate is banded on the month's final
+   * volume, so at the moment a job completes there is no standing rate to pass
+   * in — only the question of whether a campaign was running.
+   */
+  public async activeCampaign(
+    scope: CommissionScope,
+    context: CommissionRateContext = {},
+  ): Promise<ResolvedCommissionRate | null> {
     const now = context.now ?? new Date();
 
     const candidates = await this.prisma.commissionCampaign.findMany({
@@ -114,6 +130,6 @@ export class CommissionRateResolverService {
       }
     }
 
-    return { rate: standingRate, campaignId: null, campaignName: null };
+    return null;
   }
 }

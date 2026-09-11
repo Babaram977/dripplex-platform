@@ -87,6 +87,11 @@ const SCOPE_AUDIENCE: Record<
     category: NotificationCategory.DELIVERY,
   },
   [CommissionScope.RIDE]: { role: 'driver', noun: 'rides', category: NotificationCategory.RIDE },
+  [CommissionScope.FLEET]: {
+    role: 'fleet_owner',
+    noun: 'fleet trading',
+    category: NotificationCategory.DELIVERY,
+  },
 };
 
 /**

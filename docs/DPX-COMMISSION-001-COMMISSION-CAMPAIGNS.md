@@ -39,13 +39,14 @@ promotional rate indefinitely, discovered whenever someone next looks.
 their meaning as the _standing_ rate: what DrippleX charges when nothing is running. A campaign is a
 temporary override on top, and it reverts by itself.
 
-**Three scopes**, one per place the platform actually reads a rate at settlement time:
+**Four scopes**, one per place the platform actually reads a rate at settlement time:
 
-| Scope            | Who is charged | Where it applies             |
-| ---------------- | -------------- | ---------------------------- |
-| `MERCHANT_ORDER` | Merchants      | Marketplace order settlement |
-| `DELIVERY`       | Riders         | Delivery-fee split           |
-| `RIDE`           | Drivers        | Ride-fare split              |
+| Scope            | Who is charged | Where it applies                                  |
+| ---------------- | -------------- | ------------------------------------------------- |
+| `MERCHANT_ORDER` | Merchants      | Marketplace order settlement                      |
+| `DELIVERY`       | Riders         | Delivery-fee split                                |
+| `RIDE`           | Drivers        | Ride-fare split                                   |
+| `FLEET`          | Fleet owners   | Monthly fleet settlement, **pro-rata** — see §4.1 |
 
 **Conditions reuse the promotions vocabulary** rather than inventing a second eligibility language
 for the same ideas. "Weekend orders" is `{ "weekdays": [0, 6] }`. Cities, states, merchant
@@ -91,7 +92,8 @@ the conversion happens at that one boundary.
 - **Finished campaigns cannot be edited.** Editing one would rewrite the explanation for settlements
   that already happened under it. There is no delete either; `archive` is the end of the line.
 - **Fleet trips are untouched by `RIDE` campaigns.** A fleet driver's commission is zero because
-  DrippleX bills the fleet instead; overriding that would take twice from one fare.
+  DrippleX bills the fleet instead; overriding that would take twice from one fare. A fleet is
+  charged through the `FLEET` scope instead, on its own month.
 
 ### Verification
 
@@ -105,15 +107,39 @@ the conversion happens at that one boundary.
 
 ## 4. Open — needs founder input
 
-### 4.1 Fleet commission
+### 4.1 Fleet commission — answered, and shipped
 
-Deliberately not a scope. Fleet commission is **banded on a fleet's monthly order volume** and
-settles once the month closes (`FleetCommissionTier`, `FleetCommissionService.rateForFleet`), with a
-per-fleet negotiated rate able to beat the band table. A week-long campaign has no well-defined
-meaning against a rate that is only knowable when the month ends.
+**Founder decision, 2026-09-11:** a mid-month campaign _"should add up to previously earned"_.
 
-Needed: what a mid-month campaign should do to a whole-month banded rate — override the band for the
-whole month, apply pro-rata to the days it covered, or not apply to fleets at all.
+Fleet commission is banded on a fleet's **monthly order volume** and settles once the month closes
+(`FleetCommissionTier`, `FleetCommissionService.rateForFleet`), with a per-fleet negotiated rate able
+to beat the band table. A campaign covering part of that month therefore cannot replace the band. It
+applies **pro-rata**:
+
+- The month keeps accumulating across the campaign. `orderCount` and `chargeableTotal` are untouched
+  by it, so **the band is still decided on the full month's volume** — a campaign never resets a
+  fleet into a lower-volume band and overcharges it on the orders that came before.
+- Jobs done while the campaign was running are charged at the campaign's rate; everything else at
+  the band.
+- `appliedRate` on a settled period becomes the **blended effective rate**, because the band alone
+  would no longer explain the invoice.
+
+That needed the month's revenue bucketed as it accrues (`FleetCommissionPeriodSegment`). The period
+row carries running totals and no per-job dates, so by settlement time there is no way to ask which
+jobs fell inside a campaign window — the answer is only knowable at the moment each job completes.
+Same increment-rather-than-recompute approach the period itself already used.
+
+Three details worth knowing:
+
+- **The campaign's rate is snapshotted on the bucket**, not read back at settlement. A campaign
+  edited, ended or archived later must not rewrite what was already earned under it.
+- **Unsegmented revenue is charged at the band.** That covers every month already trading when this
+  shipped — no backfill needed — and doubles as the guard that keeps a fleet correctly billed if a
+  segment write is ever lost. The remainder is floored at zero, so buckets exceeding the month can
+  never refund commission that was genuinely earned.
+- **The bucket key is a literal `'STANDING'`, not NULL.** Postgres treats NULLs as distinct in a
+  unique index, so keying on the nullable campaign id alone would allow two standing buckets for one
+  month and quietly halve the bill.
 
 ### 4.2 Loyalty-tier commission reductions
 

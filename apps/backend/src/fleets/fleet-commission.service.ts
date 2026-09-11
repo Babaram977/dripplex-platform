@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { CommissionOwnerType, Prisma } from '@prisma/client';
+import { CommissionOwnerType, CommissionScope, Prisma } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
@@ -66,7 +67,34 @@ export class FleetCommissionService {
     private readonly prisma: PrismaService,
     private readonly commissionAccounts: CommissionAccountService,
     private readonly auditService: AuditService,
+    private readonly commissionRates: CommissionRateResolverService,
   ) {}
+
+  /**
+   * The bucket a job completing now belongs to.
+   *
+   * A fleet's band is only knowable when the month closes, so there is no
+   * standing rate to compare a campaign against at this moment — only the
+   * question of whether one was running. `STANDING` is a literal rather than a
+   * null because Postgres treats NULLs as distinct in a unique index, and two
+   * standing buckets for one month would quietly halve the bill.
+   */
+  private async segmentKeyFor(
+    fleetId: string,
+    at: Date,
+  ): Promise<{ campaignKey: string; campaignId: string | null; campaignRate: number | null }> {
+    const campaign = await this.commissionRates.activeCampaign(CommissionScope.FLEET, {
+      userId: fleetId,
+      now: at,
+    });
+    return campaign === null
+      ? { campaignKey: 'STANDING', campaignId: null, campaignRate: null }
+      : {
+          campaignKey: campaign.campaignId ?? 'STANDING',
+          campaignId: campaign.campaignId,
+          campaignRate: campaign.rate,
+        };
+  }
 
   /** First instant of the Lagos calendar month containing `at`, as UTC. */
   public monthStart(at: Date): Date {
@@ -222,13 +250,84 @@ export class FleetCommissionService {
       return;
     }
 
+    const amount = new Prisma.Decimal(input.amount);
+    const segment = await this.segmentKeyFor(input.fleetId, at);
+
+    // The month's own totals are untouched by campaigns: the band is still
+    // decided on everything the fleet did, which is the founder's rule that a
+    // mid-month campaign "adds up to previously earned" rather than starting
+    // the month again.
     await this.prisma.fleetCommissionPeriod.update({
       where: { id: period.id },
       data: {
         orderCount: { increment: 1 },
-        chargeableTotal: { increment: new Prisma.Decimal(input.amount) },
+        chargeableTotal: { increment: amount },
       },
     });
+
+    // The same job again, into the bucket for whatever rate was in force. This
+    // is the only moment the answer is knowable — the period row keeps running
+    // totals and no per-job dates, so by settlement there is no way to ask
+    // which jobs fell inside a campaign window.
+    await this.prisma.fleetCommissionPeriodSegment.upsert({
+      where: {
+        periodId_campaignKey: { periodId: period.id, campaignKey: segment.campaignKey },
+      },
+      create: {
+        periodId: period.id,
+        campaignKey: segment.campaignKey,
+        campaignId: segment.campaignId,
+        campaignRate:
+          segment.campaignRate === null ? null : new Prisma.Decimal(segment.campaignRate),
+        orderCount: 1,
+        chargeableTotal: amount,
+      },
+      update: {
+        orderCount: { increment: 1 },
+        chargeableTotal: { increment: amount },
+      },
+    });
+  }
+
+  /**
+   * What a month costs, given the band its final volume earns.
+   *
+   * Jobs done while a campaign was running are charged at the campaign's rate;
+   * everything else at the band. Anything not in a bucket is charged at the
+   * band too — which covers months that were already trading before segments
+   * existed, and is also the guard that keeps a fleet correctly billed if a
+   * segment write is ever lost.
+   */
+  private async blendedCommission(
+    period: FleetCommissionPeriod,
+    bandRate: number,
+  ): Promise<{ amount: number; effectiveRate: number }> {
+    const segments = await this.prisma.fleetCommissionPeriodSegment.findMany({
+      where: { periodId: period.id },
+    });
+
+    const chargeableTotal = Number(period.chargeableTotal);
+    let campaigned = 0;
+    let amount = 0;
+    for (const segment of segments) {
+      if (segment.campaignRate === null) {
+        continue;
+      }
+      const segmentTotal = Number(segment.chargeableTotal);
+      campaigned += segmentTotal;
+      amount += segmentTotal * Number(segment.campaignRate);
+    }
+
+    // Never let buckets exceed the month — a negative remainder would refund
+    // commission that was genuinely earned.
+    const remainder = Math.max(0, chargeableTotal - campaigned);
+    amount += remainder * bandRate;
+
+    return {
+      amount: this.round(amount),
+      effectiveRate:
+        chargeableTotal === 0 ? bandRate : Math.round((amount / chargeableTotal) * 10_000) / 10_000,
+    };
   }
 
   /** The running month, with what it would cost if it closed now. */
@@ -240,18 +339,20 @@ export class FleetCommissionService {
   private async toTotals(period: FleetCommissionPeriod): Promise<FleetPeriodTotals> {
     const chargeableTotal = Number(period.chargeableTotal);
     const settled = period.settledAt !== null;
-    const projectedRate = settled
-      ? null
-      : await this.rateForFleet(period.fleetId, period.orderCount);
+    const bandRate = settled ? null : await this.rateForFleet(period.fleetId, period.orderCount);
+
+    // The projection has to account for campaigns too, or a fleet owner
+    // watching their running total would be told one figure all month and
+    // invoiced another.
+    const projected = bandRate === null ? null : await this.blendedCommission(period, bandRate);
 
     return {
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,
       orderCount: period.orderCount,
       chargeableTotal,
-      projectedRate,
-      projectedCommission:
-        projectedRate === null ? null : this.round(chargeableTotal * projectedRate),
+      projectedRate: projected?.effectiveRate ?? null,
+      projectedCommission: projected?.amount ?? null,
       settled,
       appliedRate: period.appliedRate === null ? null : Number(period.appliedRate),
       commissionAmount: period.commissionAmount === null ? null : Number(period.commissionAmount),
@@ -301,12 +402,16 @@ export class FleetCommissionService {
       );
     }
 
-    const commissionAmount = this.round(Number(period.chargeableTotal) * rate);
+    // The band decided by the whole month's volume, then campaigns applied to
+    // the days they covered. `appliedRate` becomes the blended effective rate
+    // rather than the band, because the band alone would no longer explain the
+    // invoice.
+    const { amount: commissionAmount, effectiveRate } = await this.blendedCommission(period, rate);
 
     const settled = await this.prisma.fleetCommissionPeriod.update({
       where: { id: period.id },
       data: {
-        appliedRate: new Prisma.Decimal(rate),
+        appliedRate: new Prisma.Decimal(effectiveRate),
         commissionAmount: new Prisma.Decimal(commissionAmount),
         settledAt: new Date(),
         settledBy: input.adminUserId,

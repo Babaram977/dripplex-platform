@@ -765,14 +765,6 @@ export interface ListReferralFraudChecksQuery {
 }
 
 /**
- * DPX-COMMISSION-001 — which commission a campaign overrides. One value per
- * place the platform actually reads a rate at settlement time.
- *
- * Fleet commission is deliberately absent: it is banded on a fleet's monthly
- * order volume and settles once the month closes, so a week-long campaign has
- * no well-defined meaning against it.
- */
-/**
  * DPX-OPS — who is asking DrippleX for money. Not a column anywhere: a
  * withdrawal's persona comes from the wallet it is drawn on, and a fleet
  * settlement request is a fleet by construction.
@@ -867,7 +859,17 @@ export interface OperationsReferralOverviewDto {
   personasWithoutProgramme: string[];
 }
 
-export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE';
+/**
+ * DPX-COMMISSION-001 — which commission a campaign overrides. One value per
+ * place the platform actually reads a rate at settlement time.
+ *
+ * FLEET is the odd one: a fleet's rate is banded on its monthly order volume
+ * and settles when the month closes, so a campaign covering part of a month
+ * applies pro-rata to the days it covers rather than replacing the band — the
+ * month keeps accumulating across it, and the band is still decided on the
+ * full month's volume.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
 
 export type CommissionCampaignStatus =
   'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { PrismaClient } from '@prisma/client';
+import { CommissionCampaignStatus, CommissionScope, PrismaClient } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
+import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
 import {
   ConflictDomainException,
   ValidationDomainException,
@@ -32,6 +33,7 @@ describe('FleetCommissionService', () => {
   let fleetId: string;
   // No acting user: these call the service directly, not through a request.
   const context = {};
+  const createdCampaignIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -56,7 +58,14 @@ describe('FleetCommissionService', () => {
       new CommercialCreditSettingsService(prisma, auditService),
     );
 
-    service = new FleetCommissionService(prisma, commissionAccounts, auditService);
+    service = new FleetCommissionService(
+      prisma,
+      commissionAccounts,
+      auditService,
+      // A real resolver against the real database: with no FLEET campaign
+      // stored these tests exercise the standing-band path for real.
+      new CommissionRateResolverService(prisma),
+    );
 
     const owner = await prisma.user.create({
       data: {
@@ -80,6 +89,9 @@ describe('FleetCommissionService', () => {
 
   afterAll(async () => {
     if (databaseAvailable) {
+      // Campaigns first: an ACTIVE FLEET campaign left behind would change what
+      // every later suite's fleet jobs are charged.
+      await prisma.commissionCampaign.deleteMany({ where: { id: { in: createdCampaignIds } } });
       await prisma.fleetCommissionTier.deleteMany({}).catch(() => undefined);
       await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } }).catch(() => undefined);
       await prisma.fleet.delete({ where: { id: fleetId } }).catch(() => undefined);
@@ -267,6 +279,134 @@ describe('FleetCommissionService', () => {
       expect(Number(settled.commissionAmount)).toBe(429_000);
 
       await service.setNegotiatedRate({ fleetId, rate: null, adminUserId: ownerId, context });
+    });
+  });
+
+  describe('a mid-month commission campaign', () => {
+    /**
+     * Founder decision 2026-09-11: a mid-month campaign "should add up to
+     * previously earned". The month keeps accumulating across it, the band is
+     * still decided on the full month's volume, and the campaign is charged
+     * only on the days it covered.
+     */
+    async function runCampaign(rate: number): Promise<string> {
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: `Fleet test ${randomUUID().slice(0, 8)}`,
+          scope: CommissionScope.FLEET,
+          commissionRate: rate,
+          status: CommissionCampaignStatus.ACTIVE,
+          startsAt: new Date(Date.now() - 60_000),
+          endsAt: new Date(Date.now() + 86_400_000),
+          announce: false,
+        },
+      });
+      createdCampaignIds.push(campaign.id);
+      return campaign.id;
+    }
+
+    // Per test, not per file. An ACTIVE fleet campaign left standing changes
+    // what every later test's jobs are charged — which is exactly what it is
+    // supposed to do, and exactly why it cannot outlive the test that made it.
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.commissionCampaign.deleteMany({ where: { id: { in: createdCampaignIds } } });
+      createdCampaignIds.length = 0;
+    });
+
+    it('charges campaign days at the campaign rate and the rest at the band', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } });
+
+      // ₦2,000 earned before anything special is running.
+      await service.recordJob({ fleetId, amount: 2000 });
+
+      await runCampaign(0.05);
+      // ₦8,000 earned while the campaign is on.
+      await service.recordJob({ fleetId, amount: 8000 });
+
+      const totals = await service.periodTotals(fleetId);
+
+      // The month is whole: two orders, ₦10,000, and the band is still chosen
+      // on that full volume rather than on the campaign's slice.
+      expect(totals.orderCount).toBe(2);
+      expect(totals.chargeableTotal).toBe(10_000);
+      // ₦2,000 at the 10% band + ₦8,000 at the campaign's 5% = ₦600.
+      expect(totals.projectedCommission).toBe(600);
+      // Which is a 6% effective rate — neither the band nor the campaign alone.
+      expect(totals.projectedRate).toBe(0.06);
+    });
+
+    it('does not reset the month, so the band still reflects everything earned', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } });
+
+      // 60 orders before the campaign, 60 during it. The 120-order total is
+      // what picks the band; a campaign that reset the month would drop the
+      // fleet back into the lowest band and overcharge them on every order
+      // that came before it.
+      for (let index = 0; index < 60; index += 1) {
+        await service.recordJob({ fleetId, amount: 100 });
+      }
+      await runCampaign(0.01);
+      for (let index = 0; index < 60; index += 1) {
+        await service.recordJob({ fleetId, amount: 100 });
+      }
+
+      const totals = await service.periodTotals(fleetId);
+      const band = await service.rateForVolume(120);
+
+      expect(totals.orderCount).toBe(120);
+      // ₦6,000 at the band the full 120 orders earn + ₦6,000 at 1%.
+      expect(totals.projectedCommission).toBe(
+        Math.round((6_000 * (band ?? 0) + 6_000 * 0.01) * 100) / 100,
+      );
+    });
+
+    it('charges a month that predates campaigns entirely at the band', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+
+      // No segments at all — exactly the shape of every month already trading
+      // when this shipped, and the guard if a segment write is ever lost.
+      const periodStart = new Date(Date.UTC(2026, 1, 1) - 3_600_000);
+      const periodEnd = new Date(Date.UTC(2026, 2, 1) - 3_600_000);
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId, periodStart } });
+      await prisma.fleetCommissionPeriod.create({
+        data: { fleetId, periodStart, periodEnd, orderCount: 3, chargeableTotal: 5_000 },
+      });
+
+      const settled = await service.settlePeriod({
+        fleetId,
+        periodStart,
+        adminUserId: ownerId,
+        context,
+      });
+
+      expect(Number(settled.appliedRate)).toBe(0.1);
+      expect(Number(settled.commissionAmount)).toBe(500);
+    });
+
+    it('keeps charging what a campaign charged even after it is archived', async () => {
+      if (!databaseAvailable) return;
+      await seedTiers();
+      await prisma.fleetCommissionPeriod.deleteMany({ where: { fleetId } });
+
+      const campaignId = await runCampaign(0.02);
+      await service.recordJob({ fleetId, amount: 10_000 });
+
+      // Editing or ending a campaign must not rewrite what was already earned
+      // under it — the rate is snapshotted on the bucket, not read back.
+      await prisma.commissionCampaign.update({
+        where: { id: campaignId },
+        data: { status: CommissionCampaignStatus.ARCHIVED, commissionRate: 0.5 },
+      });
+
+      const totals = await service.periodTotals(fleetId);
+
+      expect(totals.projectedCommission).toBe(200);
     });
   });
 
