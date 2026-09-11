@@ -13,6 +13,7 @@ import { useParams } from 'next/navigation';
 import * as React from 'react';
 
 import { AppShell } from '@/components/app-shell';
+import { MerchantCommissionRate } from '@/components/merchant-commission-rate';
 import { MerchantLifecycleActions } from '@/components/merchant-lifecycle-actions';
 import { useMerchantReview } from '@/hooks/use-merchant-approvals';
 
@@ -115,6 +116,15 @@ export default function MerchantReviewPage(): React.JSX.Element {
                     No business profile submitted yet.
                   </p>
                 )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Commission rate</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MerchantCommissionRate merchant={profile} />
               </CardContent>
             </Card>
 

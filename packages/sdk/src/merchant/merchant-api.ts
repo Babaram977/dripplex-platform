@@ -19,12 +19,14 @@ import type {
   ListMerchantsQuery,
   MerchantApprovalDto,
   MerchantCommissionTermsDto,
+  MerchantNegotiatedRateDto,
   MerchantDetailDto,
   MerchantDetailResponse,
   MerchantKycDto,
   MerchantSummaryDto,
   OrderSettlementDto,
   PaginatedMerchantsResult,
+  SetMerchantNegotiatedRateRequest,
   PaginatedResult,
   PauseStoreRequest,
   ProductDto,
@@ -268,6 +270,24 @@ export class MerchantApi {
 
 export class AdminMerchantsApi {
   public constructor(private readonly http: HttpClient) {}
+
+  /**
+   * Agrees a commission rate with one merchant, or clears it back to the
+   * platform rate by passing `rate: null` (DPX-MERCHANT-016).
+   *
+   * Takes the merchant **profile** id — the `id` on `MerchantProfileDto`, not
+   * its `merchantId`, which is the user id. The settlement path resolves
+   * against the profile id, so anything else reads as "no agreement".
+   */
+  public setNegotiatedRate(
+    merchantProfileId: string,
+    body: SetMerchantNegotiatedRateRequest,
+  ): Promise<MerchantNegotiatedRateDto> {
+    return this.http.request<MerchantNegotiatedRateDto>(
+      `/admin/merchant-settlement/commission/${merchantProfileId}/rate`,
+      { method: 'POST', body, auth: true },
+    );
+  }
 
   public listMerchants(query?: ListMerchantsQuery): Promise<PaginatedMerchantsResult> {
     return this.http.request<PaginatedMerchantsResult>(`/admin/merchants${toQuery(query)}`, {

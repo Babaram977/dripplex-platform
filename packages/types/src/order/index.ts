@@ -235,6 +235,22 @@ export interface UpdateMerchantCommissionSettingsRequest {
   commissionRate: number;
 }
 
+/** The agreement itself, as Operations sets and reads it. */
+export interface MerchantNegotiatedRateDto {
+  merchantProfileId: string;
+  /** Fraction, or null when no agreement exists. */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
+}
+
+export interface SetMerchantNegotiatedRateRequest {
+  /** Null clears the agreement and returns the merchant to the platform rate. */
+  rate: number | null;
+  note?: string;
+}
+
 /**
  * What DrippleX charges one merchant, as that merchant is shown it.
  *
@@ -248,9 +264,16 @@ export interface MerchantCommissionTermsDto {
   /** Their share of an order, `1 - commissionRate`. Returned rather than left
    *  to the client so every surface subtracts it the same way. */
   merchantShareRate: number;
-  /** The Ops-approved standing rate, before any campaign. Equal to
+  /** The rate that applies when no campaign is running: this merchant's
+   *  negotiated rate if they have one, the platform rate otherwise. Equal to
    *  `commissionRate` when nothing special is running. */
   standingRate: number;
+  /** A rate agreed with this merchant individually, or null when none has
+   *  been. Reported beside `platformRate` so an agreed rate is legible as an
+   *  agreement rather than as an unexplained number. */
+  negotiatedRate: number | null;
+  /** The platform-wide default, before any agreement or campaign. */
+  platformRate: number;
   /** The commission campaign currently overriding the standing rate, if any. */
   campaignId: string | null;
   campaignName: string | null;

@@ -149,6 +149,12 @@ export interface MerchantProfileDto {
   approvedBy: string | null;
   rejectedReason: string | null;
   suspendedAt: string | null;
+  /** A commission rate agreed with this merchant individually (DPX-MERCHANT-016),
+   *  or null when the platform-wide rate applies. Fraction, not percent. */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
   createdAt: string;
   updatedAt: string;
   business: BusinessDto | null;

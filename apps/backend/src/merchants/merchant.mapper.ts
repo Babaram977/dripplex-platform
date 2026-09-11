@@ -91,6 +91,11 @@ export function toMerchantProfileDto(input: {
     approvedBy: input.profile.approvedBy,
     rejectedReason: input.profile.rejectedReason,
     suspendedAt: input.profile.suspendedAt ? input.profile.suspendedAt.toISOString() : null,
+    negotiatedRate:
+      input.profile.negotiatedRate === null ? null : Number(input.profile.negotiatedRate),
+    negotiatedBy: input.profile.negotiatedBy,
+    negotiatedAt: input.profile.negotiatedAt?.toISOString() ?? null,
+    negotiationNote: input.profile.negotiationNote,
     createdAt: input.profile.createdAt.toISOString(),
     updatedAt: input.profile.updatedAt.toISOString(),
     business: input.business ? toBusinessDto(input.business) : null,

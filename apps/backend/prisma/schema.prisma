@@ -773,20 +773,43 @@ model CustomerAddress {
 }
 
 model MerchantProfile {
-  id             String              @id @default(uuid()) @db.Uuid
-  userId         String              @unique @map("user_id") @db.Uuid
-  status         MerchantStatus      @default(PENDING)
-  isApproved     Boolean             @default(false) @map("is_approved")
-  approvedAt     DateTime?           @map("approved_at")
-  approvedBy     String?             @map("approved_by") @db.Uuid
-  rejectedReason String?             @map("rejected_reason") @db.VarChar(1000)
-  suspendedAt    DateTime?           @map("suspended_at")
-  createdAt      DateTime            @default(now()) @map("created_at")
-  updatedAt      DateTime            @updatedAt @map("updated_at")
-  deletedAt      DateTime?           @map("deleted_at")
-  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  onboarding     MerchantOnboarding?
-  products       Product[]
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @unique @map("user_id") @db.Uuid
+  status         MerchantStatus @default(PENDING)
+  isApproved     Boolean        @default(false) @map("is_approved")
+  approvedAt     DateTime?      @map("approved_at")
+  approvedBy     String?        @map("approved_by") @db.Uuid
+  rejectedReason String?        @map("rejected_reason") @db.VarChar(1000)
+  suspendedAt    DateTime?      @map("suspended_at")
+
+  /// A commission rate agreed with this merchant individually, overriding the
+  /// platform-wide `MerchantCommissionSetting` singleton.
+  ///
+  /// Founder decision 2026-09-11, extending to merchants what `Fleet` and
+  /// `CommissionAccount.negotiatedCreditLimit` already had. The reasoning is
+  /// the one already recorded for merchant credit limits on 2026-08-20:
+  /// "limit should be individually set to each merchant because of business
+  /// difference and it should be negotiated and agreed by DrippleX and
+  /// merchant". A supermarket and a jeweller cannot share one rate.
+  ///
+  /// Null means no agreement exists and the singleton applies — which is also
+  /// what keeps that singleton meaningful rather than something that silently
+  /// overwrites a negotiated figure. Fraction, not percent: 0.075 is 7.5%.
+  ///
+  /// A commission campaign still outranks this for the window it covers, the
+  /// same way it outranks a fleet's banded rate. An agreed rate is what the
+  /// merchant pays normally, not a promise that no promotion will ever beat it.
+  negotiatedRate  Decimal?  @map("negotiated_rate") @db.Decimal(5, 4)
+  negotiatedBy    String?   @map("negotiated_by") @db.Uuid
+  negotiatedAt    DateTime? @map("negotiated_at")
+  negotiationNote String?   @map("negotiation_note") @db.VarChar(500)
+
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+  deletedAt  DateTime?           @map("deleted_at")
+  user       User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  onboarding MerchantOnboarding?
+  products   Product[]
 
   @@index([status])
   @@index([isApproved])

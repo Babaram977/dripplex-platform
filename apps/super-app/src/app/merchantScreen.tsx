@@ -393,6 +393,21 @@ function asPercent(fraction: number): string {
   return `${String(percent)}%`;
 }
 
+/**
+ * Where a merchant's rate comes from, in the few words that fit beside it.
+ *
+ * A campaign outranks an agreement, so it is named first when one is running.
+ * An agreed rate is called out because a merchant who negotiated one should be
+ * able to see it is the rate actually being applied, rather than having to take
+ * that on trust. The platform default needs no label — it is the unremarkable
+ * case.
+ */
+function rateSource(terms: MerchantCommissionTermsDto): string {
+  if (terms.campaignName !== null) return ` (${terms.campaignName})`;
+  if (terms.negotiatedRate !== null) return ' (your agreed rate)';
+  return '';
+}
+
 function businessTypeLabel(bt: string | undefined | null): string {
   switch (bt) {
     case 'SOLE_PROPRIETORSHIP':
@@ -4244,9 +4259,7 @@ export function BankAccountPage() {
               'Commission',
               commission === null
                 ? '—'
-                : `${asPercent(commission.commissionRate)}${
-                    commission.campaignName === null ? '' : ` (${commission.campaignName})`
-                  }`,
+                : `${asPercent(commission.commissionRate)}${rateSource(commission)}`,
             ],
             [
               'Net to merchant',

@@ -391,6 +391,8 @@ export type {
   MerchantCancelOrderRequest,
   MerchantCommissionSettingDto,
   MerchantCommissionTermsDto,
+  MerchantNegotiatedRateDto,
+  SetMerchantNegotiatedRateRequest,
   MerchantOrderListQuery,
   OrderAuditAction,
   OrderCancelledBy,

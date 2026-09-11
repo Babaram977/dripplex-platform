@@ -2485,8 +2485,15 @@ export interface MerchantCommissionTermsDto {
   /** The merchant's share, `1 - commissionRate`. Supplied by the backend so
    *  every surface subtracts it identically. */
   merchantShareRate: number;
-  /** The Ops-approved standing rate, before any campaign. */
+  /** What applies when no campaign is running: the negotiated rate if there is
+   *  one, the platform rate otherwise. */
   standingRate: number;
+  /** A rate agreed with this merchant individually, or null when none has
+   *  been. Worth saying out loud on screen — a merchant who negotiated a rate
+   *  should be able to see that it is the one being applied. */
+  negotiatedRate: number | null;
+  /** The platform-wide default, before any agreement or campaign. */
+  platformRate: number;
   campaignId: string | null;
   campaignName: string | null;
 }

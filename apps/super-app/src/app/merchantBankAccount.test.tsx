@@ -64,6 +64,8 @@ describe('merchant settlement account', () => {
       commissionRate: 0.075,
       merchantShareRate: 0.925,
       standingRate: 0.1,
+      negotiatedRate: null,
+      platformRate: 0.1,
       campaignId: 'campaign-1',
       campaignName: 'Ramadan partner rate',
     });
@@ -213,6 +215,8 @@ describe('merchant settlement account', () => {
         commissionRate: 0.1,
         merchantShareRate: 0.9,
         standingRate: 0.1,
+        negotiatedRate: null,
+        platformRate: 0.1,
         campaignId: null,
         campaignName: null,
       });
@@ -220,6 +224,43 @@ describe('merchant settlement account', () => {
 
       expect(await screen.findByText('10%')).toBeInTheDocument();
       expect(await screen.findByText('90% of order value')).toBeInTheDocument();
+    });
+
+    // DPX-MERCHANT-016 — a merchant who negotiated a rate should be able to see
+    // that it is the one being applied, rather than take it on trust.
+    it('says when the rate is one this merchant agreed', async () => {
+      getCommissionTerms.mockResolvedValue({
+        commissionRate: 0.06,
+        merchantShareRate: 0.94,
+        standingRate: 0.06,
+        negotiatedRate: 0.06,
+        platformRate: 0.1,
+        campaignId: null,
+        campaignName: null,
+      });
+      render(<BankAccountPage />);
+
+      expect(await screen.findByText('6% (your agreed rate)')).toBeInTheDocument();
+      expect(await screen.findByText('94% of order value')).toBeInTheDocument();
+    });
+
+    // A campaign outranks an agreement for the window it runs, so it is the
+    // thing to name — calling a campaign rate "your agreed rate" would tell the
+    // merchant their agreement had changed when it had not.
+    it('names the campaign, not the agreement, while a campaign is running', async () => {
+      getCommissionTerms.mockResolvedValue({
+        commissionRate: 0.03,
+        merchantShareRate: 0.97,
+        standingRate: 0.06,
+        negotiatedRate: 0.06,
+        platformRate: 0.1,
+        campaignId: 'campaign-2',
+        campaignName: 'Launch week',
+      });
+      render(<BankAccountPage />);
+
+      expect(await screen.findByText('3% (Launch week)')).toBeInTheDocument();
+      expect(screen.queryByText(/your agreed rate/)).not.toBeInTheDocument();
     });
 
     it('shows a dash rather than a confident wrong number when the rate cannot be read', async () => {

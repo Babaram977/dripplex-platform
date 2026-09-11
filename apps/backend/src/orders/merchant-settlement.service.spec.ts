@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { CommercialCreditSettingsService } from '../commercial/commercial-credit-settings.service';
 import { CommissionAccountService } from '../commercial/commission-account.service';
 import { CommissionRateResolverService } from '../commercial/commission-rate-resolver.service';
+import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
@@ -865,6 +866,220 @@ describe('MerchantSettlementService', () => {
     it('refuses rather than guessing when the caller has no merchant profile', async () => {
       if (!databaseAvailable) return;
       await expect(service.getCommissionTerms(customerId)).rejects.toThrow(/not found/i);
+    });
+  });
+
+  // DPX-MERCHANT-016 — a rate agreed with one merchant, the instrument Fleet
+  // already had. Founder decision 2026-09-11: "Add per-merchant negotiated rate
+  // column like fleet has."
+  describe('a negotiated merchant rate', () => {
+    afterEach(async () => {
+      if (!databaseAvailable) return;
+      await prisma.merchantProfile.update({
+        where: { id: merchantProfileId },
+        data: {
+          negotiatedRate: null,
+          negotiatedBy: null,
+          negotiatedAt: null,
+          negotiationNote: null,
+        },
+      });
+    });
+
+    it('takes the place of the platform rate when settling an order', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        note: 'High volume, agreed with owner',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const order = await createOrder({ subtotal: 50_000, total: 50_000 });
+      const settlement = await service.settleOrder(order.id);
+
+      // The platform singleton is 10%; this merchant agreed 6%.
+      expect(Number(settlement?.commissionRate)).toBe(0.06);
+      expect(Number(settlement?.commissionAmount)).toBe(3_000);
+      expect(Number(settlement?.merchantAmount)).toBe(47_000);
+    });
+
+    it('is reported to the merchant as an agreement, beside the platform rate', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      expect(terms.commissionRate).toBe(0.06);
+      expect(terms.merchantShareRate).toBe(0.94);
+      expect(terms.negotiatedRate).toBe(0.06);
+      // Both are reported, so an agreed rate reads as an agreement rather than
+      // as an unexplained number the merchant has to take on trust.
+      expect(terms.platformRate).toBe(0.1);
+      expect(terms.standingRate).toBe(0.06);
+    });
+
+    it('reports no agreement as null rather than as the platform rate', async () => {
+      if (!databaseAvailable) return;
+      const terms = await service.getCommissionTerms(merchantUserId);
+
+      // Null and 0.1 are different statements: "no agreement exists" versus
+      // "we agreed the default". Collapsing them would make a cleared
+      // agreement indistinguishable from one that was never made.
+      expect(terms.negotiatedRate).toBeNull();
+      expect(terms.commissionRate).toBe(0.1);
+      expect(terms.platformRate).toBe(0.1);
+    });
+
+    // The precedence question, and the one worth being explicit about: a
+    // campaign is a time-boxed instrument and an agreement is a standing one,
+    // so the campaign wins for its window — exactly as it outranks a fleet's
+    // banded rate. An agreed rate is what a merchant pays normally, not a
+    // promise that no promotion will ever beat it.
+    it('yields to a campaign for the window the campaign covers', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+      const campaign = await prisma.commissionCampaign.create({
+        data: {
+          name: 'Launch week',
+          scope: 'MERCHANT_ORDER',
+          commissionRate: 0.03,
+          status: 'ACTIVE',
+          priority: 10,
+          startsAt: new Date(Date.now() - 60 * 60 * 1000),
+          endsAt: new Date(Date.now() + 60 * 60 * 1000),
+          rules: { eligibleMerchantIds: [merchantProfileId] },
+        },
+        select: { id: true },
+      });
+
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+        expect(terms.commissionRate).toBe(0.03);
+        // The agreement is still reported: it is what they go back to.
+        expect(terms.negotiatedRate).toBe(0.06);
+        expect(terms.standingRate).toBe(0.06);
+        expect(terms.campaignName).toBe('Launch week');
+
+        const order = await createOrder({ subtotal: 10_000, total: 10_000 });
+        const settlement = await service.settleOrder(order.id);
+        expect(Number(settlement?.commissionRate)).toBe(0.03);
+      } finally {
+        await prisma.commissionCampaign.delete({ where: { id: campaign.id } });
+      }
+    });
+
+    it('clears back to the platform rate, taking the note with it', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        note: 'Agreed with owner',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: null,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      expect(profile.negotiatedRate).toBeNull();
+      // A note left behind would describe terms that no longer apply.
+      expect(profile.negotiationNote).toBeNull();
+      expect(profile.negotiatedBy).toBeNull();
+      expect(profile.negotiatedAt).toBeNull();
+      expect((await service.getCommissionTerms(merchantUserId)).commissionRate).toBe(0.1);
+    });
+
+    it('records who agreed it and on what terms', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.085,
+        note: 'Pilot pricing, review in March',
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      // A commercial commitment carries its terms rather than living only in
+      // the audit log, the same shape Fleet.negotiatedRate uses.
+      expect(profile.negotiatedBy).toBe(merchantUserId);
+      expect(profile.negotiatedAt).not.toBeNull();
+      expect(profile.negotiationNote).toBe('Pilot pricing, review in March');
+    });
+
+    it('refuses a rate outside a fraction, rather than storing a percent', async () => {
+      if (!databaseAvailable) return;
+      // 7.5 instead of 0.075 would bill 750% — the kind of typo that has to
+      // fail loudly at the boundary rather than reach a Decimal(5,4) column.
+      await expect(
+        commissionSettings.setNegotiatedRate({
+          merchantProfileId,
+          rate: 7.5,
+          adminUserId: merchantUserId,
+          context: {},
+        }),
+      ).rejects.toThrow(/fraction/i);
+
+      const profile = await prisma.merchantProfile.findUniqueOrThrow({
+        where: { id: merchantProfileId },
+      });
+      expect(profile.negotiatedRate).toBeNull();
+    });
+
+    it('refuses an unknown merchant with a domain error, not a raw Prisma one', async () => {
+      if (!databaseAvailable) return;
+      // Asserting the *type*, not the message: Prisma's own P2025 text also
+      // reads "...required but not found", so a message match cannot tell a
+      // handled refusal from an unhandled 500 leaking out of the ORM.
+      await expect(
+        commissionSettings.setNegotiatedRate({
+          merchantProfileId: '00000000-0000-4000-8000-0000000000ff',
+          rate: 0.06,
+          adminUserId: merchantUserId,
+          context: {},
+        }),
+      ).rejects.toBeInstanceOf(NotFoundDomainException);
+    });
+
+    it('changing the platform rate never disturbs an agreed one', async () => {
+      if (!databaseAvailable) return;
+      await commissionSettings.setNegotiatedRate({
+        merchantProfileId,
+        rate: 0.06,
+        adminUserId: merchantUserId,
+        context: {},
+      });
+
+      // The whole point of an agreement: it survives the default moving.
+      await commissionSettings.update(0.2, merchantUserId, {});
+      try {
+        const terms = await service.getCommissionTerms(merchantUserId);
+        expect(terms.commissionRate).toBe(0.06);
+        expect(terms.platformRate).toBe(0.2);
+      } finally {
+        await commissionSettings.update(0.1, merchantUserId, {});
+      }
     });
   });
 });

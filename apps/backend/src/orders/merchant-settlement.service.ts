@@ -167,10 +167,15 @@ export class MerchantSettlementService implements OnModuleInit {
     // scope, under conditions (DPX-COMMISSION-001). Which one applied is
     // recorded on the settlement row, because rates now change week to week
     // and "why was this one 7%?" has to be answerable from the money record.
-    const setting = await this.commissionSettings.getEffective();
+    // A rate agreed with this merchant individually takes the place of the
+    // platform singleton (DPX-MERCHANT-016). A campaign still outranks both for
+    // the window it covers, which is what passing it as the *standing* rate
+    // expresses: the resolver returns a campaign if one matches, and this
+    // otherwise.
+    const standingRate = await this.commissionSettings.standingRateFor(order.merchantId);
     const resolved = await this.commissionRates.resolve(
       CommissionScope.MERCHANT_ORDER,
-      Number(setting.commissionRate),
+      standingRate,
       {
         userId: order.merchantId,
         merchantId: order.merchantId,
@@ -515,8 +520,9 @@ export class MerchantSettlementService implements OnModuleInit {
       throw new NotFoundDomainException('Merchant profile not found');
     }
 
-    const setting = await this.commissionSettings.getEffective();
-    const standingRate = Number(setting.commissionRate);
+    const platformRate = Number((await this.commissionSettings.getEffective()).commissionRate);
+    const negotiatedRate = await this.commissionSettings.negotiatedRateFor(profile.id);
+    const standingRate = negotiatedRate ?? platformRate;
     // `OrderSettlement.merchantId` is the profile id, and `settleOrder` passes
     // that same id as both `userId` and `merchantId`. Matching it exactly is
     // what makes this the charged rate rather than a lookalike.
@@ -531,6 +537,11 @@ export class MerchantSettlementService implements OnModuleInit {
       commissionRate: round(resolved.rate),
       merchantShareRate: round(1 - resolved.rate),
       standingRate: round(standingRate),
+      // Null when no individual agreement exists. Reported separately from
+      // `standingRate` so a merchant can tell an agreed rate from the platform
+      // default, rather than seeing one number and having to take it on trust.
+      negotiatedRate: negotiatedRate === null ? null : round(negotiatedRate),
+      platformRate: round(platformRate),
       campaignId: resolved.campaignId,
       campaignName: resolved.campaignName,
     };

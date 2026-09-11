@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type {
   MerchantApprovalDto,
+  MerchantNegotiatedRateDto,
+  SetMerchantNegotiatedRateRequest,
   MerchantDetailResponse,
   MerchantKycDto,
   MerchantStatus,
@@ -90,6 +92,20 @@ export function useSuspendMerchant(
 ): UseMutationResult<MerchantApprovalDto, Error, string> {
   return useMerchantMutation(merchantId, (reason: string) =>
     sdk.adminMerchants.suspend(merchantId, reason),
+  );
+}
+
+/**
+ * Agrees a commission rate with one merchant, or clears it (DPX-MERCHANT-016).
+ *
+ * Keyed on the merchant **profile** id, which is what the settlement path
+ * resolves against.
+ */
+export function useSetMerchantNegotiatedRate(
+  merchantProfileId: string,
+): UseMutationResult<MerchantNegotiatedRateDto, Error, SetMerchantNegotiatedRateRequest> {
+  return useMerchantMutation(merchantProfileId, (body: SetMerchantNegotiatedRateRequest) =>
+    sdk.adminMerchants.setNegotiatedRate(merchantProfileId, body),
   );
 }
 

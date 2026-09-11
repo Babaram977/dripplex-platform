@@ -23,6 +23,8 @@ export const ORDER_AUDIT_ACTIONS = {
   SETTLEMENT_FAILED: 'order.settlement.failed',
   SETTLEMENT_REVERSED: 'order.settlement.reversed',
   COMMISSION_SETTINGS_UPDATED: 'merchant_commission_settings.updated',
+  /** A rate agreed with one merchant, or an agreement cleared. */
+  MERCHANT_RATE_NEGOTIATED: 'merchant_commission.rate_negotiated',
 } as const;
 
 export const ORDER_PERMISSIONS = {
