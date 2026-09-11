@@ -1,6 +1,6 @@
 # DPX-AUDIT-001 — does promotional and reward logic contaminate the settlement ledgers?
 
-**Status:** Audit complete. **One finding. No financial behaviour changed.**
+**Status:** Audit complete. The finding is **resolved** — see §3. A second, larger bug was found while fixing it.
 **Date:** 2026-09-11
 
 ---
@@ -96,7 +96,16 @@ budget. No work needed; recorded here so the open item can be struck.
 
 ---
 
-## 3. ⚠ Finding — fleet commission is billed on the discounted fare
+## 3. ✅ Resolved — fleet commission was billed on the discounted fare
+
+**Founder decision, 2026-09-11: fix it.** `FleetJobSubscriber` now counts
+`ride.totalFare.add(ride.promoDiscount)` — the gross fare, matching the driver split beside it.
+Added as Decimals rather than numbers, because these are money and two float additions of a fare and
+a discount is how a month's total drifts a kobo at a time.
+
+**What fixing it uncovered is the more serious half. See §3.1.**
+
+The finding as reported:
 
 **`FleetJobSubscriber` counts a ride into a fleet's month using `ride.totalFare`, which is the
 discounted fare.** The driver's own split, computed a few files away, deliberately uses
@@ -130,8 +139,42 @@ inconsistency.
 **Recommendation:** align it — pass `totalFare + promoDiscount` — and tell affected fleets before the
 month it lands in. One line of code; the decision is whether and when, not how.
 
-The delivery branch of the same subscriber uses `job.deliveryFee` and is unaffected, because nothing
-discounts a delivery fee today.
+### 3.1 ⚠⚠ The bug underneath: fleet commission has never been counted at all
+
+Writing the first test this subscriber has ever had produced a chargeable total of **zero**, for a
+ride that plainly should have counted.
+
+`DomainEventBus` hands a handler the whole `DomainEvent` — `{ name, payload, occurredAt }`.
+`FleetJobSubscriber` named its parameter `payload` and destructured the job fields straight off it:
+
+```ts
+this.eventBus.on(DOMAIN_EVENTS.RIDE_COMPLETED, async (payload: unknown) => {
+  await this.handleRideCompleted(payload); // reads `rideId` off the wrapper
+});
+```
+
+`rideId` and `deliveryJobId` therefore came back `undefined`, every handler returned at its first
+guard, and nothing was ever recorded. **Both branches — rides and deliveries.** Every fleet's
+`chargeableTotal` has been zero since this shipped, so no fleet has ever been billed commission.
+
+It was silent for three reasons stacked on each other: the guard is an ordinary early return rather
+than an error; `count()` swallows exceptions by design, so nothing would have surfaced even if it had
+thrown; and the subscriber had **no test at all**. The gross-versus-net question was a rounding
+error on top of a ledger that was never being written.
+
+Every other subscriber on this bus reads `event.payload` correctly — this one was the only
+exception, confirmed by grep.
+
+**Fixed**, and both fixes are independently proven: reverting the gross fare fails one test,
+reverting the payload read fails two.
+
+**This one does need telling.** Fleets have been under-billed by everything, not by a coupon's
+worth. What is owed for past months cannot be recovered from `chargeableTotal` — those rows are
+empty — but it is reconstructable from the rides and delivery jobs themselves, which are all still
+there. That is a decision and a piece of work, not something to quietly start charging for.
+
+The delivery branch of the same subscriber uses `job.deliveryFee` and needs no gross/net change,
+because nothing discounts a delivery fee today.
 
 ---
 
@@ -164,5 +207,6 @@ Recorded here because the trap is invisible at the moment somebody walks into it
 | Wallet                          | ✓ Clean — rewards land under their own types         |
 | Promotional / points / referral | ✓ Separate, costed, and now budgeted                 |
 
-One finding, in DrippleX's disfavour rather than a partner's, awaiting a decision because fixing it
-raises a live partner's bill.
+The audit's own finding was a coupon's worth of under-billing. Fixing it surfaced that the fleet
+ledger was never written at all — which is the finding that actually matters, and the one that needs
+a decision about past months.
