@@ -24,6 +24,15 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'admin:delivery:manage', description: 'Manage delivery jobs (admin)' },
   { code: 'customer:loyalty:read', description: 'Read own loyalty account' },
   { code: 'customer:loyalty:redeem', description: 'Redeem own loyalty points' },
+  {
+    code: 'loyalty:redemption-code:create',
+    description:
+      'Generate a one-time code authorising a merchant to take your DX points at their counter',
+  },
+  {
+    code: 'merchant:loyalty:redeem',
+    description: "Take a holder's DX points at the counter, crediting the merchant's DX wallet",
+  },
   { code: 'admin:loyalty:manage', description: 'Manage loyalty accounts and achievements' },
   { code: 'customer:wallet:read', description: 'Read own wallet' },
   { code: 'customer:wallet:transfer', description: 'Transfer funds from own wallet' },

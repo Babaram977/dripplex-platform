@@ -955,6 +955,57 @@ export interface LoyaltyRedemptionResultDto {
  * `forbidNonWhitelisted`, so any caller that filled those in got a 400 rather
  * than the redemption the type promised.
  */
+/**
+ * DPX-LOYALTY-002 — a one-time authorisation for a merchant to take DX points
+ * at their counter.
+ *
+ * `code` comes back from `POST /customer/loyalty/redemption-code` once and is
+ * never retrievable again — only its hash is stored. Show it, then forget it.
+ */
+export interface IssuedRedemptionCodeDto {
+  code: string;
+  points: number;
+  /** Naira the merchant will be credited. */
+  amount: number;
+  expiresAt: string;
+}
+
+/** What a merchant sees before accepting a code. */
+export interface RedemptionCodePreviewDto {
+  points: number;
+  amount: number;
+  holderName: string;
+  expiresAt: string;
+}
+
+export interface StoreRedemptionResultDto {
+  points: number;
+  amount: number;
+  holderName: string;
+  /** The merchant's wallet balance after the credit. */
+  merchantWalletBalance: number;
+  redeemedAt: string;
+}
+
+export interface IssueRedemptionCodeRequest {
+  points: number;
+}
+
+export interface RedeemStoreCodeRequest {
+  code: string;
+}
+
+/** A merchant paying down what they owe DrippleX out of their wallet balance. */
+export interface SettleCommissionRequest {
+  amount: number;
+}
+
+export interface CommissionSettlementResultDto {
+  settled: number;
+  outstandingBalance: number;
+  wallet: WalletDto;
+}
+
 export interface RedeemLoyaltyPointsRequest {
   points: number;
 }

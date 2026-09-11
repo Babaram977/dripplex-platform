@@ -58,7 +58,14 @@ import type {
   PromotionRedemptionDto,
   RecentSearchDto,
   RedeemPromotionRequest,
+  IssueRedemptionCodeRequest,
+  IssuedRedemptionCodeDto,
   LoyaltyRedemptionResultDto,
+  RedeemStoreCodeRequest,
+  SettleCommissionRequest,
+  CommissionSettlementResultDto,
+  RedemptionCodePreviewDto,
+  StoreRedemptionResultDto,
   RedeemLoyaltyPointsRequest,
   ReferralCampaignDto,
   ReferralDto,
@@ -691,6 +698,53 @@ export class LoyaltyClient {
       body,
     });
   }
+
+  /**
+   * DPX-LOYALTY-002 — a one-time code authorising a merchant to take this many
+   * points at their counter.
+   *
+   * The code is returned once and never again: only its hash is stored. Any
+   * outstanding code is cancelled, so a holder has at most one live
+   * authorisation against their balance.
+   */
+  public issueRedemptionCode(body: IssueRedemptionCodeRequest): Promise<IssuedRedemptionCodeDto> {
+    return this.http.request<IssuedRedemptionCodeDto>('/customer/loyalty/redemption-code', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  /** Revokes the outstanding counter code. */
+  public cancelRedemptionCode(): Promise<{ cancelled: number }> {
+    return this.http.request<{ cancelled: number }>('/customer/loyalty/redemption-code', {
+      method: 'DELETE',
+    });
+  }
+}
+
+/**
+ * DPX-LOYALTY-002 — the merchant side of the counter.
+ *
+ * Always preview before redeeming. Finding out after handing over goods that a
+ * code was worth NGN 2 rather than NGN 200 is the merchant's loss, and the
+ * preview costs one call.
+ */
+export class MerchantLoyaltyClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  public preview(body: RedeemStoreCodeRequest): Promise<RedemptionCodePreviewDto> {
+    return this.http.request<RedemptionCodePreviewDto>('/merchant/loyalty/redemptions/preview', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  public redeem(body: RedeemStoreCodeRequest): Promise<StoreRedemptionResultDto> {
+    return this.http.request<StoreRedemptionResultDto>('/merchant/loyalty/redemptions', {
+      method: 'POST',
+      body,
+    });
+  }
 }
 
 export class WalletClient {
@@ -861,6 +915,24 @@ export class WalletClient {
 
   public merchantWallet(): Promise<WalletDto> {
     return this.http.request<WalletDto>('/merchant/wallet');
+  }
+
+  /**
+   * DPX-LOYALTY-002 — a merchant paying down what they owe DrippleX out of
+   * their wallet balance, because they chose to.
+   *
+   * Merchant commission is normally deducted at settlement, so nothing is taken
+   * from a merchant's balance automatically. This is what makes value earned by
+   * redeeming DX points in store useful for something other than a payout.
+   * Never takes more than is owed, whatever is asked for.
+   */
+  public settleMerchantCommission(
+    body: SettleCommissionRequest,
+  ): Promise<CommissionSettlementResultDto> {
+    return this.http.request<CommissionSettlementResultDto>(
+      '/merchant/wallet/commission-settlements',
+      { method: 'POST', body },
+    );
   }
 
   public riderWallet(): Promise<WalletDto> {

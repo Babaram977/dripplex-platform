@@ -9,6 +9,8 @@ export {
   useSetWalletLimits,
 } from './use-wallet-mutations';
 export {
+  useCancelRedemptionCode,
+  useIssueRedemptionCode,
   useLoyaltyAccount,
   useRedeemLoyaltyPoints,
   useReferralCode,

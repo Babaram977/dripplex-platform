@@ -126,3 +126,15 @@ export class AdminWithdrawalFailDto {
   @MaxLength(500)
   public reason!: string;
 }
+
+export class SettleCommissionDto {
+  /**
+   * How much of the outstanding commission to pay off. Capped at what is
+   * actually owed by the service — overpaying a commission account has no
+   * meaning and would only have to be refunded.
+   */
+  @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? Number(value) : value))
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public amount!: number;
+}

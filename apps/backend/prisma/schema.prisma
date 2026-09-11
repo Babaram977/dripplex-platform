@@ -588,6 +588,7 @@ model User {
   promotionRedemptions        PromotionRedemption[]
   loyaltyAccount              LoyaltyAccount?
   userAchievements            UserAchievement[]
+  loyaltyRedemptionCodes      LoyaltyRedemptionCode[]
   cmsContentVersions          CmsContentVersion[]          @relation("CmsContentVersionCreator")
   fraudSignals                FraudSignal[]                @relation("FraudSignalUser")
   fraudReviews                FraudSignal[]                @relation("FraudSignalReviewer")
@@ -2899,6 +2900,10 @@ enum NotificationType {
   /// offers.
   COMMISSION_CAMPAIGN_STARTED
   COMMISSION_CAMPAIGN_ENDED
+  /// DPX-LOYALTY-002 — a merchant took DX points at their counter. Its own
+  /// type, not GENERIC: somebody spending a balance is not something to be
+  /// muted alongside offers.
+  LOYALTY_POINTS_SPENT
   /// A utility purchase could not be completed and the money has been
   /// returned to the DrippleX Wallet (DPX-D4).
   UTILITY_PURCHASE_REVERSED
@@ -3576,6 +3581,53 @@ model LoyaltyLedgerEntry {
   @@index([referenceType, referenceId])
   @@index([expiresAt])
   @@map("loyalty_ledger_entries")
+}
+
+/// DPX-LOYALTY-002 — a holder's authorisation for a merchant to take some of
+/// their DX points, in person.
+///
+/// Founder decision (2026-09-11): points are spendable at a merchant's physical
+/// store, by customers, drivers and riders alike, and the value lands in the
+/// merchant's DX wallet.
+///
+/// The holder generates the code in their own app and shows it at the counter.
+/// A merchant can never reach into an account on their own say-so — there is no
+/// "look the customer up by phone and take their points", because DrippleX
+/// identity is phone-primary and a phone number is not a secret.
+///
+/// The plaintext code is shown once, in the holder's app, and never stored:
+/// only a SHA-256 of it lives here, and a merchant redeems by presenting the
+/// code, which is hashed and matched. Same reasoning as OtpService.
+///
+/// One live code per holder. Generating a new one cancels the outstanding one,
+/// which is what stops two codes for the same balance reaching two merchants at
+/// once — cheaper and clearer than putting a hold on the points.
+model LoyaltyRedemptionCode {
+  id       String @id @default(uuid()) @db.Uuid
+  userId   String @map("user_id") @db.Uuid
+  codeHash String @unique @map("code_hash") @db.VarChar(64)
+
+  /// What the holder authorised, fixed at generation. The merchant sees both
+  /// before confirming, so a code cannot quietly be worth less than the bill.
+  points Int
+  amount Decimal @db.Decimal(12, 2)
+
+  expiresAt  DateTime  @map("expires_at")
+  redeemedAt DateTime? @map("redeemed_at")
+  /// The merchant User who took it.
+  redeemedBy  String?   @map("redeemed_by") @db.Uuid
+  cancelledAt DateTime? @map("cancelled_at")
+  /// The negative LoyaltyLedgerEntry this produced — the audit link between the
+  /// points that left and the naira that arrived.
+  ledgerEntryId String? @map("ledger_entry_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([redeemedBy])
+  @@index([expiresAt])
+  @@map("loyalty_redemption_codes")
 }
 
 model LoyaltyAchievement {

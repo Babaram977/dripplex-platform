@@ -83,3 +83,21 @@ export class UpdateLoyaltyAchievementDto {
   @IsBoolean()
   public active?: boolean;
 }
+
+export class IssueRedemptionCodeDto {
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsInt()
+  @Min(1)
+  public points!: number;
+}
+
+export class RedeemStoreCodeDto {
+  /**
+   * The code the holder is showing. Sent in a body rather than a path so it
+   * does not end up in access logs or browser history — it is a bearer
+   * authorisation over somebody's points until it is used.
+   */
+  @IsString()
+  @MaxLength(32)
+  public code!: string;
+}

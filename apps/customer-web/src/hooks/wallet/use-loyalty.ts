@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { sdk } from '../../lib/sdk';
 
 import type {
+  IssuedRedemptionCodeDto,
   LoyaltyAccountOverviewDto,
   LoyaltyRedemptionResultDto,
   ReferralDto,
@@ -40,6 +41,39 @@ export function useRedeemLoyaltyPoints(): UseMutationResult<
         queryClient.invalidateQueries({ queryKey: ['loyalty'] }),
         queryClient.invalidateQueries({ queryKey: ['wallet'] }),
       ]);
+    },
+  });
+}
+
+/**
+ * DPX-LOYALTY-002 — a one-time code authorising a merchant to take points at
+ * their counter.
+ *
+ * The code comes back once and is never retrievable again: only its hash is
+ * stored server-side. It is deliberately not cached in a query — a live
+ * authorisation over somebody's balance should not be sitting in a cache that
+ * outlives the screen showing it.
+ */
+export function useIssueRedemptionCode(): UseMutationResult<
+  IssuedRedemptionCodeDto,
+  Error,
+  number
+> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (points: number) => sdk.loyalty.issueRedemptionCode({ points }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['loyalty'] });
+    },
+  });
+}
+
+export function useCancelRedemptionCode(): UseMutationResult<{ cancelled: number }, Error, void> {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => sdk.loyalty.cancelRedemptionCode(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['loyalty'] });
     },
   });
 }

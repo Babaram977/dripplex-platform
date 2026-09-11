@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import { WalletOwnerType } from '@prisma/client';
+import { CommissionOwnerType, WalletOwnerType } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -9,10 +9,11 @@ import { WalletHistoryQueryDto } from './dto/wallet.dto';
 import {
   CreateWithdrawalRequestDto,
   SetWalletPinDto,
+  SettleCommissionDto,
   WithdrawalHistoryQueryDto,
 } from './dto/withdrawal.dto';
 import { WalletPinService } from './wallet-pin.service';
-import { WALLET_PERMISSIONS } from './wallet.constants';
+import { WALLET_DEFAULT_CURRENCY, WALLET_PERMISSIONS } from './wallet.constants';
 import { WalletService, type WalletDto, type WalletLedgerEntryDto } from './wallet.service';
 import {
   WithdrawalService,
@@ -83,6 +84,35 @@ export class MerchantWalletController {
       user.id,
       WalletOwnerType.MERCHANT,
       dto,
+      this.auditContext(request, user.id),
+    );
+    return { success: true, data };
+  }
+
+  /**
+   * DPX-LOYALTY-002 — pay down what this merchant owes DrippleX, out of their
+   * wallet balance.
+   *
+   * Merchant commission is normally deducted at settlement, so nothing is ever
+   * taken from a merchant's balance automatically. This is the merchant
+   * choosing to, which is what makes the value they earn by redeeming DX points
+   * useful for something other than a payout. Never takes more than is owed.
+   */
+  @Post('commission-settlements')
+  @RequirePermissions(WALLET_PERMISSIONS.MERCHANT_WITHDRAW)
+  public async settleCommission(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SettleCommissionDto,
+    @Req() request: Request,
+  ): Promise<
+    ApiSuccessResponse<{ settled: number; outstandingBalance: number; wallet: WalletDto }>
+  > {
+    const data = await this.withdrawalService.settleCommissionFromWallet(
+      user.id,
+      WalletOwnerType.MERCHANT,
+      CommissionOwnerType.MERCHANT,
+      dto.amount,
+      WALLET_DEFAULT_CURRENCY,
       this.auditContext(request, user.id),
     );
     return { success: true, data };

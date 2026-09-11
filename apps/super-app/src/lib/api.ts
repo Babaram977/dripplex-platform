@@ -2222,6 +2222,15 @@ export interface LoyaltyPointsSummaryDto {
   };
 }
 
+// A one-time authorisation for a merchant to take DX points at their counter.
+// `code` is shown once and never comes back — show it, then forget it.
+export interface IssuedRedemptionCodeDto {
+  code: string;
+  points: number;
+  amount: number;
+  expiresAt: string;
+}
+
 // Redemption pays into the customer's wallet; the response says how much.
 export interface LoyaltyRedemptionResultDto {
   overview: LoyaltyOverviewDto;
@@ -4461,6 +4470,14 @@ export const api = {
       ),
     redeem: (points: number) =>
       dx<LoyaltyRedemptionResultDto>('POST', '/customer/loyalty/redeem', { points }),
+    // DPX-LOYALTY-002 — a one-time code the holder shows at a merchant's
+    // counter. Returned once and never retrievable again: only its hash is
+    // stored. Generating one cancels any outstanding code, so a holder has at
+    // most one live authorisation against their balance.
+    issueRedemptionCode: (points: number) =>
+      dx<IssuedRedemptionCodeDto>('POST', '/customer/loyalty/redemption-code', { points }),
+    cancelRedemptionCode: () =>
+      dx<{ cancelled: number }>('DELETE', '/customer/loyalty/redemption-code'),
   },
 };
 

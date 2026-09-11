@@ -3,6 +3,15 @@ import { LoyaltyTier } from '@prisma/client';
 export const LOYALTY_PERMISSIONS = {
   CUSTOMER_READ: 'customer:loyalty:read',
   CUSTOMER_REDEEM: 'customer:loyalty:redeem',
+  /**
+   * Authorising a merchant to take your points at their counter. Held by
+   * customers, drivers and riders alike — a DX point balance is keyed on the
+   * user, not the persona, and the founder's decision was explicitly that all
+   * three can spend theirs in a shop.
+   */
+  REDEMPTION_CODE_CREATE: 'loyalty:redemption-code:create',
+  /** Taking a holder's points at the counter, in exchange for goods. */
+  MERCHANT_REDEEM: 'merchant:loyalty:redeem',
   ADMIN_MANAGE: 'admin:loyalty:manage',
 } as const;
 
@@ -13,6 +22,9 @@ export const LOYALTY_AUDIT_ACTIONS = {
   ACHIEVEMENT_CREATED: 'loyalty.achievement_created',
   ACHIEVEMENT_UPDATED: 'loyalty.achievement_updated',
   ACHIEVEMENT_DELETED: 'loyalty.achievement_deleted',
+  REDEMPTION_CODE_ISSUED: 'loyalty.redemption_code_issued',
+  REDEMPTION_CODE_CANCELLED: 'loyalty.redemption_code_cancelled',
+  MERCHANT_REDEEMED: 'loyalty.merchant_redeemed',
 } as const;
 
 export const LOYALTY_EVENT_POINTS = {
@@ -76,6 +88,7 @@ export const LOYALTY_REFERENCE_TYPES = {
   REDEMPTION: 'REDEMPTION',
   ACHIEVEMENT: 'ACHIEVEMENT',
   EXPIRATION: 'POINT_EXPIRATION',
+  STORE_REDEMPTION: 'STORE_REDEMPTION',
 } as const;
 
 /**
@@ -85,3 +98,22 @@ export const LOYALTY_REFERENCE_TYPES = {
  * can never pay out twice, whatever happens between the two ledgers.
  */
 export const LOYALTY_WALLET_REFERENCE_TYPE = 'LOYALTY_REDEMPTION';
+
+/** How a merchant's side of an in-store redemption is labelled on the wallet. */
+export const LOYALTY_MERCHANT_WALLET_REFERENCE_TYPE = 'LOYALTY_STORE_REDEMPTION';
+
+/**
+ * How long a counter code is good for. Long enough to find the app, read it out
+ * and have it typed in; short enough that a code glimpsed over a shoulder is
+ * worthless by the time anybody could use it.
+ */
+export const LOYALTY_REDEMPTION_CODE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * The code alphabet, minus the characters people confuse when reading one out
+ * across a counter: no O/0, no I/1, no S/5. Eight characters from 29 symbols is
+ * about 5e11 possibilities — brute force is not the attack to worry about, and
+ * the endpoint is throttled besides.
+ */
+export const LOYALTY_REDEMPTION_CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRTUVWXYZ';
+export const LOYALTY_REDEMPTION_CODE_LENGTH = 8;

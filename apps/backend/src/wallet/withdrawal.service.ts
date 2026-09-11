@@ -18,13 +18,14 @@ import { BankAccountsService } from './bank-accounts.service';
 import { WalletPinService } from './wallet-pin.service';
 import {
   WALLET_AUDIT_ACTIONS,
+  WALLET_DEFAULT_CURRENCY,
   WALLET_WITHDRAWAL_MAX_AMOUNT,
   WALLET_WITHDRAWAL_MIN_AMOUNT,
   WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
   WALLET_WITHDRAWAL_REFERENCE_TYPE,
   WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE,
 } from './wallet.constants';
-import { WalletService } from './wallet.service';
+import { WalletService, type WalletDto } from './wallet.service';
 
 import type { PaginatedResult } from '@dripplex/types';
 import type { WithdrawalRequest } from '@prisma/client';
@@ -260,6 +261,74 @@ export class WithdrawalService {
    * wallet-first so a failure to record the payment cannot leave a partner
    * credited for money that never left their balance.
    */
+  /**
+   * DPX-LOYALTY-002 — a merchant paying down what they owe DrippleX, out of
+   * their own wallet balance, because they asked to.
+   *
+   * Deliberately separate from `settleCommissionFromPayout`. That one is
+   * automatic and applies to riders and drivers, whose cash jobs leave them
+   * owing commission that has to come off a payout before money leaves the
+   * platform. A merchant's commission is already deducted at settlement, so
+   * nothing should be taken from their balance unless they say so — which is
+   * exactly what the founder asked for: value a merchant earns by redeeming DX
+   * points can be used to settle their commission rather than paid out.
+   *
+   * Ordered wallet-first, for the same reason: a failure to record the payment
+   * must not leave a merchant credited against a debt for money that never left
+   * their balance.
+   */
+  public async settleCommissionFromWallet(
+    userId: string,
+    ownerType: WalletOwnerType,
+    commissionOwner: CommissionOwnerType,
+    requested: number,
+    currency = WALLET_DEFAULT_CURRENCY,
+    context?: AuditContext,
+  ): Promise<{ settled: number; outstandingBalance: number; wallet: WalletDto }> {
+    if (!Number.isFinite(requested) || requested <= 0) {
+      throw new ValidationDomainException('Amount must be greater than zero');
+    }
+
+    const account = await this.commissionAccounts.getOrCreateAccount(commissionOwner, userId);
+    const outstanding = Number(account.outstandingBalance);
+    if (outstanding <= 0) {
+      throw new ValidationDomainException('There is nothing outstanding to settle');
+    }
+
+    // Never take more than is owed, whatever was asked for — overpaying a
+    // commission account has no meaning and would have to be refunded.
+    const settled = Number(Math.min(outstanding, requested).toFixed(2));
+    const reference = randomUUID();
+
+    const wallet = await this.walletService.debit({
+      ownerType,
+      ownerId: userId,
+      amount: settled,
+      currency,
+      referenceType: WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
+      referenceId: reference,
+      description: 'Settled commission owed to DrippleX',
+      ...(context !== undefined ? { context } : {}),
+    });
+
+    const updated = await this.commissionAccounts.recordPayment({
+      ownerType: commissionOwner,
+      ownerId: userId,
+      amount: settled,
+      referenceType: WALLET_COMMISSION_SETTLEMENT_REFERENCE_TYPE,
+      referenceId: reference,
+      description: 'Paid from wallet balance',
+      recordedBy: userId,
+      ...(context !== undefined ? { context } : {}),
+    });
+
+    return {
+      settled,
+      outstandingBalance: Number(updated.outstandingBalance),
+      wallet,
+    };
+  }
+
   private async settleCommissionFromPayout(
     userId: string,
     ownerType: WalletOwnerType,

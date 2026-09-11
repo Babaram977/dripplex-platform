@@ -129,7 +129,14 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // `admin:commercial:commission-settings:manage` because that is the
     // standing rate and this is a temporary override, and the two are edited
     // by the same people but read by different ones.
-    expect(PERMISSION_SEEDS).toHaveLength(145);
+    // 145 -> 147: `loyalty:redemption-code:create` and
+    // `merchant:loyalty:redeem` (DPX-LOYALTY-002). The first is held by
+    // customers, drivers and riders alike, because a DX point balance is keyed
+    // on the user rather than the persona and all three can spend theirs in a
+    // shop; the second is the merchant side of the same transaction, and the
+    // two are deliberately not one permission — generating an authorisation
+    // over your own points and taking somebody else's are opposite ends of it.
+    expect(PERMISSION_SEEDS).toHaveLength(147);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
@@ -138,6 +145,8 @@ describe('Prisma schema foundation (S1-C1)', () => {
         'admin:utilities:manage',
         'admin:commission-campaign:read',
         'admin:commission-campaign:manage',
+        'loyalty:redemption-code:create',
+        'merchant:loyalty:redeem',
       ]),
     );
     expect(ROLE_SEEDS.map((role: RoleSeed) => role.name)).toEqual(
