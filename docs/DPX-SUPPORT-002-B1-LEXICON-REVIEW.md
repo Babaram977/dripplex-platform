@@ -23,6 +23,19 @@ A word that is missing from this list is a Kano user whose stolen-money
 complaint, or whose emergency, quietly goes into the ordinary queue while the
 same complaint in English goes straight to a person.
 
+## How to actually do this review
+
+**Use the review page:** <https://claude.ai/code/artifact/46bf008a-be01-47d6-859e-f7a924b03fda>
+
+It is the same 93 terms as this document, built for a phone: one word at a time,
+Keep / Remove / Not sure, a box for corrections, and it saves as you go so the
+reviewer can stop and come back. It leads with the seven flagged terms.
+
+This document stays the durable record. When the review comes back, the answers
+are read out of the page and committed here as
+`docs/DPX-SUPPORT-002-B1-LEXICON-REVIEW-RESPONSES.md`, so the judgement lives in
+the repository next to the code it changes — not in a chat thread.
+
 ## What we need from you
 
 For each term below:
@@ -96,15 +109,22 @@ and completely different complaint.
 We listed **tsaro** ("security") as a safety term. If it is also the ordinary
 word for account/password security, it belongs in the account category instead.
 
-### 6. "sace" makes another entry unreachable
+### 6. "sace" — DECIDED, no longer a question for you
 
-We listed **sace** ("abduct / steal") under safety and **an sace** ("it was
-stolen") under money. Because safety is checked first, anything containing
-_sace_ is treated as a safety matter and the money entry can never be reached.
+We had asked whether "an sace kudina" (my money was stolen) should reach the
+safety team or the payments team. **Answered by the founder, 2026-09-11:**
 
-**This is a real question, not a typo:** when someone writes "an sace kudina" —
-my money was stolen — should that reach the safety team or the payments team?
-Tell us which, and we will make the code match.
+> Safety takes precedence over financial classification whenever the user's
+> wording indicates theft, coercion, violence, threat, assault, or personal
+> danger — even when the object is money.
+
+The reasoning: this gate is a risk-escalation boundary, not a final support-team
+classifier. Somebody saying their money was stolen may be describing fraud, a
+compromised account, coercion, or a threat to their person. Safety first; the
+human team can hand it to Payments afterwards if that is all it turns out to be.
+
+So _an sace kudina_ → SAFETY is **correct** and stays. You do not need to
+comment on this one.
 
 ### 7. "comot" may just mean logging out
 
@@ -114,6 +134,34 @@ to leave / log out / delete my account".
 
 **Question for you:** are these safe to keep, or do they need the vehicle
 context spelled out?
+
+### 8. The English list breaks the rule we just made
+
+The decision above is not a Hausa question — it is a general rule, and the
+English list does not currently follow it. Run against the shipping gate:
+
+| Sentence                                               | Goes to | Because of | Should be |
+| ------------------------------------------------------ | ------- | ---------- | --------- |
+| `Someone stole my money`                               | PAYMENT | `money`    | SAFETY    |
+| `Someone has stolen my money`                          | PAYMENT | `stolen`   | SAFETY    |
+| `Someone took money from my wallet without permission` | PAYMENT | `money`    | SAFETY    |
+| `The driver robbed me`                                 | SAFETY  | `robbed`   | SAFETY    |
+| `My wallet was charged twice`                          | PAYMENT | `wallet`   | PAYMENT   |
+| `An cire kudi daga account dina`                       | PAYMENT | `kudi`     | PAYMENT   |
+
+Two separate problems, both ours and neither yours to solve:
+
+1. **stolen, theft, thief, fraud, scam, cheated and duped are all filed under
+   money.** Under the rule above, the theft and coercion ones belong under
+   safety.
+2. **The word "stole" is not in the list at all.** "Someone stole my money"
+   only matched because it contains the word _money_ — the theft itself went
+   unnoticed. The past tense of the commonest theft verb in English is missing.
+
+Recorded here rather than fixed immediately, because the corrections all land in
+one reviewed commit after you have been through the list. But note what it
+means: **the English list was not as safe as we said it was**, and it took
+writing this document for us to see it.
 
 ### What these flags actually do, run against the shipping code
 
