@@ -62,6 +62,10 @@ export const FLEET_AUDIT_ACTIONS = {
   TIERS_UPDATED: 'fleet.commission.tiers_updated',
   RATE_NEGOTIATED: 'fleet.commission.rate_negotiated',
   PERIOD_SETTLED: 'fleet.commission.period_settled',
+  /** DPX-AUDIT-001 §3.1 — a month's totals recomputed from the rides and
+   *  delivery jobs themselves, after the subscriber that should have counted
+   *  them turned out never to have fired. */
+  COMMISSION_BACKFILLED: 'fleet.commission.backfilled',
 } as const;
 
 /**

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CommissionEntryType,
   CommissionOwnerType,
+  FleetSettlementRequestStatus,
   WalletDirection,
   WalletOwnerType,
   WithdrawalRequestStatus,
@@ -15,7 +16,7 @@ import type { PartnerFinancialPositionDto } from '@dripplex/types';
 import type { Prisma } from '@prisma/client';
 
 /**
- * "What does DrippleX have with this merchant / driver / rider?"
+ * "What does DrippleX have with this merchant / driver / rider / fleet?"
  *
  * The answer lived in two unconnected places: a Wallet holding money *for* the
  * partner, and a CommissionAccount recording what the partner owes *us*. Ops
@@ -37,9 +38,23 @@ export class PartnerPositionService {
     ownerType: CommissionOwnerType,
     ownerId: string,
   ): Promise<PartnerFinancialPositionDto> {
+    // DPX-FLEET — a fleet is a company, not a person, and every assumption
+    // below about "a partner" is a personal one: its `ownerId` is a fleet id
+    // rather than a user id, it holds no wallet, and it asks for money through
+    // its own settlement queue instead of a withdrawal request.
+    //
+    // It used to fall through the ternary below into the RIDER branch, so the
+    // console looked up a User by a fleet id and found nobody: a fleet's
+    // position rendered nameless, with no wallet and no pending payouts, while
+    // its commission balance was real. It is answered on its own terms instead.
+    if (ownerType === CommissionOwnerType.FLEET) {
+      return await this.getFleetPosition(ownerId);
+    }
+
     // CommissionOwnerType and WalletOwnerType are separate enums that happen to
     // share MERCHANT/DRIVER/RIDER. Mapped explicitly so a later divergence is a
-    // compile error rather than a silently empty wallet.
+    // compile error rather than a silently empty wallet. FLEET has already
+    // returned above — it has no wallet to map to.
     const walletOwnerType: WalletOwnerType =
       ownerType === CommissionOwnerType.MERCHANT
         ? WalletOwnerType.MERCHANT
@@ -116,6 +131,103 @@ export class PartnerPositionService {
 
       pendingWithdrawalAmount: round(money(pendingWithdrawals._sum.amount)),
       pendingWithdrawalCount: pendingWithdrawals._count,
+    };
+  }
+
+  /**
+   * The same question, asked of a company instead of a person.
+   *
+   * Three things are genuinely different about a fleet, and each is answered
+   * from the fleet's own records rather than left empty:
+   *
+   * - **It has a name, not a person's name.** The fleet's own name and DX
+   *   number, with the owner's contact details beside them, because an operator
+   *   chasing a bill needs somebody to call.
+   * - **It holds no wallet.** What DrippleX owes a fleet arrives as approved
+   *   settlement receivables, so the remaining balance on those is this
+   *   entity's equivalent of a wallet balance. Reporting ₦0 because there is no
+   *   Wallet row would say DrippleX owes it nothing, which is a different and
+   *   usually false claim.
+   * - **It asks for money through its own queue.** A pending payout is a
+   *   `FleetSettlementRequest`, not a `WithdrawalRequest` filed by a user.
+   */
+  private async getFleetPosition(fleetId: string): Promise<PartnerFinancialPositionDto> {
+    const account = await this.accounts.getOrCreateAccount(CommissionOwnerType.FLEET, fleetId);
+
+    const [fleet, receivables, commissionSums, pendingRequests, settledTransfers] =
+      await Promise.all([
+        this.prisma.fleet.findUnique({
+          where: { id: fleetId },
+          select: {
+            name: true,
+            fleetNumber: true,
+            contactPhone: true,
+            owner: { select: { email: true, phone: true } },
+          },
+        }),
+        this.prisma.fleetSettlementReceivable.aggregate({
+          where: { fleetId },
+          _sum: { amount: true, remainingAmount: true },
+        }),
+        this.prisma.commissionLedgerEntry.groupBy({
+          by: ['type'],
+          where: { accountId: account.id },
+          _sum: { amount: true },
+        }),
+        this.prisma.fleetSettlementRequest.aggregate({
+          where: { fleetId, status: FleetSettlementRequestStatus.PENDING },
+          _sum: { amount: true },
+          _count: true,
+        }),
+        this.prisma.fleetSettlementRequest.aggregate({
+          where: { fleetId, status: FleetSettlementRequestStatus.PAID },
+          _sum: { amount: true },
+        }),
+      ]);
+
+    const money = (value: Prisma.Decimal | null | undefined): number => (value ? Number(value) : 0);
+    const round = (value: number): number => Math.round(value * 100) / 100;
+    const commissionSum = (type: CommissionEntryType): number =>
+      money(commissionSums.find((row) => row.type === type)?._sum.amount);
+
+    // Approved and not yet paid out: the fleet's claim on DrippleX, which is
+    // what a wallet balance means for everybody else.
+    const receivableRemaining = money(receivables._sum.remainingAmount);
+    const commissionOutstanding = money(account.outstandingBalance);
+
+    return {
+      ownerType: CommissionOwnerType.FLEET,
+      ownerId: fleetId,
+      // The DX number is how Operations and the fleet actually refer to it out
+      // loud, so it belongs in the name rather than only in a detail view.
+      name: fleet === null ? null : `${fleet.name} (${fleet.fleetNumber})`,
+      email: fleet?.owner.email ?? null,
+      phone: fleet?.contactPhone ?? fleet?.owner.phone ?? null,
+
+      walletAvailable: round(receivableRemaining),
+      // A receivable is approved or it is not; there is no pending tier to it.
+      walletPending: 0,
+
+      commissionOutstanding: round(commissionOutstanding),
+      commissionCreditLimit: round(money(account.creditLimit)),
+      negotiatedCreditLimit:
+        account.negotiatedCreditLimit === null ? null : round(money(account.negotiatedCreditLimit)),
+      negotiatedAt: account.negotiatedAt?.toISOString() ?? null,
+      negotiationNote: account.negotiationNote,
+      blocked: account.blocked,
+      blockedAt: account.blockedAt?.toISOString() ?? null,
+
+      netPosition: round(receivableRemaining - commissionOutstanding),
+
+      lifetimeCommissionAccrued: round(commissionSum(CommissionEntryType.ACCRUAL)),
+      lifetimeCommissionPaid: round(commissionSum(CommissionEntryType.PAYMENT)),
+      // Everything ever approved to the fleet, and everything actually sent —
+      // the receivable and transfer analogues of a wallet's two directions.
+      lifetimeWalletCredited: round(money(receivables._sum.amount)),
+      lifetimeWalletDebited: round(money(settledTransfers._sum.amount)),
+
+      pendingWithdrawalAmount: round(money(pendingRequests._sum.amount)),
+      pendingWithdrawalCount: pendingRequests._count,
     };
   }
 }

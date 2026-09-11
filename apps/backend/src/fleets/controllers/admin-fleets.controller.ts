@@ -12,6 +12,10 @@ import {
   SettleFleetPeriodDto,
   SuspendFleetDto,
 } from '../dto/fleet.dto';
+import {
+  FleetCommissionBackfillService,
+  type FleetMonthReconstructionDto,
+} from '../fleet-commission-backfill.service';
 import { FleetCommissionService } from '../fleet-commission.service';
 import { FleetOverviewService } from '../fleet-overview.service';
 import { FLEET_PERMISSIONS } from '../fleet.constants';
@@ -61,7 +65,34 @@ export class AdminFleetsController {
     private readonly fleets: FleetsService,
     private readonly overview: FleetOverviewService,
     private readonly commission: FleetCommissionService,
+    private readonly backfill: FleetCommissionBackfillService,
   ) {}
+
+  /**
+   * What every fleet actually owes for the months that were never counted.
+   *
+   * DPX-AUDIT-001 §3.1: the subscriber that should have counted fleet work read
+   * the wrong object off the event bus for its whole life, so every
+   * `FleetCommissionPeriod` holds zero and no fleet has ever been billed. The
+   * counts are gone; the rides and delivery jobs are not, so the months are
+   * recomputable from source.
+   *
+   * Reporting by default. `?apply=true` writes the recomputed totals back —
+   * never over a settled month, and setting rather than incrementing so
+   * re-running it lands on the same number.
+   */
+  @Get('commission/reconstruction')
+  public async reconstructCommission(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('apply') apply?: string,
+  ): Promise<ApiSuccessResponse<FleetMonthReconstructionDto[]>> {
+    const data = await this.backfill.reconstructAll({
+      apply: apply === 'true',
+      adminUserId: user.id,
+      context: { userId: user.id },
+    });
+    return { success: true, data };
+  }
 
   /**
    * Operations' fleet dashboard.

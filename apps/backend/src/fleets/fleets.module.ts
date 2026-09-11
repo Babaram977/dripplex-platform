@@ -12,6 +12,7 @@ import { AdminFleetsController } from './controllers/admin-fleets.controller';
 import { FleetFinancialController } from './controllers/fleet-financial.controller';
 import { FleetOwnerController } from './controllers/fleet-owner.controller';
 import { FleetSelfServiceController } from './controllers/fleet-self-service.controller';
+import { FleetCommissionBackfillService } from './fleet-commission-backfill.service';
 import { FleetCommissionService } from './fleet-commission.service';
 import { FleetFinancialService } from './fleet-financial.service';
 import { FleetJobSubscriber } from './fleet-job.subscriber';
@@ -41,6 +42,7 @@ import { FleetsService } from './fleets.service';
     FleetsService,
     FleetOverviewService,
     FleetCommissionService,
+    FleetCommissionBackfillService,
     FleetJobSubscriber,
     FleetFinancialService,
   ],

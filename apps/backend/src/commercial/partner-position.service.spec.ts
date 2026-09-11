@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { CommissionOwnerType, PrismaClient, WalletOwnerType } from '@prisma/client';
+import {
+  CommissionOwnerType,
+  FleetSettlementRequestStatus,
+  PrismaClient,
+  WalletOwnerType,
+} from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 
@@ -22,6 +27,7 @@ describe('PartnerPositionService', () => {
   let accounts: CommissionAccountService;
   let merchantId: string;
   const createdUserIds: string[] = [];
+  const createdFleetIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -84,6 +90,17 @@ describe('PartnerPositionService', () => {
         where: { wallet: { ownerId: { in: createdUserIds } } },
       });
       await prisma.wallet.deleteMany({ where: { ownerId: { in: createdUserIds } } });
+      await prisma.commissionLedgerEntry.deleteMany({
+        where: { account: { ownerId: { in: createdFleetIds } } },
+      });
+      await prisma.commissionAccount.deleteMany({ where: { ownerId: { in: createdFleetIds } } });
+      await prisma.fleetSettlementRequest.deleteMany({
+        where: { fleetId: { in: createdFleetIds } },
+      });
+      await prisma.fleetSettlementReceivable.deleteMany({
+        where: { fleetId: { in: createdFleetIds } },
+      });
+      await prisma.fleet.deleteMany({ where: { id: { in: createdFleetIds } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
     await prisma.$disconnect();
@@ -227,5 +244,103 @@ describe('PartnerPositionService', () => {
     const cleared = await service.getPosition(CommissionOwnerType.MERCHANT, shop.id);
     expect(cleared.negotiatedCreditLimit).toBeNull();
     expect(cleared.commissionCreditLimit).toBe(50_000);
+  });
+
+  // DPX-FLEET — a fleet is a company, and every other branch of this service
+  // assumes a person: it looks up a User by the owner id, reads a Wallet, and
+  // counts WithdrawalRequests. A fleet has none of those. It used to fall
+  // through into the RIDER branch, so the console looked up a User by a fleet
+  // id, found nobody, and showed an operator a nameless partner with an empty
+  // wallet and no pending payouts — while the fleet's commission balance, and
+  // the money DrippleX owed it, were both real. This is that regression.
+  it('answers a fleet on its own terms: company name, receivables, settlement queue', async () => {
+    if (!databaseAvailable) return;
+
+    const owner = await prisma.user.create({
+      data: {
+        email: `position-fleet-owner-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Amina',
+        lastName: 'Bello',
+      },
+    });
+    createdUserIds.push(owner.id);
+
+    const fleetNumber = `DX-FL-${String(Math.floor(Math.random() * 8999) + 1000)}`;
+    const fleet = await prisma.fleet.create({
+      data: {
+        ownerId: owner.id,
+        fleetNumber,
+        name: 'Bello Logistics',
+        contactPhone: '+2348031234567',
+      },
+    });
+    createdFleetIds.push(fleet.id);
+
+    // DrippleX approved ₦80,000 to the fleet and ₦30,000 has already gone out,
+    // so ₦50,000 of it is still the fleet's claim on DrippleX.
+    const receivable = await prisma.fleetSettlementReceivable.create({
+      data: {
+        id: randomUUID(),
+        fleetId: fleet.id,
+        amount: 80_000,
+        remainingAmount: 50_000,
+        referenceType: 'test',
+        referenceId: randomUUID(),
+        approvedBy: owner.id,
+      },
+    });
+    await prisma.fleetSettlementRequest.create({
+      data: {
+        id: randomUUID(),
+        fleetId: fleet.id,
+        receivableId: receivable.id,
+        amount: 30_000,
+        status: FleetSettlementRequestStatus.PAID,
+        requestedBy: owner.id,
+      },
+    });
+    // ...and it has asked for ₦20,000 more, still sitting in the queue.
+    await prisma.fleetSettlementRequest.create({
+      data: {
+        id: randomUUID(),
+        fleetId: fleet.id,
+        receivableId: receivable.id,
+        amount: 20_000,
+        status: FleetSettlementRequestStatus.PENDING,
+        requestedBy: owner.id,
+      },
+    });
+    // The fleet owes ₦12,000 of commission on its members' jobs.
+    await accounts.accrue({
+      ownerType: CommissionOwnerType.FLEET,
+      ownerId: fleet.id,
+      amount: 12_000,
+      referenceType: 'test',
+      referenceId: randomUUID(),
+    });
+
+    const position = await service.getPosition(CommissionOwnerType.FLEET, fleet.id);
+
+    // The DX number is how Operations and the fleet refer to it out loud.
+    expect(position.name).toBe(`Bello Logistics (${fleetNumber})`);
+    expect(position.email).toBe(owner.email);
+    // The fleet's own line, preferred over the owner's personal one.
+    expect(position.phone).toBe('+2348031234567');
+
+    // A fleet holds no Wallet row. Reporting zero here would tell an operator
+    // DrippleX owes it nothing, which is a different and false claim.
+    expect(position.walletAvailable).toBe(50_000);
+    expect(position.walletPending).toBe(0);
+
+    expect(position.commissionOutstanding).toBe(12_000);
+    expect(position.netPosition).toBe(38_000);
+
+    expect(position.lifetimeWalletCredited).toBe(80_000);
+    expect(position.lifetimeWalletDebited).toBe(30_000);
+
+    // A fleet payout is a FleetSettlementRequest, not a WithdrawalRequest.
+    expect(position.pendingWithdrawalAmount).toBe(20_000);
+    expect(position.pendingWithdrawalCount).toBe(1);
   });
 });

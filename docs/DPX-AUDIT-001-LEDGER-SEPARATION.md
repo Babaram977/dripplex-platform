@@ -176,6 +176,50 @@ there. That is a decision and a piece of work, not something to quietly start ch
 The delivery branch of the same subscriber uses `job.deliveryFee` and needs no gross/net change,
 because nothing discounts a delivery fee today.
 
+### 3.2 What each fleet owes for the lost months is now computable
+
+The counts are gone; the work is not. Every ride and every delivery job is still on the record with
+its fare, its fee, its completion time and who did it, so each month is recomputable from source.
+`FleetCommissionBackfillService` does that, and `GET /admin/fleets/commission/reconstruction`
+reports it.
+
+It is deliberately a **report** by default. `?apply=true` is opt-in, because the first thing anybody
+should do with this is look at it. Four rules, each because getting it wrong bills a real company
+the wrong amount:
+
+| Rule                                     | Why                                                                                                                                                                                                       |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A settled month is never touched         | An invoice that has gone out is a number somebody agreed to. A shortfall there is reported and left for a human.                                                                                          |
+| It sets rather than increments           | It sees the whole month, so re-running it lands on the same number instead of doubling a fleet's bill.                                                                                                    |
+| Membership is read as it was at the time | `joinedAt`/`removedAt` are both on the row. Reading today's membership would drop the work of everybody who has since left — over months of history, exactly the population most likely to have moved on. |
+| Rides count on the gross fare            | Same basis as the live path and DPX-PROMO-FUNDING: DrippleX funds its own coupons.                                                                                                                        |
+
+Ten tests cover it, and all seven guards are mutation-proven — each one deleted in turn reddened
+exactly one test, and the suite was confirmed green again after each restore.
+
+Known limit, stated rather than papered over: a deactivation is not recorded historically, only as a
+current flag, so a job done during one would still count. Deactivating stops DrippleX dispatching to
+that person, so there should be no such jobs; if there are, they were real work the fleet's rider
+did.
+
+**Still a founder decision, not a technical one:** whether and when to actually bill fleets for the
+reconstructed months. The tooling makes the number knowable. It does not make the charge agreed.
+
+### 3.3 A fleet is now answered as an entity in its own right
+
+Found while wiring the above. `PartnerPositionService.getPosition` mapped `CommissionOwnerType` to
+`WalletOwnerType` through a ternary whose final branch was `RIDER`, and `FLEET` fell into it. So the
+console looked up a `User` by a fleet id, found nobody, and rendered a nameless partner with an
+empty wallet and no pending payouts — while that fleet's commission balance, and the money DrippleX
+owed it, were both real.
+
+A fleet is a company, and three things about it are genuinely different. It has a company name and a
+DX number rather than a person's name; it holds **no wallet**, so its claim on DrippleX is the
+remaining balance on its approved `FleetSettlementReceivable` rows; and it asks for money through
+`FleetSettlementRequest`, not a `WithdrawalRequest` filed by a user. Each is now answered from the
+fleet's own records. Reporting ₦0 because there is no `Wallet` row would have said DrippleX owes it
+nothing, which is a different and usually false claim.
+
 ---
 
 ## 4. The same trap, waiting
