@@ -446,6 +446,10 @@ export interface PromotionRules {
   eligibleCountries?: string[];
   rideTypes?: string[];
   merchantCategories?: string[];
+  /** Named merchants, beside `merchantCategories`' broad cut — how a co-funded
+   *  campaign is actually scoped. Distinct from a promotion's `merchantId`,
+   *  which says who owns it rather than where it can be spent. */
+  eligibleMerchantIds?: string[];
   paymentMethods?: string[];
   weekdays?: number[];
   startHour?: number;
@@ -471,6 +475,16 @@ export interface PromotionDto {
   amountOff: number | null;
   creditAmount: number | null;
   maxDiscount: number | null;
+  /** DPX-CAMPAIGN-001 — the floor of the benefit band, beside `maxDiscount`'s
+   *  ceiling. Never lifts a discount above the basket it comes off. */
+  minDiscount: number | null;
+  /** What this campaign may cost in total, in naira. Null is uncapped —
+   *  `usageLimit` bounds how often a campaign is used, not what it costs. */
+  budgetAmount: number | null;
+  /** The sum of what its redemptions have actually saved. */
+  budgetSpent: number;
+  /** `budgetAmount - budgetSpent`, floored at zero, or null when uncapped. */
+  budgetRemaining: number | null;
   buyQty: number | null;
   getQty: number | null;
   priority: number;
@@ -553,6 +567,8 @@ export interface CreatePromotionRequest {
   amountOff?: number;
   creditAmount?: number;
   maxDiscount?: number;
+  minDiscount?: number;
+  budgetAmount?: number;
   buyQty?: number;
   getQty?: number;
   priority?: number;
@@ -954,6 +970,10 @@ export interface CommissionCampaignRules {
   eligibleStates?: string[];
   eligibleCountries?: string[];
   merchantCategories?: string[];
+  /** Named merchants, beside `merchantCategories`' broad cut — how a co-funded
+   *  campaign is actually scoped. Distinct from a promotion's `merchantId`,
+   *  which says who owns it rather than where it can be spent. */
+  eligibleMerchantIds?: string[];
   paymentMethods?: string[];
   rideTypes?: string[];
   whitelistUserIds?: string[];

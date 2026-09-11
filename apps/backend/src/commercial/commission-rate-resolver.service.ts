@@ -20,6 +20,12 @@ export interface CommissionRateContext {
   state?: string;
   country?: string;
   merchantCategory?: string;
+  /** The merchant the transaction is with. Lets a campaign be aimed at named
+   *  shops — "these five partners get 7% this month" — beside the broader cut
+   *  `merchantCategory` gives. Supplied by the merchant-order path; a ride or
+   *  delivery has no merchant, so a campaign scoped this way correctly does not
+   *  apply there. */
+  merchantId?: string;
   paymentMethod?: string;
   rideType?: PromotionEligibilityContext['rideType'];
   now?: Date;
@@ -110,6 +116,7 @@ export class CommissionRateResolverService {
         ...(context.merchantCategory !== undefined
           ? { merchantCategory: context.merchantCategory }
           : {}),
+        ...(context.merchantId !== undefined ? { merchantId: context.merchantId } : {}),
         ...(context.paymentMethod !== undefined ? { paymentMethod: context.paymentMethod } : {}),
         ...(context.rideType !== undefined ? { rideType: context.rideType } : {}),
         now,

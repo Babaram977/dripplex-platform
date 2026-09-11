@@ -169,6 +169,7 @@ export class MerchantSettlementService implements OnModuleInit {
       Number(setting.commissionRate),
       {
         userId: order.merchantId,
+        merchantId: order.merchantId,
         ...(order.paymentMethod === null ? {} : { paymentMethod: order.paymentMethod }),
       },
     );

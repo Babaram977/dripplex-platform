@@ -35,6 +35,19 @@ export class PromotionRulesDto {
   @IsString({ each: true })
   public merchantCategories?: string[];
 
+  /**
+   * DPX-CAMPAIGN-001 — named merchants, beside `merchantCategories`' broad
+   * cut. Categories answer "every restaurant"; this answers "these four shops
+   * we agreed it with", which is how a co-funded campaign is actually scoped.
+   *
+   * Distinct from `Promotion.merchantId`, which says who *owns* a
+   * merchant-funded promotion rather than where it can be spent.
+   */
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  public eligibleMerchantIds?: string[];
+
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -114,6 +127,7 @@ export interface PromotionEligibilityContext {
   country?: string;
   rideType?: RideType;
   merchantCategory?: string;
+  merchantId?: string;
   paymentMethod?: string;
   isNewUser?: boolean;
   isReferral?: boolean;
@@ -160,6 +174,16 @@ export function evaluatePromotionRules(
   }
   if (!includesCaseInsensitive(rules.merchantCategories, context.merchantCategory)) {
     return { eligible: false, reason: 'Merchant category is not eligible for this promotion' };
+  }
+  if (rules.eligibleMerchantIds && rules.eligibleMerchantIds.length > 0) {
+    // Fails closed like every other rule here: a campaign restricted to named
+    // merchants must not apply on a path that cannot say which merchant it is.
+    if (
+      context.merchantId === undefined ||
+      !rules.eligibleMerchantIds.includes(context.merchantId)
+    ) {
+      return { eligible: false, reason: 'This merchant is not part of this promotion' };
+    }
   }
   if (!includesCaseInsensitive(rules.paymentMethods, context.paymentMethod)) {
     return { eligible: false, reason: 'Payment method is not eligible for this promotion' };

@@ -3535,16 +3535,38 @@ model WishlistItem {
 /// at scale (domains, status, merchant, priority, date range) stay real
 /// indexed columns exactly as they already were.
 model Promotion {
-  id             String                @id @default(uuid()) @db.Uuid
-  code           String?               @unique @db.VarChar(50)
-  name           String                @db.VarChar(150)
-  type           PromotionType
-  status         PromotionStatus       @default(DRAFT)
-  domains        PromotionDomain[]     @default([])
-  percentOff     Decimal?              @map("percent_off") @db.Decimal(5, 2)
-  amountOff      Decimal?              @map("amount_off") @db.Decimal(12, 2)
-  creditAmount   Decimal?              @map("credit_amount") @db.Decimal(12, 2)
-  maxDiscount    Decimal?              @map("max_discount") @db.Decimal(12, 2)
+  id           String            @id @default(uuid()) @db.Uuid
+  code         String?           @unique @db.VarChar(50)
+  name         String            @db.VarChar(150)
+  type         PromotionType
+  status       PromotionStatus   @default(DRAFT)
+  domains      PromotionDomain[] @default([])
+  percentOff   Decimal?          @map("percent_off") @db.Decimal(5, 2)
+  amountOff    Decimal?          @map("amount_off") @db.Decimal(12, 2)
+  creditAmount Decimal?          @map("credit_amount") @db.Decimal(12, 2)
+  maxDiscount  Decimal?          @map("max_discount") @db.Decimal(12, 2)
+
+  /// DPX-CAMPAIGN-001 — the floor of the benefit band, beside `maxDiscount`'s
+  /// ceiling. "₦200 to ₦2,000 off" is a real offer, and a 10% campaign that
+  /// hands somebody ₦30 off delivers a worse impression than no campaign.
+  /// Never raises the discount above the subtotal: nothing gives ₦200 off a
+  /// ₦150 basket.
+  minDiscount Decimal? @map("min_discount") @db.Decimal(12, 2)
+
+  /// What this campaign is allowed to cost DrippleX in total, in naira.
+  ///
+  /// The one control that actually bounds spend. `usageLimit` bounds how many
+  /// times a campaign is used, which is not the same thing at all: ten
+  /// thousand redemptions of "20% off" costs whatever ten thousand baskets
+  /// happen to add up to, and nobody knows that number in advance. Null means
+  /// uncapped, which is what every campaign that existed before this was.
+  budgetAmount Decimal? @map("budget_amount") @db.Decimal(14, 2)
+
+  /// What it has cost so far — the sum of every redemption's `amountSaved`,
+  /// incremented inside the same locked transaction that records the
+  /// redemption, so two simultaneous checkouts cannot both spend the last of
+  /// the budget.
+  budgetSpent    Decimal               @default(0) @map("budget_spent") @db.Decimal(14, 2)
   buyQty         Int?                  @map("buy_qty")
   getQty         Int?                  @map("get_qty")
   priority       Int                   @default(0)
@@ -4242,8 +4264,8 @@ model ReferralRedemption {
   /// Free text from Operations beside the coded reason, or the detail of an
   /// automated match. Never the matched value itself — a rejection note is read
   /// by support staff and must not leak one account's phone number to another.
-  reviewNote      String?                  @map("review_note") @db.VarChar(500)
-  reviewedBy      String?                  @map("reviewed_by") @db.Uuid
+  reviewNote    String?                  @map("review_note") @db.VarChar(500)
+  reviewedBy    String?                  @map("reviewed_by") @db.Uuid
 
   /// When this referral stops being able to qualify. Null for rows that predate
   /// the window, which therefore never expire on their own.

@@ -12,6 +12,14 @@ export interface PromotionDto {
   amountOff: number | null;
   creditAmount: number | null;
   maxDiscount: number | null;
+  minDiscount: number | null;
+  budgetAmount: number | null;
+  budgetSpent: number;
+  /** What is left of the budget, or null when there is no budget. Served
+   *  rather than left to the client to subtract: an Ops screen showing a
+   *  campaign's remaining spend must not be the place a rounding rule is
+   *  reimplemented. */
+  budgetRemaining: number | null;
   buyQty: number | null;
   getQty: number | null;
   priority: number;
@@ -96,6 +104,13 @@ export function toPromotionDto(promotion: Promotion): PromotionDto {
     amountOff: promotion.amountOff === null ? null : Number(promotion.amountOff),
     creditAmount: promotion.creditAmount === null ? null : Number(promotion.creditAmount),
     maxDiscount: promotion.maxDiscount === null ? null : Number(promotion.maxDiscount),
+    minDiscount: promotion.minDiscount === null ? null : Number(promotion.minDiscount),
+    budgetAmount: promotion.budgetAmount === null ? null : Number(promotion.budgetAmount),
+    budgetSpent: Number(promotion.budgetSpent),
+    budgetRemaining:
+      promotion.budgetAmount === null
+        ? null
+        : Math.max(0, Number(promotion.budgetAmount) - Number(promotion.budgetSpent)),
     buyQty: promotion.buyQty,
     getQty: promotion.getQty,
     priority: promotion.priority,

@@ -79,6 +79,28 @@ export class CreatePromotionDto {
   @Min(0.01)
   public maxDiscount?: number;
 
+  /** DPX-CAMPAIGN-001 — the floor of the benefit band. "₦200 to ₦2,000 off" is
+   *  a real offer; a 10% campaign handing somebody ₦30 off is not. Never lifts
+   *  a discount above the basket it is taken off. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public minDiscount?: number;
+
+  /** What this campaign may cost DrippleX in total, in naira. Omitted means
+   *  uncapped — `usageLimit` bounds how many times a campaign is used, which is
+   *  not the same thing as what it costs. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public budgetAmount?: number;
+
   @IsOptional()
   @IsInt()
   @Min(1)
@@ -201,6 +223,28 @@ export class UpdatePromotionDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   public maxDiscount?: number;
+
+  /** DPX-CAMPAIGN-001 — the floor of the benefit band. "₦200 to ₦2,000 off" is
+   *  a real offer; a 10% campaign handing somebody ₦30 off is not. Never lifts
+   *  a discount above the basket it is taken off. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public minDiscount?: number;
+
+  /** What this campaign may cost DrippleX in total, in naira. Omitted means
+   *  uncapped — `usageLimit` bounds how many times a campaign is used, which is
+   *  not the same thing as what it costs. */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  public budgetAmount?: number;
 
   @IsOptional()
   @IsInt()
