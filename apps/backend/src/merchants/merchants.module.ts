@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AddressesModule } from '../addresses/addresses.module';
 import { AuditModule } from '../audit/audit.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -16,7 +17,19 @@ import { MERCHANTS_REPOSITORY } from './repositories/merchants.repository';
 import { PrismaMerchantsRepository } from './repositories/prisma-merchants.repository';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule, UploadsModule, WalletModule],
+  // AddressesModule provides GEOCODER, which MerchantsService injects with
+  // @Optional(). Without this import Nest had nothing to inject and handed
+  // over `undefined` silently — so "Find on map" reported the environment as
+  // unconfigured on every environment, including production where the Google
+  // Maps key is set. DeliveryModule has always imported it; this did not.
+  imports: [
+    PrismaModule,
+    AuditModule,
+    NotificationsModule,
+    UploadsModule,
+    WalletModule,
+    AddressesModule,
+  ],
   controllers: [MerchantController, AdminMerchantsController, CustomerMerchantsController],
   providers: [
     MerchantsService,
