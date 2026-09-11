@@ -8,7 +8,11 @@ import {
   OnboardingStatus,
 } from '@prisma/client';
 
-import { GEOCODER, type Geocoder } from '../addresses/geocoding/geocoder';
+import {
+  GEOCODER,
+  GeocodeNotImplementedError,
+  type Geocoder,
+} from '../addresses/geocoding/geocoder';
 import { AuditService } from '../audit/audit.service';
 import {
   ConflictDomainException,
@@ -893,6 +897,16 @@ export class MerchantsService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      // An unconfigured environment and a bad address are different problems
+      // with different owners, and the geocoder says which by throwing a typed
+      // error. Collapsing both into "check the address" sends an operator to
+      // correct an address that is perfectly correct — the same mistake, one
+      // layer down, as the missing module import that caused this incident.
+      if (error instanceof GeocodeNotImplementedError) {
+        throw new ValidationDomainException(
+          'Address lookup is not configured on this environment, so the location cannot be resolved.',
+        );
+      }
       throw new ValidationDomainException(
         `Could not find "${query}" on the map. Check the address with the merchant, correct it, then try again.`,
       );
