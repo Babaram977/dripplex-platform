@@ -229,6 +229,16 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
     code: 'admin:support:tickets:manage',
     description: 'View and answer the support ticket queue across every persona',
   },
+  // DPX-SUPPORT-002 B2. Seeded and granted to NO role, deliberately — handing a
+  // live conversation to automation is a different act from replying to one, and
+  // must not ride along with the grant every Operations responder already holds.
+  // It is assigned explicitly to the appropriate Operations role once the
+  // operational policy exists.
+  {
+    code: 'support:tickets:ai-handoff',
+    description:
+      'Hand a live support conversation to automated handling (DPX-SUPPORT-002; granted to no role by default)',
+  },
   {
     code: 'driver:incident-report:manage',
     description: 'Submit and view own driver incident reports',
