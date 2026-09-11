@@ -15,6 +15,7 @@ import {
   OperationsReferralsService,
   type ReferralOverviewDto,
   type ReferralPerformerDto,
+  type ReferralReviewItemDto,
 } from '../operations-referrals.service';
 import { OPERATIONS_PERMISSIONS } from '../operations.constants';
 
@@ -61,6 +62,31 @@ export class OperationsFinanceController {
   @Get('referrals')
   public async referralOverview(): Promise<ApiSuccessResponse<ReferralOverviewDto>> {
     return { success: true, data: await this.referrals.overview() };
+  }
+
+  /**
+   * Referrals that qualified but are waiting on a person.
+   *
+   * A flagged referral is held however long the hold was — a flag is not
+   * released by a timer — so without somebody working this queue the referrer
+   * is never paid and nobody ever decided not to pay them. Every row carries
+   * the endpoint that actions it, because this controller reads and the
+   * decision moves money.
+   */
+  @Get('referrals/review-queue')
+  public async referralReviewQueue(
+    @Query() query: ListReferralPerformersQueryDto,
+  ): Promise<ApiSuccessResponse<PaginatedResult<ReferralReviewItemDto>>> {
+    const data = await this.referrals.reviewQueue(query.page, query.pageSize);
+    return { success: true, data };
+  }
+
+  /** What DrippleX pays per kind of referee. Changing it is an admin grant. */
+  @Get('referrals/programmes')
+  public async referralProgrammes(): Promise<
+    ApiSuccessResponse<Awaited<ReturnType<OperationsReferralsService['programmes']>>>
+  > {
+    return { success: true, data: await this.referrals.programmes() };
   }
 
   /** Who is actually referring, within one persona. */

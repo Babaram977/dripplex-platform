@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 
 import { OperationsAnalyticsController } from './controllers/operations-analytics.controller';
 import { OperationsCasesController } from './controllers/operations-cases.controller';
@@ -71,7 +72,9 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * `PrismaService`, the same cross-module-read pattern established
  * throughout Driver Slice 2 and every DPX-OPS-001 slice since. */
 @Module({
-  imports: [PrismaModule, AuditModule, DriversModule],
+  // DPX-REFERRAL-003 — the referral review queue reads the programmes that
+  // set each hold, so it needs the lifecycle service that owns them.
+  imports: [PrismaModule, AuditModule, DriversModule, ReferralsModule],
   controllers: [
     OperationsFinanceController,
     OperationsFleetController,

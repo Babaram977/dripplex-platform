@@ -199,10 +199,8 @@ specification. It is one Operations toggle away, with no deployment, whenever th
 
 ## 5. Still open
 
-- **No Ops console screen** for programmes or the flagged-referral review queue. The API is there;
-  the queue is `status = QUALIFIED AND flagged_reason IS NOT NULL`. Until a screen exists, a flagged
-  referral waits indefinitely rather than being looked at — this is the most important follow-up in
-  this document.
+- ~~No Ops console screen for programmes or the flagged-referral review queue.~~ **Shipped** —
+  `/referrals/review` and `/referrals/programmes`. See §6.
 - **Driver and rider referee programmes** are unpriced, so neither portal accepts a code.
 - **`ReferralFraudCheck`** (the driver-campaign module's own fraud model) and this screening are two
   separate mechanisms over the same idea. They should converge; they have not been merged here
@@ -210,3 +208,47 @@ specification. It is one Operations toggle away, with no deployment, whenever th
   sets of money.
 - **Device identity is only as good as the client that sends it.** `AuthSession.deviceId` is
   self-reported, which is the other reason that signal flags rather than refuses.
+
+---
+
+## 6. The Operations screens
+
+Shipped after the backend, because the flag was the part of this design that could fail silently: a
+shared device flags rather than refuses, a flag is not released by a timer, and until somebody could
+see one, a flagged referral waited forever. The referrer was not paid and nobody had decided not to
+pay them.
+
+**`/referrals/review`** — the queue. One row per referral that qualified and was then flagged, with
+both parties by name rather than by id, what fired, what it is worth on both sides, how long it has
+been waiting, and whether the hold has already elapsed. An overdue banner counts the ones where only
+the decision is left. Approve takes an optional note; refusing asks for one before it will go
+through, because the coded reason is what gets counted and the note is what a person reads months
+later when the referrer asks why.
+
+**`/referrals/programmes`** — what DrippleX pays per kind of referee, alongside the milestone that
+has to be met and where the code is entered. An operator setting ₦2,500 against "Fleet" needs to
+know what has to be true before it pays, or the number is just a number. A zero referee reward says
+so explicitly — zero is a real setting, not a missing one, and a blank field invites somebody to
+"fix" it. Pausing says plainly that referrals already qualified keep their amount and still pay.
+
+**The permission split is deliberate and visible.** The queue and the programme list are read from
+`operations/finance/referrals`, which is read-only and carries `operations:finance:read`. Every
+decision posts to `/admin/referrals/*` under `admin:referrals:manage`. So an operator can be given
+the queue without being given the ability to settle money — the same split the payout queue already
+runs on — and each row carries the endpoint that actions it. A console user without the admin grant
+sees the queue and is refused at the button, which is the correct failure.
+
+Not a Figma-governed surface: the Operations Console has its own `@dripplex/ui` design system,
+recorded in `docs/reference/DPX-FIGMA-DIFF-REGISTER.md`. These pages follow the `Card`/`Badge`/
+`EmptyState` patterns already on the settlements and commission screens.
+
+### Still open on the screens
+
+- **No pagination control.** Both pages request the first 100 rows. A queue that reaches 100 flagged
+  referrals has a bigger problem than pagination, but it should still page.
+- **`reverse` has no screen.** The SDK carries it and the endpoint exists; taking back a reward that
+  has already been paid is rare enough, and consequential enough, that it wants its own confirmation
+  flow rather than a fourth button in a row.
+- **`requireKycVerified` is not editable here.** It is the one programme field that tightens who gets
+  paid rather than how much, and turning it on would stop paying referrals currently being earned —
+  that belongs behind a deliberate confirmation, not a checkbox among four number fields.

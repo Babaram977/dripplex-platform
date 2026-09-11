@@ -69,10 +69,14 @@ import type {
   RedeemLoyaltyPointsRequest,
   ReferralCampaignDto,
   ReferralDto,
+  ReferralProgrammeDto,
+  ReferralRefereeType,
+  ReferralRejectionReason,
   ReferralFraudCheckDto,
   ReferralFraudCheckStatus,
   ReferralRedemptionDto,
   ReferralStatsDto,
+  UpdateReferralProgrammeRequest,
   RegisterDeviceTokenRequest,
   ReplyToReviewRequest,
   ReviewDto,
@@ -565,6 +569,55 @@ export class AdminReferralsClient {
         page: query.page,
         pageSize: query.pageSize,
       })}`,
+    );
+  }
+
+  // DPX-REFERRAL-003 — the decisions that move money. Deliberately here rather
+  // than on the read-only `operations/finance/referrals` surface: an operator
+  // can be given the review queue without being given the ability to pay
+  // anybody, which is the split the payout queue already runs on. Everything
+  // below carries `admin:referrals:manage`.
+
+  public programmes(): Promise<ReferralProgrammeDto[]> {
+    return this.http.request<ReferralProgrammeDto[]>('/admin/referrals/programmes');
+  }
+
+  public updateProgramme(
+    refereeType: ReferralRefereeType,
+    body: UpdateReferralProgrammeRequest,
+  ): Promise<ReferralProgrammeDto> {
+    return this.http.request<ReferralProgrammeDto>(
+      `/admin/referrals/programmes/${enc(refereeType)}`,
+      { method: 'PATCH', body },
+    );
+  }
+
+  /** Release a held referral — usually one the shared-device check flagged,
+   *  where an operator can see it is a household rather than one person twice. */
+  public approve(redemptionId: string, note?: string): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/approve`,
+      { method: 'POST', body: note === undefined ? {} : { note } },
+    );
+  }
+
+  public reject(
+    redemptionId: string,
+    reason: ReferralRejectionReason,
+    note?: string,
+  ): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/reject`,
+      { method: 'POST', body: note === undefined ? { reason } : { reason, note } },
+    );
+  }
+
+  /** Take a paid reward back. Fails rather than overdrawing a wallet that has
+   *  already spent it. */
+  public reverse(redemptionId: string, reason: string): Promise<{ status: string }> {
+    return this.http.request<{ status: string }>(
+      `/admin/referrals/redemptions/${enc(redemptionId)}/reverse`,
+      { method: 'POST', body: { reason } },
     );
   }
 }

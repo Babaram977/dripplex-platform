@@ -7,6 +7,8 @@ import type {
   PaginatedResult,
   ReferralPerformerDto,
   ReferralPersona,
+  ReferralProgrammeDto,
+  ReferralReviewItemDto,
 } from '@dripplex/types';
 
 function toQuery(params?: Record<string, string | number | undefined>): string {
@@ -58,6 +60,34 @@ export class OperationsFinanceClient {
 
   public referralOverview(): Promise<OperationsReferralOverviewDto> {
     return this.http.request<OperationsReferralOverviewDto>('/operations/finance/referrals', {
+      method: 'GET',
+      auth: true,
+    });
+  }
+
+  /**
+   * Referrals that qualified but are waiting on a person.
+   *
+   * A flagged referral is held however long its hold was — a flag is not
+   * released by a timer — so without somebody working this queue the referrer
+   * is never paid and nobody ever decided not to pay them.
+   */
+  public referralReviewQueue(
+    query: { page?: number; pageSize?: number } = {},
+  ): Promise<PaginatedResult<ReferralReviewItemDto>> {
+    return this.http.request<PaginatedResult<ReferralReviewItemDto>>(
+      `/operations/finance/referrals/review-queue${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+      })}`,
+      { method: 'GET', auth: true },
+    );
+  }
+
+  /** What DrippleX pays per kind of referee. Read-only — changing it carries
+   *  its own grant, on the admin referrals client. */
+  public referralProgrammes(): Promise<ReferralProgrammeDto[]> {
+    return this.http.request<ReferralProgrammeDto[]>('/operations/finance/referrals/programmes', {
       method: 'GET',
       auth: true,
     });

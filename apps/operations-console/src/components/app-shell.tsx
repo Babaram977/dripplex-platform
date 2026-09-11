@@ -59,6 +59,11 @@ const NAV: NavEntry[] = [
       { href: '/settlements', label: 'Settlements & Payouts' },
       { href: '/commission', label: 'Commission' },
       { href: '/referrals', label: 'Referral Performance' },
+      // DPX-REFERRAL-003 — the queue sits next to performance because it is
+      // the other half of the same programme: one says whether referrals are
+      // converting, the other is the referrals nobody has decided about.
+      { href: '/referrals/review', label: 'Referral Review Queue' },
+      { href: '/referrals/programmes', label: 'Referral Programmes' },
     ],
   },
   { href: '/utilities', label: 'Bill Payments' },

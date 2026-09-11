@@ -931,6 +931,35 @@ export interface DriverCampaignPerformanceDto {
   rewardsPaid: { count: number; amount: number };
 }
 
+/**
+ * One referral waiting on a person rather than on time.
+ *
+ * DPX-REFERRAL-003 flags a shared device rather than refusing it, because a
+ * household sharing a handset is routine and refusing on that signal would
+ * reject real referrals in bulk. A flag is only worth something if somebody
+ * sees it.
+ */
+export interface ReferralReviewItemDto {
+  redemptionId: string;
+  referrerName: string;
+  referrerCode: string;
+  refereeName: string;
+  refereeType: ReferralRefereeType;
+  /** The signal that fired without refusing it — why this row is here. */
+  flaggedReason: ReferralRejectionReason | null;
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  /** When the hold would have released it. Null when it cannot be computed. */
+  releasesAt: string | null;
+  /** True once the hold has elapsed and only the flag is holding it — nothing
+   *  is coming to release it but a decision. */
+  holdElapsed: boolean;
+  /** Where the decision is actioned. A read-only screen states the endpoint
+   *  rather than implying it can act itself. */
+  actionPath: string;
+}
+
 export interface OperationsReferralOverviewDto {
   personas: ReferralPersonaPerformanceDto[];
   driverCampaigns: DriverCampaignPerformanceDto[];
@@ -1674,4 +1703,17 @@ export interface LoyaltySettingDto {
    *  uncapped. */
   dailyRedemptionPointsCap: number | null;
   updatedAt: string;
+}
+
+/** DPX-REFERRAL-003 — every field optional: an operator changing only the hold
+ *  must not have to restate the amounts, and restating an amount is how one
+ *  gets changed by accident. */
+export interface UpdateReferralProgrammeRequest {
+  referrerRewardAmount?: number;
+  refereeRewardAmount?: number;
+  /** Days between qualifying and being paid. Zero pays immediately. */
+  holdDays?: number;
+  qualificationWindowDays?: number;
+  requireKycVerified?: boolean;
+  active?: boolean;
 }

@@ -1,6 +1,19 @@
 import { randomUUID } from 'node:crypto';
 
-import { PrismaClient, ReferralOwnerType, ReferralRedemptionStatus } from '@prisma/client';
+import {
+  PrismaClient,
+  ReferralOwnerType,
+  ReferralRedemptionStatus,
+  ReferralRefereeType,
+  ReferralRejectionReason,
+} from '@prisma/client';
+
+import { type AuditService } from '../audit/audit.service';
+import { DomainEventBus } from '../events/domain-event-bus';
+import { ReferralAntiAbuseService } from '../referrals/referral-anti-abuse.service';
+import { ReferralLifecycleService } from '../referrals/referral-lifecycle.service';
+import { ReferralQualificationService } from '../referrals/referral-qualification.service';
+import { WalletService } from '../wallet/wallet.service';
 
 import { OperationsReferralsService } from './operations-referrals.service';
 
@@ -36,7 +49,20 @@ describe('OperationsReferralsService', () => {
       databaseAvailable = false;
       return;
     }
-    service = new OperationsReferralsService(prisma);
+    const auditService = {
+      record: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuditService;
+    service = new OperationsReferralsService(
+      prisma,
+      new ReferralLifecycleService(
+        prisma,
+        auditService,
+        new DomainEventBus(),
+        new WalletService(prisma, auditService, new DomainEventBus()),
+        new ReferralQualificationService(prisma),
+        new ReferralAntiAbuseService(prisma),
+      ),
+    );
   });
 
   afterAll(async () => {
@@ -186,5 +212,105 @@ describe('OperationsReferralsService', () => {
     // And neither shows up in the other's, for the same reason the personas
     // are split at all: their rewards are paid into different wallets.
     expect(merchants.items.some((item) => item.userId === fleetOwnerId)).toBe(false);
+  });
+
+  describe('the flagged-referral review queue', () => {
+    /** A qualified referral carrying a flag — what the queue exists for. */
+    async function flaggedReferral(): Promise<string> {
+      const referrerId = await createUser('queue-referrer');
+      const refereeId = await createUser('queue-referee');
+      const referral = await prisma.referral.create({
+        data: {
+          userId: referrerId,
+          ownerType: ReferralOwnerType.CUSTOMER,
+          code: randomUUID().slice(0, 10).toUpperCase(),
+        },
+      });
+      const redemption = await prisma.referralRedemption.create({
+        data: {
+          referralId: referral.id,
+          refereeUserId: refereeId,
+          refereeType: ReferralRefereeType.CUSTOMER,
+          status: ReferralRedemptionStatus.QUALIFIED,
+          qualifiedAt: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000),
+          flaggedReason: ReferralRejectionReason.SHARED_DEVICE,
+          referrerRewardAmount: 350,
+          refereeRewardAmount: 350,
+        },
+      });
+      return redemption.id;
+    }
+
+    it('shows who both sides are, not their ids', async () => {
+      if (!databaseAvailable) return;
+      // A queue of UUIDs is a queue nobody works.
+      const redemptionId = await flaggedReferral();
+
+      const page = await service.reviewQueue(1, 50);
+      const row = page.items.find((item) => item.redemptionId === redemptionId);
+
+      expect(row?.referrerName).toContain('queue-referrer');
+      expect(row?.refereeName).toContain('queue-referee');
+      expect(row?.referrerCode).toHaveLength(10);
+      expect(row?.flaggedReason).toBe(ReferralRejectionReason.SHARED_DEVICE);
+      expect(row?.referrerRewardAmount).toBe(350);
+    });
+
+    it('says the hold has run out, so the wait is on the reviewer', async () => {
+      if (!databaseAvailable) return;
+      // A flag is not released by a timer — DPX-REFERRAL-003 holds a flagged
+      // referral however long its hold was. Eight days past a seven-day hold
+      // means nothing is coming to rescue it but a decision.
+      const redemptionId = await flaggedReferral();
+
+      const page = await service.reviewQueue(1, 50);
+      const row = page.items.find((item) => item.redemptionId === redemptionId);
+
+      expect(row?.holdElapsed).toBe(true);
+      expect(row?.releasesAt).not.toBeNull();
+      expect(row?.actionPath).toBe(`/admin/referrals/redemptions/${redemptionId}/approve`);
+    });
+
+    it('leaves out referrals nobody needs to look at', async () => {
+      if (!databaseAvailable) return;
+      // Unflagged qualified referrals are the hold's business and pay
+      // themselves; paid and pending ones are nobody's decision. A queue that
+      // lists them is a queue that gets ignored.
+      const referrerId = await createUser('clean-referrer');
+      const refereeId = await createUser('clean-referee');
+      const referral = await prisma.referral.create({
+        data: {
+          userId: referrerId,
+          ownerType: ReferralOwnerType.CUSTOMER,
+          code: randomUUID().slice(0, 10).toUpperCase(),
+        },
+      });
+      const clean = await prisma.referralRedemption.create({
+        data: {
+          referralId: referral.id,
+          refereeUserId: refereeId,
+          status: ReferralRedemptionStatus.QUALIFIED,
+          qualifiedAt: new Date(),
+        },
+      });
+
+      const page = await service.reviewQueue(1, 50);
+
+      expect(page.items.some((item) => item.redemptionId === clean.id)).toBe(false);
+      expect(page.items.every((item) => item.flaggedReason !== null)).toBe(true);
+    });
+
+    it('serves the programmes that price every referral', async () => {
+      if (!databaseAvailable) return;
+      const programmes = await service.programmes();
+
+      expect(programmes.map((programme) => programme.refereeType).sort()).toEqual([
+        'CUSTOMER',
+        'FLEET',
+        'MERCHANT',
+      ]);
+      const fleet = programmes.find((programme) => programme.refereeType === 'FLEET');
+      expect(fleet?.referrerRewardAmount).toBe(2500);
+    });
   });
 });

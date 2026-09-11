@@ -496,6 +496,8 @@ export type {
   PayoutRequestStatus,
   PayoutRequesterType,
   ReferralPerformerDto,
+  ReferralReviewItemDto,
+  UpdateReferralProgrammeRequest,
   ReferralPersona,
   ReferralPersonaPerformanceDto,
   CommissionCampaignDto,

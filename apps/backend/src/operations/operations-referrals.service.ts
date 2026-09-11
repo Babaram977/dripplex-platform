@@ -6,8 +6,10 @@ import {
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { ReferralLifecycleService } from '../referrals/referral-lifecycle.service';
 
 import type { PaginatedResult } from '@dripplex/types';
+import type { ReferralRefereeType, ReferralRejectionReason } from '@prisma/client';
 
 export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
 
@@ -30,6 +32,38 @@ export interface ReferralPersonaPerformanceDto {
   rewardedRedemptions: number;
   /** rewarded / redemptions, 0 when nothing has been redeemed. */
   conversionRate: number;
+}
+
+/**
+ * One referral waiting on a person rather than on time.
+ *
+ * Everything an operator needs to decide without opening another screen: who
+ * both sides are, what it is worth, what fired, and when the hold releases it
+ * if nobody acts. Names rather than ids, because a queue of UUIDs is a queue
+ * nobody works.
+ */
+export interface ReferralReviewItemDto {
+  redemptionId: string;
+  referrerName: string;
+  referrerCode: string;
+  refereeName: string;
+  refereeType: ReferralRefereeType;
+  /** The signal that fired without refusing it — why this row is here. */
+  flaggedReason: ReferralRejectionReason | null;
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  /**
+   * When the hold would release it. Null when it is already payable or has no
+   * programme — the caller shows "awaiting a decision" rather than a date it
+   * cannot compute.
+   */
+  releasesAt: string | null;
+  /** Whether the hold has already elapsed and only the flag is holding it. */
+  holdElapsed: boolean;
+  /** Where the decision is actioned. Mirrors the payout queue: a read-only
+   *  screen states the endpoint rather than implying it can act itself. */
+  actionPath: string;
 }
 
 /** One referrer's standing, for the leaderboard behind a persona. */
@@ -105,7 +139,99 @@ const IN_FLIGHT = new Set<ReferralRedemptionStatus>([
  */
 @Injectable()
 export class OperationsReferralsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly lifecycle: ReferralLifecycleService,
+  ) {}
+
+  /**
+   * Referrals that have qualified but are waiting on a person.
+   *
+   * DPX-REFERRAL-003 flags a shared device rather than refusing it, because a
+   * household sharing a handset is routine here and refusing on that signal
+   * would reject real referrals in bulk. A flag is only worth anything if
+   * somebody sees it — without this queue a flagged referral waits forever,
+   * which is the worst of both designs: the referrer is not paid and nobody
+   * ever decided not to pay them.
+   *
+   * Oldest first. A referral that has been waiting longest is the one somebody
+   * is most likely chasing.
+   */
+  public async reviewQueue(
+    page: number,
+    pageSize: number,
+  ): Promise<PaginatedResult<ReferralReviewItemDto>> {
+    const where = {
+      status: ReferralRedemptionStatus.QUALIFIED,
+      flaggedReason: { not: null },
+    };
+
+    const [rows, total, programmes] = await Promise.all([
+      this.prisma.referralRedemption.findMany({
+        where,
+        orderBy: { qualifiedAt: 'asc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        include: {
+          referral: {
+            select: { code: true, user: { select: { firstName: true, lastName: true } } },
+          },
+          refereeUser: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.referralRedemption.count({ where }),
+      this.prisma.referralProgramme.findMany(),
+    ]);
+
+    const holdDaysByType = new Map(
+      programmes.map((programme) => [programme.refereeType, programme.holdDays]),
+    );
+    const now = Date.now();
+
+    return {
+      items: rows.map((row) => {
+        const holdDays = holdDaysByType.get(row.refereeType);
+        const releasesAt =
+          row.qualifiedAt === null || holdDays === undefined
+            ? null
+            : new Date(row.qualifiedAt.getTime() + holdDays * 24 * 60 * 60 * 1000);
+
+        return {
+          redemptionId: row.id,
+          referrerName: fullName(row.referral.user),
+          referrerCode: row.referral.code,
+          refereeName: fullName(row.refereeUser),
+          refereeType: row.refereeType,
+          flaggedReason: row.flaggedReason,
+          referrerRewardAmount:
+            row.referrerRewardAmount === null ? null : Number(row.referrerRewardAmount),
+          refereeRewardAmount:
+            row.refereeRewardAmount === null ? null : Number(row.refereeRewardAmount),
+          qualifiedAt: row.qualifiedAt?.toISOString() ?? null,
+          releasesAt: releasesAt?.toISOString() ?? null,
+          // A flag is not released by a timer — DPX-REFERRAL-003 holds a
+          // flagged referral however long the hold was — so this says the wait
+          // is now entirely on the reviewer, not on the clock.
+          holdElapsed: releasesAt !== null && releasesAt.getTime() <= now,
+          actionPath: `/admin/referrals/redemptions/${row.id}/approve`,
+        };
+      }),
+      meta: {
+        page,
+        limit: pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize) || 1),
+      },
+    };
+  }
+
+  /** What DrippleX pays per kind of referee. Read-only here; edited through
+   *  `/admin/referrals/programmes`, which carries the grant to change money. */
+  public async programmes(): Promise<
+    Awaited<ReturnType<ReferralLifecycleService['listProgrammes']>>
+  > {
+    return await this.lifecycle.listProgrammes();
+  }
 
   public async overview(): Promise<ReferralOverviewDto> {
     const [personas, driverCampaigns] = await Promise.all([
@@ -329,4 +455,8 @@ function ownerTypeFor(persona: ReferralPersona): ReferralOwnerType {
     ([, mapped]) => mapped === persona,
   );
   return entry?.[0] ?? ReferralOwnerType.CUSTOMER;
+}
+
+function fullName(user: { firstName: string; lastName: string }): string {
+  return `${user.firstName} ${user.lastName}`.trim();
 }
