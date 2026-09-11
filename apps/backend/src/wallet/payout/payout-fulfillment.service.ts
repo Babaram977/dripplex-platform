@@ -1,12 +1,14 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { WithdrawalRequestStatus } from '@prisma/client';
 
+import { AppConfigService } from '../../config/app-config.service';
 import { DomainEventBus } from '../../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../../events/domain-events';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WALLET_WITHDRAWAL_REVERSAL_REFERENCE_TYPE } from '../wallet.constants';
 import { WalletService } from '../wallet.service';
 
+import { PayoutDestinationService, type StoredDestination } from './payout-destination.service';
 import { PAYOUT_PROVIDERS, type PayoutProvider } from './payout-provider.adapter';
 
 @Injectable()
@@ -16,6 +18,8 @@ export class PayoutFulfillmentService implements OnModuleInit {
     private readonly eventBus: DomainEventBus,
     private readonly walletService: WalletService,
     @Inject(PAYOUT_PROVIDERS) private readonly providers: PayoutProvider[],
+    private readonly destinations: PayoutDestinationService,
+    private readonly config: AppConfigService,
   ) {}
 
   public onModuleInit(): void {
@@ -39,7 +43,7 @@ export class PayoutFulfillmentService implements OnModuleInit {
   private async destination(row: {
     bankAccountId: string | null;
     merchantBankAccountId: string | null;
-  }): Promise<{ bankCode: string; accountNumber: string; accountName: string } | null> {
+  }): Promise<StoredDestination | null> {
     if (row.merchantBankAccountId !== null) {
       const merchantAccount = await this.prisma.bankAccount.findUnique({
         where: { id: row.merchantBankAccountId },
@@ -51,7 +55,9 @@ export class PayoutFulfillmentService implements OnModuleInit {
         return null;
       }
       return {
+        bankName: merchantAccount.bankName,
         bankCode: merchantAccount.bankCode,
+        bankCodeProvider: merchantAccount.bankCodeProvider,
         accountNumber: merchantAccount.accountNumber,
         accountName: merchantAccount.accountName,
       };
@@ -71,7 +77,9 @@ export class PayoutFulfillmentService implements OnModuleInit {
       return null;
     }
     return {
+      bankName: account.bankName,
       bankCode: account.bankCode,
+      bankCodeProvider: account.bankCodeProvider,
       accountNumber: account.accountNumber,
       accountName: account.accountName,
     };
@@ -80,14 +88,25 @@ export class PayoutFulfillmentService implements OnModuleInit {
   public async initiate(id: string): Promise<void> {
     const row = await this.prisma.withdrawalRequest.findUnique({ where: { id } });
     if (row?.status !== WithdrawalRequestStatus.PENDING) return;
-    const account = await this.destination(row);
-    if (account === null) {
+    const stored = await this.destination(row);
+    if (stored === null) {
       await this.fail(id, 'Verified payout destination is no longer available');
       return;
     }
-    const provider = this.providers.find((item) => item.provider === 'PAYSTACK');
+    const selected = this.config.payoutProvider;
+    const provider = this.providers.find((item) => item.provider === selected);
     if (!provider) {
-      await this.fail(id, 'Paystack payout provider is not configured');
+      await this.fail(id, `${selected} payout provider is not configured`);
+      return;
+    }
+
+    // The stored bank code belongs to whichever provider verified it. If that
+    // is not the provider about to send, the destination is re-resolved and
+    // re-confirmed against the sending one; null means it could not be, and a
+    // payout that cannot be confirmed is not sent.
+    const account = await this.destinations.resolveFor(provider.provider, stored);
+    if (account === null) {
+      await this.fail(id, `Destination could not be confirmed with ${selected}`);
       return;
     }
 

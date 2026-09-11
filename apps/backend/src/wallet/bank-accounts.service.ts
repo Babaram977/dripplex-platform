@@ -153,6 +153,10 @@ export class BankAccountsService {
         // submission. This keeps Operations' payout queue consistent.
         bankName: verified?.bankName ?? input.bankName,
         bankCode: verified?.bankCode ?? input.bankCode ?? null,
+        // Records which rail issued this code. Codes are provider-specific, and
+        // the payout path refuses to hand one rail's code to the other without
+        // re-confirming it first.
+        bankCodeProvider: 'PAYSTACK',
         // The bank's answer wins. Storing the customer's own spelling next to
         // a number the bank says belongs to someone else is the failure this
         // whole phase exists to prevent.

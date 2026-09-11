@@ -4,9 +4,8 @@ import { Body, Controller, Headers, HttpCode, HttpStatus, Post, Req } from '@nes
 
 import { Public } from '../../common/decorators/permissions.decorator';
 import { AppConfigService } from '../../config/app-config.service';
-import { PrismaService } from '../../prisma/prisma.service';
 
-import { PayoutFulfillmentService } from './payout-fulfillment.service';
+import { PayoutReconciliationService } from './payout-reconciliation.service';
 
 import type { Request } from 'express';
 
@@ -14,8 +13,7 @@ import type { Request } from 'express';
 export class PaystackTransferWebhookController {
   constructor(
     private readonly config: AppConfigService,
-    private readonly fulfillment: PayoutFulfillmentService,
-    private readonly prisma: PrismaService,
+    private readonly reconciliation: PayoutReconciliationService,
   ) {}
 
   @Public()
@@ -44,69 +42,8 @@ export class PaystackTransferWebhookController {
         ? payload.event
         : JSON.stringify(payload.data.failures);
 
-    // Shared customer/rider/driver wallet payout reconciliation.
-    await this.fulfillment.processProviderResult(reference, terminal, providerReference, reason);
-    // Fleet settlements use the same provider and the same webhook, but have
-    // a separate payable ledger because they are not wallet withdrawals.
-    await this.processFleetTransfer(reference, terminal, providerReference, reason);
+    await this.reconciliation.apply(reference, terminal, providerReference, reason);
     return { success: true };
-  }
-
-  private async processFleetTransfer(
-    reference: string,
-    status: 'SUCCESS' | 'FAILED',
-    providerReference: string | null,
-    reason: string,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<
-        {
-          id: string;
-          request_id: string | null;
-          amount: number;
-          transfer_status: string;
-          receivable_id: string | null;
-        }[]
-      >`
-        SELECT t.id, t.settlement_request_id AS request_id, t.amount::float8 AS amount,
-               t.status::text AS transfer_status, r.receivable_id
-        FROM fleet_settlement_transfers t
-        LEFT JOIN fleet_settlement_requests r ON r.id = t.settlement_request_id
-        WHERE t.id = ${reference}::uuid
-        LIMIT 1
-        FOR UPDATE`;
-      const transfer = rows[0];
-      if (transfer?.transfer_status !== 'PENDING') return;
-
-      if (status === 'SUCCESS') {
-        await tx.$executeRaw`
-          UPDATE fleet_settlement_transfers
-          SET status = 'SUCCESS', provider_reference = ${providerReference}, completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ${reference}::uuid AND status = 'PENDING'`;
-        if (transfer.request_id) {
-          await tx.$executeRaw`
-            UPDATE fleet_settlement_requests SET status = 'PAID', updated_at = CURRENT_TIMESTAMP
-            WHERE id = ${transfer.request_id}::uuid AND status = 'PROCESSING'`;
-        }
-        return;
-      }
-
-      await tx.$executeRaw`
-        UPDATE fleet_settlement_transfers
-        SET status = CASE WHEN ${reason} = 'transfer.reversed' THEN 'REVERSED' ELSE 'FAILED' END,
-            provider_reference = ${providerReference}, failure_reason = ${reason.slice(0, 500)}, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ${reference}::uuid AND status = 'PENDING'`;
-      if (transfer.request_id) {
-        await tx.$executeRaw`
-          UPDATE fleet_settlement_requests SET status = 'APPROVED', transfer_id = NULL, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ${transfer.request_id}::uuid AND status = 'PROCESSING'`;
-        if (transfer.receivable_id) {
-          await tx.$executeRaw`
-            UPDATE fleet_settlement_receivables SET remaining_amount = remaining_amount + ${transfer.amount}, status = 'APPROVED', updated_at = CURRENT_TIMESTAMP
-            WHERE id = ${transfer.receivable_id}::uuid`;
-        }
-      }
-    });
   }
 
   private isTransferEvent(value: unknown): value is {

@@ -17,13 +17,21 @@ import {
 import { CustomerWalletController } from './customer-wallet.controller';
 import { DriverWalletController } from './driver-wallet.controller';
 import { MerchantWalletController } from './merchant-wallet.controller';
+import { FlutterwaveTransferWebhookController } from './payout/flutterwave-transfer-webhook.controller';
+import { FlutterwaveTransferProvider } from './payout/flutterwave-transfer.provider';
+import { PayoutDestinationService } from './payout/payout-destination.service';
 import { PayoutFulfillmentService } from './payout/payout-fulfillment.service';
 import { PAYOUT_PROVIDERS } from './payout/payout-provider.adapter';
+import { PayoutReconciliationService } from './payout/payout-reconciliation.service';
 import { PaystackTransferWebhookController } from './payout/paystack-transfer-webhook.controller';
 import { PaystackTransferProvider } from './payout/paystack-transfer.provider';
 import { RiderWalletController } from './rider-wallet.controller';
 import { SettlementReportService } from './settlement-report.service';
-import { BANK_ACCOUNT_RESOLVER } from './verification/bank-account-resolver.port';
+import {
+  BANK_ACCOUNT_RESOLVER,
+  FLUTTERWAVE_BANK_ACCOUNT_RESOLVER,
+} from './verification/bank-account-resolver.port';
+import { FlutterwaveBankAccountResolver } from './verification/flutterwave-bank-account.resolver';
 import { PaystackBankAccountResolver } from './verification/paystack-bank-account.resolver';
 import { WalletEventsSubscriber } from './wallet-events.subscriber';
 import { WalletPinService } from './wallet-pin.service';
@@ -46,6 +54,7 @@ import { WithdrawalService } from './withdrawal.service';
     RiderPayoutController,
     DriverPayoutController,
     PaystackTransferWebhookController,
+    FlutterwaveTransferWebhookController,
   ],
   providers: [
     WalletService,
@@ -56,15 +65,36 @@ import { WithdrawalService } from './withdrawal.service';
     WalletPinService,
     WithdrawalService,
     PaystackTransferProvider,
+    FlutterwaveTransferProvider,
     PaystackBankAccountResolver,
+    FlutterwaveBankAccountResolver,
+    PayoutDestinationService,
+    PayoutReconciliationService,
     PayoutFulfillmentService,
     { provide: BANK_ACCOUNT_RESOLVER, useExisting: PaystackBankAccountResolver },
     {
+      provide: FLUTTERWAVE_BANK_ACCOUNT_RESOLVER,
+      useExisting: FlutterwaveBankAccountResolver,
+    },
+    {
+      // Both rails are registered. Which one sends a given payout is read from
+      // config per transfer, so one being unavailable — Paystack restricts
+      // Transfers to registered businesses with a funded balance — does not
+      // stop partners being paid.
       provide: PAYOUT_PROVIDERS,
-      useFactory: (paystack: PaystackTransferProvider) => [paystack],
-      inject: [PaystackTransferProvider],
+      useFactory: (
+        paystack: PaystackTransferProvider,
+        flutterwave: FlutterwaveTransferProvider,
+      ) => [paystack, flutterwave],
+      inject: [PaystackTransferProvider, FlutterwaveTransferProvider],
     },
   ],
-  exports: [WalletService, PAYOUT_PROVIDERS, BANK_ACCOUNT_RESOLVER],
+  exports: [
+    WalletService,
+    PAYOUT_PROVIDERS,
+    BANK_ACCOUNT_RESOLVER,
+    FLUTTERWAVE_BANK_ACCOUNT_RESOLVER,
+    PayoutDestinationService,
+  ],
 })
 export class WalletModule {}

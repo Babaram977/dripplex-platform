@@ -91,6 +91,10 @@ export class MerchantBankSettlementService {
           // Captured here so the settlement path never has to re-derive it
           // from the display name at the moment it moves money.
           bankCode: bank.code,
+          // Records which rail issued this code. Codes are provider-specific, and
+          // the payout path refuses to hand one rail's code to the other without
+          // re-confirming it first.
+          bankCodeProvider: 'PAYSTACK',
           accountName: resolved.accountName,
           accountNumber,
           currency: (dto.currency ?? 'NGN').toUpperCase(),

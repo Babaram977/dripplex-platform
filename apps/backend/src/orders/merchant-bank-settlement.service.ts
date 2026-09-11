@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { WalletOwnerType, OrderPaymentMethod, type Prisma } from '@prisma/client';
 
+import { AppConfigService } from '../config/app-config.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS, type DomainEvent } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
+import { PayoutDestinationService } from '../wallet/payout/payout-destination.service';
 import { PAYOUT_PROVIDERS, type PayoutProvider } from '../wallet/payout/payout-provider.adapter';
 import {
   BANK_ACCOUNT_RESOLVER,
@@ -24,6 +26,8 @@ export class MerchantBankSettlementService implements OnModuleInit {
     private readonly eventBus: DomainEventBus,
     private readonly walletService: WalletService,
     @Inject(PAYOUT_PROVIDERS) private readonly providers: PayoutProvider[],
+    private readonly destinations: PayoutDestinationService,
+    private readonly config: AppConfigService,
     @Inject(BANK_ACCOUNT_RESOLVER) private readonly resolver: BankAccountResolver,
   ) {}
 
@@ -89,9 +93,10 @@ export class MerchantBankSettlementService implements OnModuleInit {
       `;
     }
 
-    const provider = this.providers.find((item) => item.provider === 'PAYSTACK');
+    const selected = this.config.payoutProvider;
+    const provider = this.providers.find((item) => item.provider === selected);
     if (!provider) {
-      await this.markFailed(transferId, 'Paystack payout provider is not configured');
+      await this.markFailed(transferId, `${selected} payout provider is not configured`);
       return true;
     }
 
@@ -106,13 +111,27 @@ export class MerchantBankSettlementService implements OnModuleInit {
         description: `Bank settlement for order ${order.orderNumber}`,
       });
 
+      // bankOption was resolved from the merchant's stored bank name; the code
+      // that actually goes out is confirmed against the sending rail first.
+      const destination = await this.destinations.resolveFor(provider.provider, {
+        bankName: bank.bankName,
+        bankCode: bank.bankCode ?? bankOption.code,
+        bankCodeProvider: bank.bankCodeProvider,
+        accountNumber: bank.accountNumber,
+        accountName: bank.accountName,
+      });
+      if (destination === null) {
+        await this.markFailed(transferId, `Destination could not be confirmed with ${selected}`);
+        return true;
+      }
+
       const result = await provider.initiatePayout({
         reference: transferId,
         amount: Number(settlement.merchantAmount),
         currency: settlement.currency,
-        bankCode: bankOption.code,
-        accountNumber: bank.accountNumber,
-        accountName: bank.accountName,
+        bankCode: destination.bankCode,
+        accountNumber: destination.accountNumber,
+        accountName: destination.accountName,
         narration: `DrippleX merchant settlement ${order.orderNumber}`,
       });
       if (result.status === 'SUCCESS')

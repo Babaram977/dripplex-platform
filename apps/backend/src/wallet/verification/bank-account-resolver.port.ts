@@ -56,3 +56,12 @@ export interface BankAccountResolver {
 }
 
 export const BANK_ACCOUNT_RESOLVER = Symbol('BANK_ACCOUNT_RESOLVER');
+
+/**
+ * The Flutterwave resolver, injected separately rather than behind the same
+ * token. Which provider answered a name enquiry decides which bank code you
+ * hold, and a code is only valid for the provider that issued it — so the two
+ * must stay distinguishable at the point of injection, not merged into one
+ * "the resolver" that could be either.
+ */
+export const FLUTTERWAVE_BANK_ACCOUNT_RESOLVER = Symbol('FLUTTERWAVE_BANK_ACCOUNT_RESOLVER');

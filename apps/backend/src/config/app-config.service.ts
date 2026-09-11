@@ -239,6 +239,31 @@ export class AppConfigService {
     return this.paystackSecretKey.trim().length > 0;
   }
 
+  /**
+   * Which provider sends payouts. Paystack unless PAYOUT_PROVIDER says
+   * otherwise, and only if that provider is actually configured — a typo in an
+   * environment variable must not silently stop partners being paid.
+   *
+   * Deliberately separate from the charge-provider preference above. Taking
+   * money in and sending it out are different rails with different
+   * eligibility: Paystack restricts Transfers to registered businesses with a
+   * funded balance, and being unable to pay out is not a reason to stop
+   * accepting payments.
+   */
+  public get payoutProvider(): 'PAYSTACK' | 'FLUTTERWAVE' {
+    const preferred = (process.env['PAYOUT_PROVIDER'] ?? '').trim().toUpperCase();
+    if (preferred === 'FLUTTERWAVE' && this.flutterwaveConfigured) {
+      return 'FLUTTERWAVE';
+    }
+    if (preferred === 'PAYSTACK' && this.paystackConfigured) {
+      return 'PAYSTACK';
+    }
+    if (this.paystackConfigured) {
+      return 'PAYSTACK';
+    }
+    return this.flutterwaveConfigured ? 'FLUTTERWAVE' : 'PAYSTACK';
+  }
+
   public get flutterwaveConfigured(): boolean {
     return this.flutterwaveSecretKey.trim().length > 0;
   }

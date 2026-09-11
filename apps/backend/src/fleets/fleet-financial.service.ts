@@ -5,7 +5,9 @@ import {
   NotFoundDomainException,
   ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { AppConfigService } from '../config/app-config.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PayoutDestinationService } from '../wallet/payout/payout-destination.service';
 import { PAYOUT_PROVIDERS, type PayoutProvider } from '../wallet/payout/payout-provider.adapter';
 import {
   BANK_ACCOUNT_RESOLVER,
@@ -65,6 +67,8 @@ export class FleetFinancialService {
     private readonly prisma: PrismaService,
     @Inject(BANK_ACCOUNT_RESOLVER) private readonly resolver: BankAccountResolver,
     @Inject(PAYOUT_PROVIDERS) private readonly providers: PayoutProvider[],
+    private readonly destinations: PayoutDestinationService,
+    private readonly config: AppConfigService,
   ) {}
 
   public async listBanks(): Promise<BankOption[]> {
@@ -316,19 +320,40 @@ export class FleetFinancialService {
       throw new ConflictDomainException('Fleet settlement was claimed by another request');
     await this.prisma
       .$executeRaw`INSERT INTO fleet_settlement_transfers (id, fleet_id, bank_account_id, settlement_request_id, amount, currency, provider, status, created_at, updated_at) VALUES (${transferId}::uuid, ${input.fleetId}::uuid, ${bank.id}::uuid, ${input.requestId}::uuid, ${request.amount}, 'NGN', 'PAYSTACK', 'PENDING', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`;
-    const provider = this.providers.find((item) => item.provider === 'PAYSTACK');
+    // The configured rail, not a hardcoded one, so a fleet is still paid when
+    // Paystack is unavailable.
+    const selected = this.config.payoutProvider;
+    const provider = this.providers.find((item) => item.provider === selected);
     if (!provider) {
-      await this.failSettlement(transferId, 'Paystack payout provider is not configured');
+      await this.failSettlement(transferId, `${selected} payout provider is not configured`);
       return await this.getSettlementRequest(input.requestId);
     }
     try {
+      // fleet_bank_accounts records which provider verified the code in its
+      // own `provider` column, so a code issued by one rail is never handed to
+      // the other without being re-confirmed first.
+      const destination = await this.destinations.resolveFor(provider.provider, {
+        bankName: bank.bank_name,
+        bankCode: bank.bank_code,
+        bankCodeProvider: bank.provider,
+        accountNumber: bank.account_number,
+        accountName: bank.account_name,
+      });
+      if (destination === null) {
+        await this.failSettlement(
+          transferId,
+          `Destination could not be confirmed with ${selected}`,
+        );
+        return await this.getSettlementRequest(input.requestId);
+      }
+
       const result = await provider.initiatePayout({
         reference: transferId,
         amount: request.amount,
         currency: 'NGN',
-        bankCode: bank.bank_code,
-        accountNumber: bank.account_number,
-        accountName: bank.account_name,
+        bankCode: destination.bankCode,
+        accountNumber: destination.accountNumber,
+        accountName: destination.accountName,
         narration: input.narration ?? 'DrippleX fleet settlement',
       });
       if (result.status === 'SUCCESS')
