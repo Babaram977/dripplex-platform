@@ -15,6 +15,7 @@ import {
 import { NotificationCenterService } from '../notification-center/notification-center.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { detectMandatoryHumanCategory } from './safety/support-safety-gate';
 import { personaFor } from './support-persona.util';
 import { requiresHumanHandling, SUPPORT_AUDIT_ACTIONS } from './support.constants';
 import { toSupportTicketDto } from './support.mapper';
@@ -88,15 +89,32 @@ export class SupportService {
     await this.assertOrderBelongsToUser(userId, dto.orderId);
     await this.assertRideBelongsToUser(userId, dto.rideId);
 
+    const subject = dto.subject.trim();
+    const description = dto.description.trim();
+
+    // DPX-SUPPORT-002 §3/§4 — the deterministic money/safety gate, run on the
+    // user's own words rather than on the category they picked from a list.
+    //
+    // Widen only. The gate can pull a ticket INTO human handling; nothing can
+    // push one out of it. So this is an OR against the declared category, never
+    // a replacement for it: declaring PAYMENT still means PAYMENT even if the
+    // text says nothing obvious, and declaring TECHNICAL does not help you if
+    // the text says you were charged twice.
+    const gate = detectMandatoryHumanCategory(subject, description);
+
     const ticket = await this.prisma.supportTicket.create({
       data: {
         userId,
         persona,
+        // What the user said it was. Advisory, and kept as they left it.
         category: dto.category,
-        subject: dto.subject.trim(),
-        description: dto.description.trim(),
-        // Category, never the request body.
-        requiresHumanHandling: requiresHumanHandling(dto.category),
+        subject,
+        description,
+        requiresHumanHandling: requiresHumanHandling(dto.category) || gate.category !== null,
+        // What the platform concluded it was, recorded beside the above rather
+        // than instead of it — the disagreement is the interesting part.
+        gateDetectedCategory: gate.category,
+        gateMatchedTerm: gate.matchedTerm,
         // Fall back to the account's own details, so Operations is not asking
         // someone who is already unhappy to tell them who they are.
         contactEmail: dto.contactEmail ?? account.email,
@@ -117,6 +135,10 @@ export class SupportService {
           persona: ticket.persona,
           category: ticket.category,
           requiresHumanHandling: ticket.requiresHumanHandling,
+          // A routing decision about somebody's money has to be explicable
+          // afterwards, not re-derived from a lexicon that may have changed.
+          gateDetectedCategory: ticket.gateDetectedCategory,
+          gateMatchedTerm: ticket.gateMatchedTerm,
         },
       },
     );

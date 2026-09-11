@@ -85,6 +85,13 @@ export default function SupportCaseDetailPage(): React.JSX.Element {
                     Must be answered by a person — payment, wallet and safety are never automated.
                   </p>
                 ) : null}
+                {kase.gateDetectedCategory && kase.gateDetectedCategory !== kase.category ? (
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Filed as {CATEGORY_LABEL[kase.category] ?? kase.category}, but their own words
+                    read as {CATEGORY_LABEL[kase.gateDetectedCategory] ?? kase.gateDetectedCategory}
+                    .
+                  </p>
+                ) : null}
               </div>
               <div className="flex gap-2">
                 <PriorityBadge priority={kase.priority} />

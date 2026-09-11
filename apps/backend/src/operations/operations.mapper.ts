@@ -192,6 +192,7 @@ export function toSupportQueueItemDto(
     userPhone: ticket.user.phone,
     persona: ticket.persona,
     requiresHumanHandling: ticket.requiresHumanHandling,
+    gateDetectedCategory: ticket.gateDetectedCategory,
     contactEmail: ticket.contactEmail,
     contactPhone: ticket.contactPhone,
     appVersion: ticket.appVersion,

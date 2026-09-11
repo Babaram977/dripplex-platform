@@ -11,6 +11,8 @@ export function toSupportTicketDto(ticket: SupportTicket): SupportTicketDto {
     description: ticket.description,
     status: ticket.status,
     requiresHumanHandling: ticket.requiresHumanHandling,
+    gateDetectedCategory: ticket.gateDetectedCategory,
+    gateMatchedTerm: ticket.gateMatchedTerm,
     contactEmail: ticket.contactEmail,
     contactPhone: ticket.contactPhone,
     appVersion: ticket.appVersion,

@@ -2769,6 +2769,24 @@ model SupportTicket {
   /// time is not.
   requiresHumanHandling Boolean @default(false) @map("requires_human_handling")
 
+  /// DPX-SUPPORT-002 §3/§4 — what the deterministic money/safety gate found in
+  /// the user's own words, independent of the `category` they chose.
+  ///
+  /// Null means the gate found nothing, not that it did not run.
+  ///
+  /// Stored beside `category` rather than overwriting it, because the two
+  /// answer different questions and Operations needs both: `category` is what
+  /// the user said their problem was, this is what the platform concluded it
+  /// was. A ticket declared TECHNICAL with `gateDetectedCategory = PAYMENT` is
+  /// exactly the case the gate exists for, and flattening the two would erase
+  /// the evidence that it fired.
+  gateDetectedCategory SupportCategory? @map("gate_detected_category")
+
+  /// The lexicon term that fired, so a routing decision about somebody's money
+  /// can be explained afterwards instead of re-derived from a list that may
+  /// have changed since.
+  gateMatchedTerm String? @map("gate_matched_term") @db.VarChar(120)
+
   /// Context captured at submission, so Operations is not asking a person who
   /// is already unhappy to tell them who they are. All optional: a ticket with
   /// less context is still a ticket, and refusing one for want of an app
@@ -2793,6 +2811,7 @@ model SupportTicket {
   @@index([status])
   @@index([persona, status])
   @@index([category])
+  @@index([gateDetectedCategory])
   @@map("support_tickets")
 }
 
