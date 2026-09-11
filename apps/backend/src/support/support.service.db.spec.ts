@@ -387,6 +387,42 @@ describe('SupportService', () => {
     );
   });
 
+  it('never lets human handling be turned back off once it is on', async () => {
+    if (!databaseAvailable) return;
+
+    // §3, LOCKED: the gate may widen into human handling; nothing may narrow
+    // out of it. Today that holds because UpdateSupportTicketDto has no such
+    // field — which is a property of a DTO, and DTOs get fields added. This
+    // pins the behaviour so adding one would have to break a test first.
+    const ticket = await service.createTicket(
+      sessionFor(customerId, 'customer'),
+      {
+        category: SupportCategory.TECHNICAL,
+        subject: 'App problem',
+        description: 'I was charged twice for one trip.',
+      },
+      {},
+    );
+    expect(ticket.requiresHumanHandling).toBe(true);
+
+    await service.updateTicket(
+      ticket.id,
+      adminId,
+      {
+        status: SupportTicketStatus.IN_PROGRESS,
+        adminResponse: 'Looking into it.',
+        // Whatever an operator or a future DTO field might try to say.
+        requiresHumanHandling: false,
+        gateDetectedCategory: null,
+      } as never,
+      {},
+    );
+
+    const after = await prisma.supportTicket.findUnique({ where: { id: ticket.id } });
+    expect(after?.requiresHumanHandling).toBe(true);
+    expect(after?.gateDetectedCategory).toBe(SupportCategory.PAYMENT);
+  });
+
   // --- ownership isolation, across personas ------------------------------
 
   it('refuses to show one persona another persona’s ticket', async () => {

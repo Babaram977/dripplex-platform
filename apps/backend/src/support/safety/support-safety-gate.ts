@@ -65,20 +65,47 @@ export function normalise(text: string): string {
 }
 
 /**
- * Does `haystack` contain `term` as whole words?
+ * The lexicon, normalised once at module load and split by shape.
  *
- * Padding both sides with spaces turns a substring test into a word-boundary
- * test without building a regex per term — which matters because the lexicon is
- * a few hundred entries checked on every ticket, and because a term containing
- * a regex metacharacter would otherwise need escaping.
+ * Two things were wasteful about doing this per call. Every term is a constant,
+ * so normalising them on each ticket re-ran an NFD pass and five regex replaces
+ * a few hundred times to produce the same strings as last time. And every term
+ * was tested with a substring scan, when most of them are single words and a
+ * message only has a few dozen words in it.
  *
- * Whole-word matching is why "card" does not fire on "cardiac" and "pay" does
- * not fire on "paypal-like" prose. Multi-word phrases work unchanged, because
- * normalisation has already collapsed their separators to single spaces.
+ * So: single words go in a Set and are answered by hashing the message's own
+ * words, which is proportional to the message rather than to the lexicon.
+ * Multi-word phrases keep the substring scan, because that is what they need.
+ *
+ * Matching semantics are unchanged — a Set lookup over the message's words IS
+ * whole-word matching, which is why "card" still does not fire on "cardiac".
  */
-function containsTerm(paddedHaystack: string, term: string): boolean {
-  return paddedHaystack.includes(` ${normalise(term)} `);
+interface PreparedTerms {
+  category: SupportCategory;
+  /** normalised single word -> the original lexicon spelling, for the audit
+   *  record. Reporting the normalised form would name a term that does not
+   *  appear in the lexicon anyone reviews. */
+  words: ReadonlyMap<string, string>;
+  phrases: readonly { normalised: string; original: string }[];
 }
+
+const PREPARED: readonly PreparedTerms[] = SAFETY_GATE_TERMS.map(({ category, terms }) => {
+  const words = new Map<string, string>();
+  const phrases: { normalised: string; original: string }[] = [];
+
+  for (const original of terms) {
+    const normalised = normalise(original);
+    if (normalised.length === 0) continue;
+    if (normalised.includes(' ')) {
+      phrases.push({ normalised, original });
+    } else if (!words.has(normalised)) {
+      // First spelling wins, so a term listed twice reports consistently.
+      words.set(normalised, original);
+    }
+  }
+
+  return { category, words, phrases };
+});
 
 export interface SafetyGateResult {
   /** The category the gate detected, or `null` if it found nothing. */
@@ -97,12 +124,28 @@ export interface SafetyGateResult {
 export function detectMandatoryHumanCategory(
   ...parts: (string | null | undefined)[]
 ): SafetyGateResult {
-  const padded = ` ${normalise(parts.filter((part): part is string => typeof part === 'string').join(' '))} `;
+  const normalised = normalise(
+    parts.filter((part): part is string => typeof part === 'string').join(' '),
+  );
+  if (normalised.length === 0) {
+    return { category: null, matchedTerm: null };
+  }
 
-  for (const { category, terms } of SAFETY_GATE_TERMS) {
-    for (const term of terms) {
-      if (containsTerm(padded, term)) {
-        return { category, matchedTerm: term };
+  const words = normalised.split(' ');
+  const padded = ` ${normalised} `;
+
+  // SAFETY is prepared first, so it is checked first: a message describing a
+  // robbery mentions the money too, and it is a safety case.
+  for (const { category, words: lexiconWords, phrases } of PREPARED) {
+    for (const word of words) {
+      const original = lexiconWords.get(word);
+      if (original !== undefined) {
+        return { category, matchedTerm: original };
+      }
+    }
+    for (const phrase of phrases) {
+      if (padded.includes(` ${phrase.normalised} `)) {
+        return { category, matchedTerm: phrase.original };
       }
     }
   }
