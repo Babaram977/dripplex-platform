@@ -3582,31 +3582,32 @@ model Promotion {
   /// incremented inside the same locked transaction that records the
   /// redemption, so two simultaneous checkouts cannot both spend the last of
   /// the budget.
-  budgetSpent    Decimal               @default(0) @map("budget_spent") @db.Decimal(14, 2)
-  buyQty         Int?                  @map("buy_qty")
-  getQty         Int?                  @map("get_qty")
-  priority       Int                   @default(0)
-  stackable      Boolean               @default(false)
-  usageLimit     Int?                  @map("usage_limit")
-  usageCount     Int                   @default(0) @map("usage_count")
-  perUserLimit   Int?                  @map("per_user_limit")
-  perDeviceLimit Int?                  @map("per_device_limit")
-  minOrderAmount Decimal?              @map("min_order_amount") @db.Decimal(12, 2)
+  budgetSpent    Decimal                   @default(0) @map("budget_spent") @db.Decimal(14, 2)
+  buyQty         Int?                      @map("buy_qty")
+  getQty         Int?                      @map("get_qty")
+  priority       Int                       @default(0)
+  stackable      Boolean                   @default(false)
+  usageLimit     Int?                      @map("usage_limit")
+  usageCount     Int                       @default(0) @map("usage_count")
+  perUserLimit   Int?                      @map("per_user_limit")
+  perDeviceLimit Int?                      @map("per_device_limit")
+  minOrderAmount Decimal?                  @map("min_order_amount") @db.Decimal(12, 2)
   rules          Json?
-  startsAt       DateTime?             @map("starts_at")
-  endsAt         DateTime?             @map("ends_at")
-  pausedAt       DateTime?             @map("paused_at")
-  archivedAt     DateTime?             @map("archived_at")
-  merchantId     String?               @map("merchant_id") @db.Uuid
-  clonedFromId   String?               @map("cloned_from_id") @db.Uuid
-  createdBy      String?               @map("created_by") @db.Uuid
+  startsAt       DateTime?                 @map("starts_at")
+  endsAt         DateTime?                 @map("ends_at")
+  pausedAt       DateTime?                 @map("paused_at")
+  archivedAt     DateTime?                 @map("archived_at")
+  merchantId     String?                   @map("merchant_id") @db.Uuid
+  clonedFromId   String?                   @map("cloned_from_id") @db.Uuid
+  createdBy      String?                   @map("created_by") @db.Uuid
   metadata       Json?
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  deletedAt      DateTime?             @map("deleted_at")
+  createdAt      DateTime                  @default(now()) @map("created_at")
+  updatedAt      DateTime                  @updatedAt @map("updated_at")
+  deletedAt      DateTime?                 @map("deleted_at")
   redemptions    PromotionRedemption[]
-  clonedFrom     Promotion?            @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
-  clones         Promotion[]           @relation("PromotionClone")
+  loyaltyRewards LoyaltyRewardRedemption[]
+  clonedFrom     Promotion?                @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
+  clones         Promotion[]               @relation("PromotionClone")
 
   @@index([status])
   @@index([type])
@@ -3948,6 +3949,18 @@ model LoyaltyReward {
   /// How long the entitlement lasts once taken, in days. Null never expires.
   entitlementDays Int? @map("entitlement_days")
 
+  /// DPX-LOYALTY-008 — where a coupon minted from this reward can be spent.
+  ///
+  /// A "₦500 coupon" that does not say where it is good is under-specified, and
+  /// guessing goes wrong in both directions: too wide lets a shopping reward
+  /// pay for a ride, too narrow is a support ticket. So Operations states it,
+  /// the same way every other number in this catalogue is stated.
+  ///
+  /// Empty means the reward mints nothing — which is the correct behaviour for
+  /// a physical gift or a service benefit, and the honest one for FREE_DELIVERY
+  /// until a delivery-fee path consults promotions at all (see the doc).
+  domains PromotionDomain[] @default([])
+
   startsAt DateTime? @map("starts_at")
   endsAt   DateTime? @map("ends_at")
   active   Boolean   @default(true)
@@ -3984,9 +3997,12 @@ model LoyaltyRewardRedemption {
 
   /// The negative LoyaltyLedgerEntry that paid for this — the audit link
   /// between the points that left and the entitlement that arrived.
-  ledgerEntryId String? @map("ledger_entry_id") @db.Uuid
+  ledgerEntryId String?    @map("ledger_entry_id") @db.Uuid
   /// A coupon minted for this redemption, where the reward grants one.
-  promotionId   String? @map("promotion_id") @db.Uuid
+  /// DPX-LOYALTY-008 — a relation, not a loose id, because the holder needs the
+  /// *code* and a column nothing can join to cannot give them one.
+  promotionId   String?    @map("promotion_id") @db.Uuid
+  promotion     Promotion? @relation(fields: [promotionId], references: [id])
 
   /// When the entitlement lapses, if it does.
   expiresAt      DateTime? @map("expires_at")

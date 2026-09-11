@@ -1,5 +1,14 @@
-import { Injectable } from '@nestjs/common';
-import { LoyaltyLedgerEntryType, LoyaltyRedemptionStatus, LoyaltyRewardType } from '@prisma/client';
+import { randomInt } from 'node:crypto';
+
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  LoyaltyLedgerEntryType,
+  LoyaltyRedemptionStatus,
+  LoyaltyRewardType,
+  Prisma,
+  PromotionStatus,
+  PromotionType,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
@@ -9,7 +18,11 @@ import {
 } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { LOYALTY_AUDIT_ACTIONS, LOYALTY_REFERENCE_TYPES } from './loyalty.constants';
+import {
+  LOYALTY_AUDIT_ACTIONS,
+  LOYALTY_REDEMPTION_CODE_ALPHABET,
+  LOYALTY_REFERENCE_TYPES,
+} from './loyalty.constants';
 
 import type { PaginatedResult } from '@dripplex/types';
 import type { LoyaltyReward, LoyaltyRewardRedemption } from '@prisma/client';
@@ -44,6 +57,10 @@ export interface LoyaltyRewardRedemptionDto {
   pointsSpent: number;
   monetaryValue: number | null;
   status: LoyaltyRedemptionStatus;
+  /** The coupon minted for this redemption, where the reward grants one. The
+   *  code is the part the holder needs — an id they cannot type is no use. */
+  promotionId: string | null;
+  couponCode: string | null;
   expiresAt: string | null;
   fulfilledAt: string | null;
   fulfilmentNote: string | null;
@@ -81,6 +98,8 @@ export interface LoyaltyRewardRedemptionDto {
  */
 @Injectable()
 export class LoyaltyRewardsService {
+  private readonly logger = new Logger(LoyaltyRewardsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
@@ -140,7 +159,7 @@ export class LoyaltyRewardsService {
 
     const existing = await this.prisma.loyaltyRewardRedemption.findUnique({
       where: { userId_idempotencyKey: { userId, idempotencyKey: key } },
-      include: { reward: { select: { name: true } } },
+      include: { reward: { select: { name: true } }, promotion: { select: { code: true } } },
     });
     if (existing) {
       return toRedemptionDto(existing, existing.reward.name);
@@ -219,6 +238,18 @@ export class LoyaltyRewardsService {
       });
 
       const needsFulfilment = NEEDS_FULFILMENT.includes(reward.type);
+      const expiresAt =
+        reward.entitlementDays === null
+          ? null
+          : new Date(now.getTime() + reward.entitlementDays * 24 * 60 * 60 * 1000);
+
+      // DPX-LOYALTY-008 — mint the thing the holder actually paid for.
+      //
+      // In the same transaction as the points debit, deliberately: a coupon
+      // created afterwards could fail and leave somebody who has paid 25,000
+      // points holding nothing, which is exactly the state this fixes.
+      const promotionId = await this.mintCoupon(tx, { reward, userId, expiresAt, now });
+
       return await tx.loyaltyRewardRedemption.create({
         data: {
           rewardId: reward.id,
@@ -232,14 +263,14 @@ export class LoyaltyRewardsService {
             : LoyaltyRedemptionStatus.FULFILLED,
           ledgerEntryId: entry.id,
           idempotencyKey: key,
+          ...(promotionId === null ? {} : { promotionId }),
           ...(needsFulfilment ? {} : { fulfilledAt: now }),
-          ...(reward.entitlementDays === null
-            ? {}
-            : {
-                expiresAt: new Date(now.getTime() + reward.entitlementDays * 24 * 60 * 60 * 1000),
-              }),
+          ...(expiresAt === null ? {} : { expiresAt }),
         },
-        include: { reward: { select: { name: true } } },
+        include: {
+          reward: { select: { name: true } },
+          promotion: { select: { code: true } },
+        },
       });
     });
 
@@ -269,7 +300,7 @@ export class LoyaltyRewardsService {
     const [items, total] = await Promise.all([
       this.prisma.loyaltyRewardRedemption.findMany({
         where: { userId },
-        include: { reward: { select: { name: true } } },
+        include: { reward: { select: { name: true } }, promotion: { select: { code: true } } },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
@@ -342,7 +373,7 @@ export class LoyaltyRewardsService {
   ): Promise<LoyaltyRewardRedemptionDto> {
     const redemption = await this.prisma.loyaltyRewardRedemption.findUnique({
       where: { id: redemptionId },
-      include: { reward: { select: { name: true } } },
+      include: { reward: { select: { name: true } }, promotion: { select: { code: true } } },
     });
     if (redemption === null) {
       throw new NotFoundDomainException('Redemption not found');
@@ -360,7 +391,7 @@ export class LoyaltyRewardsService {
         ...(note === undefined ? {} : { fulfilmentNote: note }),
         ...(status === LoyaltyRedemptionStatus.DELIVERED ? { fulfilledAt: new Date() } : {}),
       },
-      include: { reward: { select: { name: true } } },
+      include: { reward: { select: { name: true } }, promotion: { select: { code: true } } },
     });
 
     await this.auditService.record(
@@ -374,6 +405,98 @@ export class LoyaltyRewardsService {
     );
 
     return toRedemptionDto(updated, updated.reward.name);
+  }
+
+  /**
+   * DPX-LOYALTY-008 — turn a redeemed coupon reward into a coupon that works.
+   *
+   * `promotion_id` has been on the redemption row since the catalogue shipped
+   * and nothing ever wrote it, so somebody who spent 25,000 DX Points on a
+   * "₦500 coupon" received a record of the purchase and no way to spend it.
+   *
+   * Returns null — mints nothing — for every reward that is not a discount
+   * coupon, and for one that names no domains. Both are correct silences: a
+   * physical gift is posted rather than spent, and a reward whose scope nobody
+   * has stated must not be given one by this code.
+   *
+   * The minted promotion is locked to the holder three ways over, because a
+   * coupon bought with somebody's own points is not a campaign:
+   *
+   * - `rules.whitelistUserIds` is the holder alone, so no one else's basket
+   *   can match it even with the code.
+   * - `perUserLimit` and `usageLimit` are both 1, so it is spent once whatever
+   *   happens.
+   * - It carries no `merchantId`, because DrippleX funds it — the points were
+   *   paid to DrippleX, not to the shop that happens to accept it.
+   */
+  private async mintCoupon(
+    tx: Prisma.TransactionClient,
+    input: { reward: LoyaltyReward; userId: string; expiresAt: Date | null; now: Date },
+  ): Promise<string | null> {
+    const { reward, userId, expiresAt, now } = input;
+    if (reward.type !== LoyaltyRewardType.DISCOUNT_COUPON) {
+      return null;
+    }
+    if (reward.domains.length === 0) {
+      return null;
+    }
+
+    const percentOff = reward.discountPercentage;
+    const amountOff = reward.monetaryValue;
+    if (percentOff === null && amountOff === null) {
+      // A coupon reward with neither a percentage nor an amount is a
+      // misconfiguration, not a free coupon. Minting an empty promotion would
+      // hand somebody a code that silently takes nothing off.
+      this.logger.error(
+        `Loyalty reward ${reward.id} is a DISCOUNT_COUPON with no value; no coupon was minted.`,
+      );
+      return null;
+    }
+
+    const promotion = await tx.promotion.create({
+      data: {
+        code: this.couponCode(),
+        name: reward.name,
+        type: percentOff === null ? PromotionType.FIXED : PromotionType.PERCENTAGE,
+        status: PromotionStatus.ACTIVE,
+        domains: reward.domains,
+        ...(percentOff === null ? {} : { percentOff }),
+        ...(amountOff === null || percentOff !== null ? {} : { amountOff }),
+        ...(reward.maxDiscount === null ? {} : { maxDiscount: reward.maxDiscount }),
+        perUserLimit: 1,
+        usageLimit: 1,
+        startsAt: now,
+        ...(expiresAt === null ? {} : { endsAt: expiresAt }),
+        rules: { whitelistUserIds: [userId] },
+        metadata: {
+          source: 'loyalty_reward',
+          rewardId: reward.id,
+          pointsSpent: reward.pointsCost,
+        },
+      },
+      select: { id: true },
+    });
+
+    return promotion.id;
+  }
+
+  /**
+   * A code for a minted coupon.
+   *
+   * The same alphabet the counter codes use — no O/0, I/1 or S/5 — because a
+   * customer reads this one out too. Collision is handled by the unique index
+   * rather than by checking first: at 10 characters from 31 symbols a clash is
+   * vanishingly unlikely, and a failed insert rolls the whole redemption back
+   * rather than issuing a duplicate.
+   */
+  private couponCode(): string {
+    let code = 'DX';
+    for (let index = 0; index < 8; index += 1) {
+      code += LOYALTY_REDEMPTION_CODE_ALPHABET.charAt(
+        randomInt(LOYALTY_REDEMPTION_CODE_ALPHABET.length),
+      );
+    }
+    return code;
   }
 
   private unavailableReason(reward: LoyaltyReward, takenByThisUser: number): string | null {
@@ -428,7 +551,7 @@ function toRewardDto(reward: LoyaltyReward): LoyaltyRewardDto {
 }
 
 function toRedemptionDto(
-  redemption: LoyaltyRewardRedemption,
+  redemption: LoyaltyRewardRedemption & { promotion?: { code: string | null } | null },
   rewardName: string,
 ): LoyaltyRewardRedemptionDto {
   return {
@@ -439,6 +562,8 @@ function toRedemptionDto(
     pointsSpent: redemption.pointsSpent,
     monetaryValue: redemption.monetaryValue === null ? null : Number(redemption.monetaryValue),
     status: redemption.status,
+    promotionId: redemption.promotionId,
+    couponCode: redemption.promotion?.code ?? null,
     expiresAt: redemption.expiresAt?.toISOString() ?? null,
     fulfilledAt: redemption.fulfilledAt?.toISOString() ?? null,
     fulfilmentNote: redemption.fulfilmentNote,
