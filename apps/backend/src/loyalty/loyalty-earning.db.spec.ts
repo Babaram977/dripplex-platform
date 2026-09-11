@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
-import { LoyaltyEarnerPersona, LoyaltyLedgerEntryType, PrismaClient } from '@prisma/client';
+import {
+  DriverStatus,
+  LoyaltyEarnerPersona,
+  LoyaltyLedgerEntryType,
+  PrismaClient,
+} from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
@@ -47,13 +52,14 @@ describe('partner DX Points earning', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
+    const settings = new LoyaltySettingsService(prisma, auditService);
     const loyalty = new LoyaltyService(
       prisma,
       auditService,
       new WalletService(prisma, auditService, new DomainEventBus()),
-      new LoyaltySettingsService(prisma, auditService),
+      settings,
     );
-    earning = new LoyaltyEarningService(prisma, auditService, loyalty);
+    earning = new LoyaltyEarningService(prisma, auditService, loyalty, settings);
   });
 
   afterAll(async () => {
@@ -62,6 +68,7 @@ describe('partner DX Points earning', () => {
         where: { account: { userId: { in: createdUserIds } } },
       });
       await prisma.loyaltyAccount.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.driverProfile.deleteMany({ where: { userId: { in: createdUserIds } } });
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     }
     await prisma.$disconnect();
@@ -311,5 +318,64 @@ describe('partner DX Points earning', () => {
       'RIDER',
     ]);
     expect(programmes.every((programme) => !programme.active)).toBe(true);
+  });
+
+  describe('the blast radius shown before switching one on', () => {
+    it('counts the partners a programme would begin paying', async () => {
+      if (!databaseAvailable) return;
+      // Approved drivers only. Somebody still pending approval cannot take a
+      // trip, so counting them would overstate what the switch commits to.
+      const approvedId = await partner();
+      const pendingId = await partner();
+      await prisma.driverProfile.create({
+        data: { userId: approvedId, status: DriverStatus.APPROVED },
+      });
+      await prisma.driverProfile.create({
+        data: { userId: pendingId, status: DriverStatus.PENDING },
+      });
+
+      const impact = await earning.impact();
+      const drivers = impact.find((row) => row.persona === LoyaltyEarnerPersona.DRIVER);
+
+      expect(drivers?.eligiblePartners).toBe(1);
+    });
+
+    it('states the worst case rather than a forecast', async () => {
+      if (!databaseAvailable) return;
+      // A forecast needs assumptions about how many trips a driver does, and an
+      // operator cannot check my assumptions. Everybody hitting their cap needs
+      // none and cannot be exceeded.
+      const driverId = await partner();
+      const adminId = await partner();
+      await prisma.driverProfile.create({
+        data: { userId: driverId, status: DriverStatus.APPROVED },
+      });
+      await earning.update(LoyaltyEarnerPersona.DRIVER, { dailyPointsCap: 2000 }, adminId);
+
+      const impact = await earning.impact();
+      const drivers = impact.find((row) => row.persona === LoyaltyEarnerPersona.DRIVER);
+      if (drivers === undefined) {
+        throw new Error('Every persona has a programme, so this cannot be missing');
+      }
+
+      expect(drivers.worstCaseDailyPoints).toBe(drivers.eligiblePartners * 2000);
+      // 200 points to the naira, so 2,000 points is ₦10 per driver per day.
+      expect(drivers.worstCaseDailyNaira).toBe((drivers.eligiblePartners * 2000) / 200);
+    });
+
+    it('reports no ceiling at all when the programme is uncapped', async () => {
+      if (!databaseAvailable) return;
+      // Null rather than a number, because there is no ceiling to state — and
+      // that absence is exactly what should give an operator pause.
+      const adminId = await partner();
+      await earning.update(LoyaltyEarnerPersona.DRIVER, { dailyPointsCap: null }, adminId);
+
+      const impact = await earning.impact();
+      const drivers = impact.find((row) => row.persona === LoyaltyEarnerPersona.DRIVER);
+
+      expect(drivers?.dailyPointsCap).toBeNull();
+      expect(drivers?.worstCaseDailyPoints).toBeNull();
+      expect(drivers?.worstCaseDailyNaira).toBeNull();
+    });
   });
 });

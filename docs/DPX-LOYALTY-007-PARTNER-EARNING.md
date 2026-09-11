@@ -96,12 +96,62 @@ applied. Both are now confirmed against the real text.
 
 ## 5. Still open
 
-- **No Ops console screen.** `GET`/`PATCH /admin/loyalty/earning-programmes` exist; nothing surfaces
-  them. This is the screen that most needs a blast-radius warning — switching DRIVER on starts
-  paying every driver on the platform on their next trip.
+- ~~No Ops console screen.~~ **Shipped** — `/loyalty/earning`. See §6.
 - **No per-campaign merchant gating.** "Where a campaign permits" is implemented as the merchant
   programme switch rather than as a link to a specific `Promotion`. If a campaign should carry its
   own points rule, that is a further step.
 - **Partner points expire on the customer clock** (365 days) and are spendable through the same
   cash-out and in-store paths. Nothing in the policy says a partner's points should behave
   differently, so they do not.
+
+---
+
+## 6. The Operations screen
+
+`/loyalty/earning`, under **Money** in the console — because switching one of these on is a
+commitment to pay people, not a marketing setting.
+
+The form is the easy part. The point of the screen is that **switching DRIVER on starts paying every
+approved driver on the platform on their next trip**, and this is the only place anybody is in a
+position to realise it. So:
+
+- **The blast radius is on screen before the switch is reachable.** Each card states how many
+  eligible partners the programme would begin paying — approved drivers, approved riders, verified
+  merchants, active fleets, not everyone registered.
+- **Switching on asks a second time**, and the confirmation carries the number: _"this starts paying
+  N approved drivers on their next job… at the daily cap, at most ₦X a day."_
+- **Switching off does not ask.** It is not the dangerous direction: it stops future earning and
+  takes nothing already earned. Making both directions equally effortful trains people to click
+  through the one that matters.
+
+**The worst case, not a forecast.** A forecast needs assumptions about how many trips a driver does
+in a day, and an operator cannot check my assumptions. Every eligible partner hitting their cap on
+the same day needs none and cannot be exceeded, which makes it the one figure safe to put beside a
+switch.
+
+**An uncapped programme shows no number at all**, and says so: _"there is no daily cap, so there is
+no ceiling on what this can cost."_ The absence is the warning rather than a gap in the screen.
+
+**Points are always shown with their naira value.** "20 points" means nothing on its own; "20 points
+(10 kobo)" is a decision somebody can make. The rate comes from the live loyalty setting, so the
+screen follows a re-pricing rather than quoting a stale 200:1.
+
+**The founder's review rule is printed where it matters** — beside the review points field, because
+that is exactly where somebody might otherwise assume points and stars are the same dial.
+
+### Also shipped to reach it
+
+- `GET /admin/loyalty/earning-programmes/impact` — the counts and ceilings above.
+- `AdminLoyaltyClient` in the SDK. There was no admin loyalty client at all, so it also picks up the
+  settings read/write from DPX-LOYALTY-005 and the manual adjustment from DPX-LOYALTY-006, which
+  were endpoints nothing could call.
+
+### Still open on the screen
+
+- **No naira estimate for the review points**, only for the job points and the cap. Reviews are far
+  harder to bound — they depend on how many customers bother to rate — and a number I cannot stand
+  behind is worse than none.
+- **No history of who switched what on.** Every change is audited server-side; the screen does not
+  show it.
+- **Still no screen for the loyalty settings or manual adjustments** (DPX-LOYALTY-005 / 006), though
+  the SDK now reaches both.

@@ -54,6 +54,7 @@ import { OrderClient } from '../order/order-client.js';
 import { PaymentClient } from '../payment/payment-client.js';
 import {
   AdminDriverCampaignClient,
+  AdminLoyaltyClient,
   AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,
@@ -163,6 +164,7 @@ export class DripplexClient {
   public readonly driverCampaign: DriverCampaignClient;
   public readonly adminDriverCampaign: AdminDriverCampaignClient;
   public readonly loyalty: LoyaltyClient;
+  public readonly adminLoyalty: AdminLoyaltyClient;
   public readonly merchantLoyalty: MerchantLoyaltyClient;
   public readonly wallet: WalletClient;
   public readonly adminWallet: AdminWalletClient;
@@ -249,6 +251,7 @@ export class DripplexClient {
     this.driverCampaign = new DriverCampaignClient(this.http);
     this.adminDriverCampaign = new AdminDriverCampaignClient(this.http);
     this.loyalty = new LoyaltyClient(this.http);
+    this.adminLoyalty = new AdminLoyaltyClient(this.http);
     this.merchantLoyalty = new MerchantLoyaltyClient(this.http);
     this.wallet = new WalletClient(this.http);
     this.adminWallet = new AdminWalletClient(this.http);
@@ -287,6 +290,7 @@ export { CustomerSosAlertClient } from '../rides/customer-sos-alert-client.js';
 export { UploadsClient } from '../uploads/uploads-client.js';
 export {
   AdminDriverCampaignClient,
+  AdminLoyaltyClient,
   AdminPromotionsClient,
   AdminReferralsClient,
   AdminWalletClient,

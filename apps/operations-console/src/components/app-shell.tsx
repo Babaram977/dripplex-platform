@@ -64,6 +64,9 @@ const NAV: NavEntry[] = [
       // converting, the other is the referrals nobody has decided about.
       { href: '/referrals/review', label: 'Referral Review Queue' },
       { href: '/referrals/programmes', label: 'Referral Programmes' },
+      // DPX-LOYALTY-007 — under Money because switching one of these on is a
+      // commitment to pay people, not a marketing setting.
+      { href: '/loyalty/earning', label: 'DX Points Earning' },
     ],
   },
   { href: '/utilities', label: 'Bill Payments' },

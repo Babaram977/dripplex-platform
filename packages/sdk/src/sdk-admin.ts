@@ -40,6 +40,9 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     operationsStaff: client.operationsStaff,
     operationsAnalytics: client.operationsAnalytics,
     adminPromotions: client.adminPromotions,
+    /** DPX-LOYALTY-005 / 007 — the Operations side of DX Points: partner
+     *  earning programmes, the conversion terms, and manual adjustments. */
+    adminLoyalty: client.adminLoyalty,
     analytics: client.analytics,
     notifications: client.notifications,
     promotions: client.promotions,
@@ -85,6 +88,7 @@ export interface AdminSdk {
   operationsStaff: DripplexClient['operationsStaff'];
   operationsAnalytics: DripplexClient['operationsAnalytics'];
   adminPromotions: DripplexClient['adminPromotions'];
+  adminLoyalty: DripplexClient['adminLoyalty'];
   analytics: DripplexClient['analytics'];
   notifications: DripplexClient['notifications'];
   promotions: DripplexClient['promotions'];

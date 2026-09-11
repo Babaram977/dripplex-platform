@@ -1717,3 +1717,48 @@ export interface UpdateReferralProgrammeRequest {
   requireKycVerified?: boolean;
   active?: boolean;
 }
+
+/** DPX-LOYALTY-007 — who can earn DX Points besides a customer. */
+export type LoyaltyEarnerPersona = 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+/** Whether a partner persona earns DX Points, and for what. Every programme
+ *  starts switched off. */
+export interface LoyaltyEarningProgrammeDto {
+  persona: LoyaltyEarnerPersona;
+  active: boolean;
+  pointsPerCompletedJob: number;
+  /** Founder decision: a review boosts points and never the star rating. */
+  pointsPerQualifyingReview: number;
+  minReviewRating: number;
+  /** Per person, rolling 24 hours. Null is uncapped. */
+  dailyPointsCap: number | null;
+  updatedAt: string;
+}
+
+/**
+ * What switching a programme on would commit DrippleX to.
+ *
+ * A worst case, not a forecast: everybody hitting their cap on the same day.
+ * A forecast would need assumptions about how much work a partner does, and
+ * whoever reads this cannot check those assumptions.
+ */
+export interface LoyaltyEarningImpactDto {
+  persona: LoyaltyEarnerPersona;
+  /** Partners this would begin paying — approved, verified, active. Not
+   *  everyone registered. */
+  eligiblePartners: number;
+  dailyPointsCap: number | null;
+  /** Null when uncapped: there is no ceiling to state, and that absence is the
+   *  thing worth seeing. */
+  worstCaseDailyPoints: number | null;
+  worstCaseDailyNaira: number | null;
+  pointsPerNaira: number;
+}
+
+export interface UpdateLoyaltyEarningProgrammeRequest {
+  active?: boolean;
+  pointsPerCompletedJob?: number;
+  pointsPerQualifyingReview?: number;
+  minReviewRating?: number;
+  dailyPointsCap?: number | null;
+}

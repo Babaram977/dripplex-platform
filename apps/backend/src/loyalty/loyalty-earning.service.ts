@@ -1,14 +1,47 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LoyaltyEarnerPersona, LoyaltyLedgerEntryType } from '@prisma/client';
+import {
+  BusinessVerificationStatus,
+  DriverStatus,
+  FleetStatus,
+  LoyaltyEarnerPersona,
+  LoyaltyLedgerEntryType,
+  RiderStatus,
+} from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import { ValidationDomainException } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LOYALTY_AUDIT_ACTIONS } from './loyalty.constants';
 import { LoyaltyService } from './loyalty.service';
 
 import type { LoyaltyEarningProgramme } from '@prisma/client';
+
+/**
+ * What switching a programme on would commit DrippleX to.
+ *
+ * The reason this exists: turning DRIVER on starts paying every approved driver
+ * on the platform on their next trip. An operator deserves to see that number
+ * before they see the confirmation button, not after the first invoice.
+ */
+export interface LoyaltyEarningImpactDto {
+  persona: LoyaltyEarnerPersona;
+  /** Partners this would begin paying — approved drivers, approved riders,
+   *  verified merchants, active fleets. Not everyone registered. */
+  eligiblePartners: number;
+  /** The per-person daily ceiling, or null when uncapped. */
+  dailyPointsCap: number | null;
+  /**
+   * Every eligible partner hitting their cap on the same day. Null when the cap
+   * is null, because then there is no ceiling to state and a number would imply
+   * one — that is itself the thing worth seeing.
+   */
+  worstCaseDailyPoints: number | null;
+  /** The same figure in naira at the current conversion rate. */
+  worstCaseDailyNaira: number | null;
+  pointsPerNaira: number;
+}
 
 export interface LoyaltyEarningProgrammeDto {
   persona: LoyaltyEarnerPersona;
@@ -46,7 +79,58 @@ export class LoyaltyEarningService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly loyalty: LoyaltyService,
+    private readonly settings: LoyaltySettingsService,
   ) {}
+
+  /**
+   * What switching each programme on would commit DrippleX to.
+   *
+   * Stated as a worst case rather than a forecast, deliberately: a forecast
+   * needs assumptions about how many trips a driver does, and an operator
+   * cannot check my assumptions. Everybody hitting their cap is a number that
+   * needs no assumptions and cannot be exceeded, which makes it the one figure
+   * that is safe to put next to a switch.
+   *
+   * An uncapped programme reports null rather than a number, because there is
+   * no ceiling to state — and that absence is exactly what should give an
+   * operator pause before switching it on.
+   */
+  public async impact(): Promise<LoyaltyEarningImpactDto[]> {
+    const [programmes, setting, drivers, riders, merchants, fleets] = await Promise.all([
+      this.prisma.loyaltyEarningProgramme.findMany({ orderBy: { persona: 'asc' } }),
+      this.settings.getEffective(),
+      this.prisma.driverProfile.count({
+        where: { status: DriverStatus.APPROVED, deletedAt: null },
+      }),
+      this.prisma.riderProfile.count({ where: { status: RiderStatus.APPROVED, deletedAt: null } }),
+      this.prisma.business.count({
+        where: { verificationStatus: BusinessVerificationStatus.VERIFIED },
+      }),
+      this.prisma.fleet.count({ where: { status: FleetStatus.ACTIVE, deletedAt: null } }),
+    ]);
+
+    const counts: Record<LoyaltyEarnerPersona, number> = {
+      [LoyaltyEarnerPersona.DRIVER]: drivers,
+      [LoyaltyEarnerPersona.RIDER]: riders,
+      [LoyaltyEarnerPersona.MERCHANT]: merchants,
+      [LoyaltyEarnerPersona.FLEET_OWNER]: fleets,
+    };
+
+    return programmes.map((programme) => {
+      const eligiblePartners = counts[programme.persona];
+      const worstCaseDailyPoints =
+        programme.dailyPointsCap === null ? null : eligiblePartners * programme.dailyPointsCap;
+      return {
+        persona: programme.persona,
+        eligiblePartners,
+        dailyPointsCap: programme.dailyPointsCap,
+        worstCaseDailyPoints,
+        worstCaseDailyNaira:
+          worstCaseDailyPoints === null ? null : worstCaseDailyPoints / setting.pointsPerNaira,
+        pointsPerNaira: setting.pointsPerNaira,
+      };
+    });
+  }
 
   public async list(): Promise<LoyaltyEarningProgrammeDto[]> {
     const programmes = await this.prisma.loyaltyEarningProgramme.findMany({

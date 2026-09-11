@@ -39,6 +39,11 @@ import type {
   ListReferralCampaignsQuery,
   ListReferralFraudChecksQuery,
   LoyaltyAccountOverviewDto,
+  LoyaltyEarnerPersona,
+  LoyaltyEarningImpactDto,
+  LoyaltyEarningProgrammeDto,
+  LoyaltySettingDto,
+  UpdateLoyaltyEarningProgrammeRequest,
   LoyaltyLedgerEntryDto,
   MerchantAnalyticsOverviewDto,
   MerchantAnalyticsOverviewQuery,
@@ -741,6 +746,66 @@ export class AdminDriverCampaignClient {
     return this.http.request<ReferralFraudCheckDto>(
       `/admin/referral-campaigns/fraud-checks/${enc(fraudCheckId)}/review`,
       { method: 'POST', body: { status } },
+    );
+  }
+}
+
+/**
+ * DPX-LOYALTY-005 / 007 — the Operations side of DX Points.
+ *
+ * Separate from `LoyaltyClient`, which is a customer looking at their own
+ * balance. Everything here carries `admin:loyalty:manage` and every method
+ * changes, or explains, what the platform pays.
+ */
+export class AdminLoyaltyClient {
+  public constructor(private readonly http: HttpClient) {}
+
+  /** Whether a partner persona earns DX Points, and for what. */
+  public earningProgrammes(): Promise<LoyaltyEarningProgrammeDto[]> {
+    return this.http.request<LoyaltyEarningProgrammeDto[]>('/admin/loyalty/earning-programmes');
+  }
+
+  /**
+   * What switching each programme on would commit DrippleX to.
+   *
+   * Read before offering the switch, not after — turning DRIVER on starts
+   * paying every approved driver on their next trip.
+   */
+  public earningProgrammeImpact(): Promise<LoyaltyEarningImpactDto[]> {
+    return this.http.request<LoyaltyEarningImpactDto[]>('/admin/loyalty/earning-programmes/impact');
+  }
+
+  public updateEarningProgramme(
+    persona: LoyaltyEarnerPersona,
+    body: UpdateLoyaltyEarningProgrammeRequest,
+  ): Promise<LoyaltyEarningProgrammeDto> {
+    return this.http.request<LoyaltyEarningProgrammeDto>(
+      `/admin/loyalty/earning-programmes/${enc(persona)}`,
+      { method: 'PATCH', body },
+    );
+  }
+
+  /** The terms on which DX Points convert — the rate, the cash-out switch, the
+   *  in-store switch, the daily cap. */
+  public settings(): Promise<LoyaltySettingDto> {
+    return this.http.request<LoyaltySettingDto>('/admin/loyalty/settings');
+  }
+
+  public updateSettings(body: Partial<LoyaltySettingDto>): Promise<LoyaltySettingDto> {
+    return this.http.request<LoyaltySettingDto>('/admin/loyalty/settings', {
+      method: 'PATCH',
+      body,
+    });
+  }
+
+  /** Move a holder's balance by hand. Always with a reason. */
+  public adjustPoints(
+    userId: string,
+    body: { points: number; reason: string },
+  ): Promise<{ applied: number; balance: number }> {
+    return this.http.request<{ applied: number; balance: number }>(
+      `/admin/loyalty/accounts/${enc(userId)}/adjust`,
+      { method: 'POST', body },
     );
   }
 }

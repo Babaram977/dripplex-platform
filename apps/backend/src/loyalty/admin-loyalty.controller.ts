@@ -20,7 +20,11 @@ import {
   UpdateLoyaltyEarningProgrammeDto,
   UpdateLoyaltySettingDto,
 } from './dto/loyalty.dto';
-import { LoyaltyEarningService, type LoyaltyEarningProgrammeDto } from './loyalty-earning.service';
+import {
+  LoyaltyEarningService,
+  type LoyaltyEarningImpactDto,
+  type LoyaltyEarningProgrammeDto,
+} from './loyalty-earning.service';
 import { LoyaltySettingsService, type LoyaltySettingDto } from './loyalty-settings.service';
 import { LOYALTY_PERMISSIONS } from './loyalty.constants';
 import {
@@ -52,6 +56,20 @@ export class AdminLoyaltyController {
   @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
   public async listEarningProgrammes(): Promise<ApiSuccessResponse<LoyaltyEarningProgrammeDto[]>> {
     const data = await this.earning.list();
+    return { success: true, data };
+  }
+
+  /**
+   * What switching each programme on would commit DrippleX to.
+   *
+   * Served beside the programmes rather than folded into them: an operator
+   * about to switch DRIVER on is asking a different question from one adjusting
+   * a point size, and the answer is expensive enough to count separately.
+   */
+  @Get('earning-programmes/impact')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async earningProgrammeImpact(): Promise<ApiSuccessResponse<LoyaltyEarningImpactDto[]>> {
+    const data = await this.earning.impact();
     return { success: true, data };
   }
 
