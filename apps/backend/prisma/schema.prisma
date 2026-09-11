@@ -2231,8 +2231,24 @@ model DriverTierSetting {
   id   String     @id @default(uuid()) @db.Uuid
   tier DriverTier @unique
 
-  /// Fraction, not percent: 0.095 is 9.5%.
-  commissionRate Decimal @map("commission_rate") @db.Decimal(5, 4)
+  /// How much this tier takes **off** the commission rate in force — a
+  /// reduction, not a rate.
+  ///
+  /// Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4. The
+  /// alternative was an absolute rate per tier, which would have made
+  /// `PlatformCommissionSetting` silently dead for rides: an operator could
+  /// move the platform rate from 10% to 20% and nothing would happen, because
+  /// the tier table said 10%. Two live controls over one figure with one
+  /// quietly ignored is not something to have in settled money.
+  ///
+  /// As a reduction both controls stay live and compose: the platform rate (or
+  /// a commission campaign overriding it) sets what everyone pays, and a
+  /// driver's earned tier takes their own points off that. At today's 10% the
+  /// seeded 0 / 0.005 / 0.010 / 0.015 reproduces the specified 10 / 9.5 / 9 /
+  /// 8.5 exactly.
+  ///
+  /// Fraction, not percent: 0.005 is half a percentage point.
+  commissionReduction Decimal @map("commission_reduction") @db.Decimal(5, 4)
 
   minCompletedTrips Int     @map("min_completed_trips")
   minRatedTrips     Int     @map("min_rated_trips")
@@ -2242,8 +2258,8 @@ model DriverTierSetting {
   /// Null leaves the quality gate unenforced for this tier.
   maxCancellationRate Decimal? @map("max_cancellation_rate") @db.Decimal(5, 4)
 
-  /// Ops can retire a tier without deleting it — a tier that once set a rate on
-  /// a settled ride has to stay explicable.
+  /// Ops can retire a tier without deleting it — a tier that once moved the
+  /// rate on a settled ride has to stay explicable.
   active Boolean @default(true)
 
   updatedBy String?  @map("updated_by") @db.Uuid

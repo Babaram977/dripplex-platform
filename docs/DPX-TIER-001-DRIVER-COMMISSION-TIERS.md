@@ -94,7 +94,14 @@ should mean — see below.
 
 ---
 
-## 4. ⚠ Conflict — reported, not resolved
+## 4. ✅ Conflict — resolved
+
+**Founder decision, 2026-09-11: Option B.** A tier is a reduction off the commission rate in force,
+not a rate of its own. Shipped as DPX-TIER-002 — see
+`docs/DPX-TIER-002-DRIVER-TIER-REDUCTIONS.md`. The rest of this section is the conflict as it was
+reported, kept because it is why the answer is what it is.
+
+### The conflict as reported
 
 **The specification gives each tier an absolute commission rate. DrippleX already has a second
 Ops-configurable control over the same number.**
@@ -125,3 +132,5 @@ editing whenever the platform rate moves.
 
 Say which, and wiring it into settlement is a small change: the engine, the configuration surface,
 the snapshot column and the tests are all in place.
+
+**Answered: B.**

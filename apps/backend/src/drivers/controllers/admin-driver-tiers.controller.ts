@@ -42,7 +42,9 @@ export class AdminDriverTiersController {
     const data = await this.tiers.updateSetting(
       tier,
       {
-        ...(dto.commissionRate !== undefined ? { commissionRate: dto.commissionRate } : {}),
+        ...(dto.commissionReduction !== undefined
+          ? { commissionReduction: dto.commissionReduction }
+          : {}),
         ...(dto.minCompletedTrips !== undefined
           ? { minCompletedTrips: dto.minCompletedTrips }
           : {}),

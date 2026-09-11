@@ -6,13 +6,17 @@ function toNumber(value: unknown): unknown {
 }
 
 export class UpdateDriverTierSettingDto {
-  /** Fraction, not percent — 0.095 is 9.5%, matching the Decimal(5,4) column. */
+  /**
+   * How much this tier takes **off** the commission rate in force — a
+   * reduction, not a rate. Fraction, not percent: 0.005 takes half a percentage
+   * point off, matching the Decimal(5,4) column.
+   */
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => toNumber(value))
   @IsNumber()
   @Min(0)
   @Max(0.9999)
-  public commissionRate?: number;
+  public commissionReduction?: number;
 
   @IsOptional()
   @Transform(({ value }: { value: unknown }) => toNumber(value))

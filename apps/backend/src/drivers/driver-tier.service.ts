@@ -25,8 +25,12 @@ export interface DriverTierStanding {
    * status they have not reached.
    */
   tier: DriverTier | null;
-  /** Null alongside a null tier: the caller falls back to the platform rate. */
-  commissionRate: number | null;
+  /**
+   * What this driver's tier takes off the commission rate in force, as a
+   * fraction. Null alongside a null tier: nothing is taken off, and the driver
+   * pays the rate everyone pays.
+   */
+  commissionReduction: number | null;
   completedTrips: number;
   ratedTrips: number;
   /** Null when nobody has rated this driver yet — not zero, which would read as "rated badly". */
@@ -35,7 +39,7 @@ export interface DriverTierStanding {
   /** What the driver still needs for the next tier up, or null at the top. */
   nextTier: {
     tier: DriverTier;
-    commissionRate: number;
+    commissionReduction: number;
     tripsToGo: number;
     ratedTripsToGo: number;
     ratingRequired: number;
@@ -44,7 +48,7 @@ export interface DriverTierStanding {
 
 export interface DriverTierSettingDto {
   tier: DriverTier;
-  commissionRate: number;
+  commissionReduction: number;
   minCompletedTrips: number;
   minRatedTrips: number;
   minAverageRating: number;
@@ -95,7 +99,7 @@ export class DriverTierService {
   public async updateSetting(
     tier: DriverTier,
     input: {
-      commissionRate?: number;
+      commissionReduction?: number;
       minCompletedTrips?: number;
       minRatedTrips?: number;
       minAverageRating?: number;
@@ -105,14 +109,14 @@ export class DriverTierService {
     adminUserId: string,
     context: AuditContext = {},
   ): Promise<DriverTierSettingDto> {
-    if (input.commissionRate !== undefined) {
+    if (input.commissionReduction !== undefined) {
       if (
-        !Number.isFinite(input.commissionRate) ||
-        input.commissionRate < 0 ||
-        input.commissionRate >= 1
+        !Number.isFinite(input.commissionReduction) ||
+        input.commissionReduction < 0 ||
+        input.commissionReduction >= 1
       ) {
         throw new ValidationDomainException(
-          `Rate must be a fraction between 0 and 1 — 0.095 for 9.5%. Got ${String(input.commissionRate)}`,
+          `A tier reduction is a fraction between 0 and 1 — 0.005 takes half a percentage point off. Got ${String(input.commissionReduction)}`,
         );
       }
     }
@@ -126,8 +130,8 @@ export class DriverTierService {
     const updated = await this.prisma.driverTierSetting.update({
       where: { tier },
       data: {
-        ...(input.commissionRate !== undefined
-          ? { commissionRate: new Prisma.Decimal(input.commissionRate) }
+        ...(input.commissionReduction !== undefined
+          ? { commissionReduction: new Prisma.Decimal(input.commissionReduction) }
           : {}),
         ...(input.minCompletedTrips !== undefined
           ? { minCompletedTrips: input.minCompletedTrips }
@@ -157,8 +161,8 @@ export class DriverTierService {
         resourceId: updated.id,
         metadata: {
           tier,
-          previousRate: before === null ? null : Number(before.commissionRate),
-          newRate: Number(updated.commissionRate),
+          previousReduction: before === null ? null : Number(before.commissionReduction),
+          newReduction: Number(updated.commissionReduction),
         },
       },
     );
@@ -209,7 +213,7 @@ export class DriverTierService {
 
     return {
       tier: earned?.tier ?? null,
-      commissionRate: earned === undefined ? null : Number(earned.commissionRate),
+      commissionReduction: earned === undefined ? null : Number(earned.commissionReduction),
       completedTrips,
       ratedTrips,
       averageRating,
@@ -219,20 +223,35 @@ export class DriverTierService {
   }
 
   /**
-   * The rate this driver's tier sets, or null when they have not earned one and
-   * the caller should use the platform rate.
+   * What this driver's tier takes off the rate in force, or null when they have
+   * not earned a tier and nothing comes off.
    */
-  public async commissionRateFor(
+  public async commissionReductionFor(
     driverId: string,
-  ): Promise<{ rate: number; tier: DriverTier } | null> {
+  ): Promise<{ reduction: number; tier: DriverTier } | null> {
     const standing = await this.standingFor(driverId);
     if (standing === null) {
       return null;
     }
-    if (standing.tier === null || standing.commissionRate === null) {
+    if (standing.tier === null || standing.commissionReduction === null) {
       return null;
     }
-    return { rate: standing.commissionRate, tier: standing.tier };
+    return { reduction: standing.commissionReduction, tier: standing.tier };
+  }
+
+  /**
+   * The rate a driver actually pays: what everyone pays, less what they have
+   * earned off it.
+   *
+   * Floored at zero. A misconfigured reduction larger than the rate in force
+   * would otherwise pay the driver a commission, which is not a discount — it
+   * is DrippleX paying for the privilege of dispatching the trip.
+   */
+  public static applyReduction(rateInForce: number, reduction: number | null): number {
+    if (reduction === null) {
+      return rateInForce;
+    }
+    return Math.max(0, rateInForce - reduction);
   }
 
   private qualifies(
@@ -284,7 +303,7 @@ export class DriverTierService {
 
     return {
       tier: next.tier,
-      commissionRate: Number(next.commissionRate),
+      commissionReduction: Number(next.commissionReduction),
       tripsToGo: Math.max(0, next.minCompletedTrips - completedTrips),
       ratedTripsToGo: Math.max(0, next.minRatedTrips - ratedTrips),
       ratingRequired: Number(next.minAverageRating),
@@ -301,7 +320,7 @@ function byTierOrder(a: DriverTierSetting, b: DriverTierSetting): number {
 function toDto(setting: DriverTierSetting): DriverTierSettingDto {
   return {
     tier: setting.tier,
-    commissionRate: Number(setting.commissionRate),
+    commissionReduction: Number(setting.commissionReduction),
     minCompletedTrips: setting.minCompletedTrips,
     minRatedTrips: setting.minRatedTrips,
     minAverageRating: Number(setting.minAverageRating),

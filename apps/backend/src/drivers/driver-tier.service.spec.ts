@@ -161,7 +161,7 @@ describe('DriverTierService', () => {
     // tier is earned rather than issued. A null tier means the platform rate
     // applies — what they were charged before tiers existed.
     expect(standing?.tier).toBeNull();
-    expect(standing?.commissionRate).toBeNull();
+    expect(standing?.commissionReduction).toBeNull();
     // Not zero: nobody has rated them, which is not the same as rating them badly.
     expect(standing?.averageRating).toBeNull();
     expect(standing?.nextTier?.tier).toBe(DriverTier.STANDARD);
@@ -175,7 +175,7 @@ describe('DriverTierService', () => {
     const standing = await service.standingFor(driverId);
 
     expect(standing?.tier).toBe(DriverTier.STANDARD);
-    expect(standing?.commissionRate).toBe(0.1);
+    expect(standing?.commissionReduction).toBe(0);
   });
 
   it('will not promote on trips alone', async () => {
@@ -213,7 +213,7 @@ describe('DriverTierService', () => {
     const standing = await service.standingFor(driverId);
 
     expect(standing?.tier).toBe(DriverTier.SILVER);
-    expect(standing?.commissionRate).toBe(0.095);
+    expect(standing?.commissionReduction).toBe(0.005);
   });
 
   it('holds a driver at the tier their rating actually clears', async () => {
@@ -248,7 +248,7 @@ describe('DriverTierService', () => {
     const standing = await service.standingFor(driverId);
 
     expect(standing?.tier).toBe(DriverTier.PLATINUM);
-    expect(standing?.commissionRate).toBe(0.085);
+    expect(standing?.commissionReduction).toBe(0.015);
     expect(standing?.nextTier).toBeNull();
   }, 30_000);
 
@@ -338,7 +338,52 @@ describe('DriverTierService', () => {
     if (!databaseAvailable) return;
 
     await expect(
-      service.updateSetting(DriverTier.GOLD, { commissionRate: 9 }, customerId),
+      service.updateSetting(DriverTier.GOLD, { commissionReduction: 9 }, customerId),
     ).rejects.toThrow('fraction between 0 and 1');
+  });
+});
+
+/**
+ * DPX-TIER-002 — a tier is a reduction off the rate in force, not a rate.
+ *
+ * Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4. These are unit
+ * tests on the one pure function that does the arithmetic, because what they
+ * assert is arithmetic: the composition rule, and the floor.
+ */
+describe('DriverTierService.applyReduction', () => {
+  it('reproduces the specified table at the platform rate it was written for', () => {
+    // Nora's specification: STANDARD 10%, SILVER 9.5%, GOLD 9%, PLATINUM 8.5%.
+    // The seeded reductions reproduce it exactly at today's 10%.
+    expect(DriverTierService.applyReduction(0.1, 0)).toBeCloseTo(0.1, 10);
+    expect(DriverTierService.applyReduction(0.1, 0.005)).toBeCloseTo(0.095, 10);
+    expect(DriverTierService.applyReduction(0.1, 0.01)).toBeCloseTo(0.09, 10);
+    expect(DriverTierService.applyReduction(0.1, 0.015)).toBeCloseTo(0.085, 10);
+  });
+
+  it('keeps the platform control live — the whole reason Option B was chosen', () => {
+    // The absolute-rate alternative would have made PlatformCommissionSetting
+    // silently dead for rides: an operator moves the platform rate and nothing
+    // happens, because the tier table already said 10%. Here it moves.
+    expect(DriverTierService.applyReduction(0.2, 0.015)).toBeCloseTo(0.185, 10);
+    expect(DriverTierService.applyReduction(0.05, 0.015)).toBeCloseTo(0.035, 10);
+  });
+
+  it('composes with a commission campaign rather than replacing it', () => {
+    // A driver who has earned a point and a half off keeps it during a
+    // promotional week too — which is what having earned it means.
+    expect(DriverTierService.applyReduction(0.07, 0.015)).toBeCloseTo(0.055, 10);
+  });
+
+  it('charges the rate in force when no tier has been earned', () => {
+    // Exactly what every driver paid before tiers existed. No money moves for
+    // a driver below the first threshold.
+    expect(DriverTierService.applyReduction(0.1, null)).toBe(0.1);
+  });
+
+  it('never turns a commission into a payment', () => {
+    // A misconfigured reduction larger than the rate in force would otherwise
+    // mean DrippleX paying for the privilege of dispatching the trip.
+    expect(DriverTierService.applyReduction(0.01, 0.015)).toBe(0);
+    expect(DriverTierService.applyReduction(0, 0.015)).toBe(0);
   });
 });

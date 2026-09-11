@@ -252,27 +252,8 @@ export class RidePaymentService {
       if (membership !== null) return { rate: 0, campaignId: null, tier: null };
     }
 
-    // DPX-TIER-001 — the driver's earned tier is recorded on the ride, but it
-    // does NOT yet set the rate.
-    //
-    // Nora's specification gives each tier an absolute commission rate
-    // (STANDARD 10%, SILVER 9.5%, GOLD 9%, PLATINUM 8.5%). DrippleX already has
-    // a second Ops-configurable control over the same number — the standing
-    // PlatformCommissionSetting — and letting the tier table set the rate makes
-    // that one silently dead for rides: an operator could change the platform
-    // rate and nothing would move. Two live controls over one figure, one of
-    // them quietly ignored, is not something to introduce into settled money on
-    // an assumption. Reported for a decision; see docs/DPX-TIER-001.
-    //
-    // Until then the platform rate governs, exactly as it did before, and the
-    // tier is captured alongside it so no history is lost while the question is
-    // open.
-    const standing =
-      ride.driverId === null ? null : await this.driverTiers.commissionRateFor(ride.driverId);
-
-    // DPX-COMMISSION-001 — a campaign can override that standing rate for a
-    // window, under conditions. The resolved rate is snapshotted onto the ride
-    // exactly as before, now alongside the tier and campaign that produced it.
+    // DPX-COMMISSION-001 — the standing platform rate, or a campaign overriding
+    // it for a window under conditions. This is what everyone pays.
     const resolved = await this.commissionRates.resolve(
       CommissionScope.RIDE,
       await this.platformCommissionSettings.getEffectiveRate(),
@@ -282,8 +263,26 @@ export class RidePaymentService {
         ...(ride.paymentMethod === null ? {} : { paymentMethod: ride.paymentMethod }),
       },
     );
+
+    // DPX-TIER-002 — and then the driver's earned tier takes their own points
+    // off it. Founder decision 2026-09-11, Option B of docs/DPX-TIER-001 §4.
+    //
+    // The order is the point. A tier is a *reduction*, so the platform rate and
+    // any campaign stay the live controls over what rides cost, and the tier
+    // composes with whatever they decide rather than replacing it. A driver who
+    // has earned half a point off keeps that half point during a promotional
+    // week as well as an ordinary one — which is what having earned it means.
+    //
+    // A driver with no tier yet gets no reduction and pays the rate in force,
+    // exactly as every driver did before tiers existed.
+    const standing =
+      ride.driverId === null ? null : await this.driverTiers.commissionReductionFor(ride.driverId);
+    const rate = DriverTierService.applyReduction(resolved.rate, standing?.reduction ?? null);
+
     return {
-      rate: resolved.rate,
+      // The effective rate, after the reduction — this is what gets snapshotted
+      // onto the ride, because it is what the driver was actually charged.
+      rate,
       campaignId: resolved.campaignId,
       tier: standing?.tier ?? null,
     };
@@ -710,6 +709,19 @@ export class RidePaymentService {
   private async accrueDriverCommissionWithRetry(
     input: Parameters<CommissionAccountService['accrue']>[0],
   ): Promise<void> {
+    // A commission of zero is a real outcome, not a missing one, and there is
+    // nothing to accrue: the driver owes DrippleX nothing for this trip.
+    //
+    // Two supported settings reach it. DPX-COMMISSION-001 allows a campaign at
+    // exactly 0% — "a free week is a real offer and must not be mistaken for
+    // unset" — and DPX-TIER-002 lets an earned reduction take the rate in force
+    // down to zero. The commission ledger refuses a zero accrual by design
+    // (`Amount must be greater than zero`), so without this guard either one
+    // would throw here and leave a cash ride unable to settle at all.
+    if (Number(input.amount) <= 0) {
+      return;
+    }
+
     const maxAttempts = 5;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
