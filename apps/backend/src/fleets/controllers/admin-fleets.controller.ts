@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
@@ -6,6 +6,7 @@ import {
   AddFleetMemberDto,
   CreateFleetDto,
   DeactivateFleetMemberDto,
+  ReconstructFleetCommissionDto,
   RejectFleetDto,
   ReplaceFleetCommissionTiersDto,
   SetFleetNegotiatedRateDto,
@@ -77,17 +78,30 @@ export class AdminFleetsController {
    * counts are gone; the rides and delivery jobs are not, so the months are
    * recomputable from source.
    *
-   * Reporting by default. `?apply=true` writes the recomputed totals back —
+   * Reporting by default. `apply: true` writes the recomputed totals back —
    * never over a settled month, and setting rather than incrementing so
    * re-running it lands on the same number.
+   *
+   * **POST, not GET, even for the reporting form.** The applied form rewrites
+   * `FleetCommissionPeriod` across every fleet, and a GET is safe by
+   * convention — browser prefetch, link unfurling, proxy caches and
+   * retry-on-timeout all rely on that. None of them should be able to start a
+   * platform-wide financial write. Splitting the verb by `apply` would put the
+   * safety back on a query parameter, which is the thing that was wrong.
+   *
+   * Guarded by `ADMIN_COMMISSION_MANAGE` rather than the controller's default
+   * `ADMIN_MANAGE`, matching every other commission route here. Rewriting what
+   * every fleet is billed is not the same privilege as listing fleets.
    */
-  @Get('commission/reconstruction')
+  @Post('commission/reconstruction')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions(FLEET_PERMISSIONS.ADMIN_COMMISSION_MANAGE)
   public async reconstructCommission(
     @CurrentUser() user: AuthenticatedUser,
-    @Query('apply') apply?: string,
+    @Body() dto: ReconstructFleetCommissionDto,
   ): Promise<ApiSuccessResponse<FleetMonthReconstructionDto[]>> {
     const data = await this.backfill.reconstructAll({
-      apply: apply === 'true',
+      apply: dto.apply === true,
       adminUserId: user.id,
       context: { userId: user.id },
     });

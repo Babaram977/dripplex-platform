@@ -3,6 +3,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNumber,
@@ -175,4 +176,27 @@ export class SetFleetNegotiatedRateDto {
   @IsString()
   @MaxLength(500)
   public note?: string;
+}
+
+/**
+ * DPX-AUDIT-001 §3.1 — reconstructing what fleets owe for the months the
+ * broken subscriber never counted.
+ *
+ * `apply` is a body field on a POST rather than a query string on a GET, and
+ * that is the point of it: the applied form rewrites `FleetCommissionPeriod`
+ * rows across every fleet. A GET is safe by convention, and a great deal of
+ * infrastructure trusts that convention — browser prefetch, link unfurling,
+ * proxy caches, retry-on-timeout. None of those should be able to start a
+ * platform-wide financial write.
+ */
+export class ReconstructFleetCommissionDto {
+  /**
+   * Omitted or false reports what each month should have held and writes
+   * nothing. True writes the recomputed totals back — never over a settled
+   * month, and setting rather than incrementing, so a repeat lands on the same
+   * number rather than doubling a fleet's bill.
+   */
+  @IsOptional()
+  @IsBoolean()
+  public apply?: boolean;
 }
