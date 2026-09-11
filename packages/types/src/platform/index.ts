@@ -599,7 +599,39 @@ export interface PromotionLeaderboardEntryDto {
   discountCost: number;
 }
 
-export type ReferralRedemptionStatus = 'PENDING' | 'REWARDED' | 'EXPIRED';
+/**
+ * DPX-REFERRAL-003 — the full lifecycle. `REWARDED` became `PAID`: keeping both
+ * names for "the money moved" means every client that checks only one of them
+ * is wrong, and the one that decides whether to pay again is wrong about money.
+ */
+export type ReferralRedemptionStatus =
+  'PENDING' | 'QUALIFIED' | 'APPROVED' | 'PAID' | 'REJECTED' | 'REVERSED' | 'EXPIRED';
+
+export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET';
+
+export type ReferralRejectionReason =
+  | 'SELF_REFERRAL'
+  | 'RECIPROCAL_RELATIONSHIP'
+  | 'SHARED_DEVICE'
+  | 'SHARED_PHONE'
+  | 'SHARED_EMAIL'
+  | 'SHARED_IDENTITY'
+  | 'OPERATIONS_DECISION';
+
+/** What DrippleX pays for a referral, per kind of referee. Every field is an
+ *  Operations setting rather than a constant. */
+export interface ReferralProgrammeDto {
+  refereeType: ReferralRefereeType;
+  referrerRewardAmount: number;
+  refereeRewardAmount: number;
+  /** Days between a referral qualifying and its reward being paid. Zero pays
+   *  immediately. */
+  holdDays: number;
+  qualificationWindowDays: number;
+  requireKycVerified: boolean;
+  active: boolean;
+  updatedAt: string;
+}
 
 export interface ReferralDto {
   id: string;
@@ -631,7 +663,24 @@ export interface ReferralRedemptionDto {
   referralId: string;
   refereeUserId: string;
   status: ReferralRedemptionStatus;
+  refereeType: ReferralRefereeType;
+  /** Snapshotted when the referral qualified, so re-pricing a programme never
+   *  rewrites what this one was worth. Null until then. */
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  approvedAt: string | null;
+  paidAt: string | null;
+  /** The same instant as `paidAt`, under the name every existing client already
+   *  reads. */
   rewardedAt: string | null;
+  rejectedAt: string | null;
+  reversedAt: string | null;
+  rejectionReason: ReferralRejectionReason | null;
+  /** An abuse signal that fired without refusing the referral. Operations looks
+   *  at these during the hold. */
+  flaggedReason: ReferralRejectionReason | null;
+  expiresAt: string | null;
   createdAt: string;
 }
 

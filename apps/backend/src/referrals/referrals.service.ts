@@ -3,8 +3,7 @@ import {
   Prisma,
   ReferralOwnerType,
   ReferralRedemptionStatus,
-  RideStatus,
-  WalletOwnerType,
+  ReferralRefereeType,
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -12,15 +11,14 @@ import { ConflictDomainException } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
-import { WalletService } from '../wallet/wallet.service';
 
 import { generateReferralCode } from './referral-code.util';
+import { ReferralLifecycleService } from './referral-lifecycle.service';
 import {
   REFERRAL_AUDIT_ACTIONS,
   REFERRAL_CODE_MAX_GENERATION_ATTEMPTS,
   REFERRAL_CODE_PATTERN,
   REFERRAL_REWARD_AMOUNTS,
-  REFERRAL_WALLET_REFERENCE_TYPES,
 } from './referral.constants';
 import {
   toReferralDto,
@@ -40,7 +38,7 @@ export class ReferralsService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly eventBus: DomainEventBus,
-    private readonly walletService: WalletService,
+    private readonly lifecycle: ReferralLifecycleService,
   ) {}
 
   /**
@@ -90,14 +88,32 @@ export class ReferralsService {
 
   public async getStats(userId: string): Promise<ReferralStatsDto> {
     const referral = await this.getOrCreateMyCode(userId);
-    const [total, pending, rewarded] = await Promise.all([
+    const [total, pending, rewarded, programme] = await Promise.all([
       this.prisma.referralRedemption.count({ where: { referralId: referral.id } }),
+      // Everything still working toward its reward, which from the sharer's
+      // side is one thing: a referral that has neither paid nor been refused.
+      // Splitting "waiting on your friend" from "waiting on the hold" on a
+      // sharer's screen would only invite them to chase the difference.
       this.prisma.referralRedemption.count({
-        where: { referralId: referral.id, status: ReferralRedemptionStatus.PENDING },
+        where: {
+          referralId: referral.id,
+          status: {
+            in: [
+              ReferralRedemptionStatus.PENDING,
+              ReferralRedemptionStatus.QUALIFIED,
+              ReferralRedemptionStatus.APPROVED,
+            ],
+          },
+        },
       }),
       this.prisma.referralRedemption.count({
-        where: { referralId: referral.id, status: ReferralRedemptionStatus.REWARDED },
+        where: { referralId: referral.id, status: ReferralRedemptionStatus.PAID },
       }),
+      // Quoted from the customer programme, because that is what a shared code
+      // pays: every referral code on the platform is redeemed at a customer's
+      // registration. A merchant's or a fleet's reward is priced by its own
+      // programme when that referee type becomes redeemable.
+      this.lifecycle.programmeFor(ReferralRefereeType.CUSTOMER),
     ]);
 
     return {
@@ -105,8 +121,14 @@ export class ReferralsService {
       totalRedemptions: total,
       pendingRedemptions: pending,
       rewardedRedemptions: rewarded,
-      refereeRewardAmount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-      referrerRewardAmount: REFERRAL_REWARD_AMOUNTS.REFERRER,
+      refereeRewardAmount:
+        programme === null
+          ? REFERRAL_REWARD_AMOUNTS.REFEREE
+          : Number(programme.refereeRewardAmount),
+      referrerRewardAmount:
+        programme === null
+          ? REFERRAL_REWARD_AMOUNTS.REFERRER
+          : Number(programme.referrerRewardAmount),
     };
   }
 
@@ -138,15 +160,21 @@ export class ReferralsService {
   }
 
   /**
-   * Called from RegistrationService right after a customer account is
-   * created. Never throws — an invalid, unknown, or self-referral code must
-   * not fail registration; it's simply ignored (audited as a skip via the
-   * absence of a created redemption).
+   * Called from RegistrationService right after an account is created. Never
+   * throws — an invalid, unknown, or self-referral code must not fail
+   * registration; it's simply ignored (audited as a skip via the absence of a
+   * created redemption).
+   *
+   * `refereeType` says what the new account is, and therefore which milestone
+   * has to be met and what the referral is worth. It is recorded on the row
+   * rather than derived later, because a customer who opens a shop next year
+   * was still referred as a customer.
    */
   public async tryRedeemAtRegistration(
     refereeUserId: string,
     rawCode: string,
     context: AuditContext,
+    refereeType: ReferralRefereeType = ReferralRefereeType.CUSTOMER,
   ): Promise<void> {
     const code = rawCode.trim().toUpperCase();
     if (!REFERRAL_CODE_PATTERN.test(code)) {
@@ -159,8 +187,23 @@ export class ReferralsService {
         return;
       }
 
+      // A referral with no programme is still recorded. It cannot qualify —
+      // nothing has agreed what it is worth — but throwing away the fact that
+      // one person brought another to DrippleX because a configuration row is
+      // missing loses something that cannot be reconstructed later.
+      const programme = await this.lifecycle.programmeFor(refereeType);
+      const expiresAt =
+        programme === null
+          ? null
+          : new Date(Date.now() + programme.qualificationWindowDays * 24 * 60 * 60 * 1000);
+
       const redemption = await this.prisma.referralRedemption.create({
-        data: { referralId: referral.id, refereeUserId },
+        data: {
+          referralId: referral.id,
+          refereeUserId,
+          refereeType,
+          ...(expiresAt === null ? {} : { expiresAt }),
+        },
       });
 
       await this.auditService.record(
@@ -169,7 +212,7 @@ export class ReferralsService {
         {
           resource: 'referral_redemption',
           resourceId: redemption.id,
-          metadata: { referralId: referral.id, referrerId: referral.userId },
+          metadata: { referralId: referral.id, referrerId: referral.userId, refereeType },
         },
       );
       await this.eventBus.emit(
@@ -187,86 +230,23 @@ export class ReferralsService {
   }
 
   /**
-   * Reward trigger: the referee's first completed ride, not signup — a
-   * signup-only trigger is a well-known free-money fraud vector (fake
-   * accounts referring each other for the bonus with no real usage).
-   * Called from ReferralRewardSubscriber on DOMAIN_EVENTS.RIDE_COMPLETED.
+   * The referee just completed a ride, which is one of the things that can
+   * qualify a customer referral.
+   *
+   * Called from ReferralRewardSubscriber on DOMAIN_EVENTS.RIDE_COMPLETED. It is
+   * a prompt to look, not the rule itself — what qualifies a referral lives in
+   * ReferralQualificationService, and the sweep asks the same question on its
+   * own schedule. So a ride event lost to a restart costs nothing beyond the
+   * delay until the next sweep.
    */
   public async handleRefereeRideCompleted(customerId: string): Promise<void> {
     const redemption = await this.prisma.referralRedemption.findUnique({
       where: { refereeUserId: customerId },
-      include: { referral: true },
+      select: { id: true, status: true },
     });
     if (redemption?.status !== ReferralRedemptionStatus.PENDING) {
       return;
     }
-
-    const completedRideCount = await this.prisma.ride.count({
-      where: { customerId, status: RideStatus.COMPLETED },
-    });
-    if (completedRideCount !== 1) {
-      return;
-    }
-
-    const referrerId = redemption.referral.userId;
-    // A partner who markets DrippleX is paid into the wallet their own app
-    // shows and can withdraw from. Read off the referral rather than from the
-    // referrer's profiles, so a customer who later starts driving or riding
-    // does not have old rewards re-filed under the new persona.
-    const REFERRER_WALLETS = {
-      [ReferralOwnerType.DRIVER]: WalletOwnerType.DRIVER,
-      [ReferralOwnerType.RIDER]: WalletOwnerType.RIDER,
-      [ReferralOwnerType.CUSTOMER]: WalletOwnerType.CUSTOMER,
-      [ReferralOwnerType.MERCHANT]: WalletOwnerType.MERCHANT,
-      // A fleet owner has no fleet wallet — a fleet's money reaches it as an
-      // Ops-approved settlement receivable for work its riders did. A referral
-      // is not that: it is the owner's own marketing, earned by the person, so
-      // it is paid into the personal wallet they can actually withdraw from.
-      [ReferralOwnerType.FLEET_OWNER]: WalletOwnerType.CUSTOMER,
-    } as const;
-    const referrerWallet = REFERRER_WALLETS[redemption.referral.ownerType];
-
-    await this.walletService.credit({
-      ownerType: referrerWallet,
-      ownerId: referrerId,
-      amount: REFERRAL_REWARD_AMOUNTS.REFERRER,
-      referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,
-      referenceId: redemption.id,
-      description: 'Referral reward — a friend you referred completed their first ride',
-    });
-    await this.walletService.credit({
-      ownerType: WalletOwnerType.CUSTOMER,
-      ownerId: customerId,
-      amount: REFERRAL_REWARD_AMOUNTS.REFEREE,
-      referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFEREE_REWARD,
-      referenceId: redemption.id,
-      description: 'Referral reward — welcome bonus for using a referral code',
-    });
-
-    await this.prisma.referralRedemption.update({
-      where: { id: redemption.id },
-      data: { status: ReferralRedemptionStatus.REWARDED, rewardedAt: new Date() },
-    });
-
-    await this.auditService.record(
-      REFERRAL_AUDIT_ACTIONS.REWARDED,
-      { userId: customerId },
-      {
-        resource: 'referral_redemption',
-        resourceId: redemption.id,
-        metadata: { referrerId, refereeId: customerId },
-      },
-    );
-
-    await this.eventBus.emit(
-      DOMAIN_EVENTS.REFERRAL_REWARDED,
-      { userId: referrerId, amount: String(REFERRAL_REWARD_AMOUNTS.REFERRER), role: 'referrer' },
-      { actorUserId: customerId },
-    );
-    await this.eventBus.emit(
-      DOMAIN_EVENTS.REFERRAL_REWARDED,
-      { userId: customerId, amount: String(REFERRAL_REWARD_AMOUNTS.REFEREE), role: 'referee' },
-      { actorUserId: customerId },
-    );
+    await this.lifecycle.advance(redemption.id);
   }
 }

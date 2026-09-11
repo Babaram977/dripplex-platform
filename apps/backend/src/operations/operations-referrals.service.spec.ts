@@ -81,7 +81,7 @@ describe('OperationsReferralsService', () => {
           referralId: referral.id,
           refereeUserId,
           status:
-            index < rewarded ? ReferralRedemptionStatus.REWARDED : ReferralRedemptionStatus.PENDING,
+            index < rewarded ? ReferralRedemptionStatus.PAID : ReferralRedemptionStatus.PENDING,
         },
       });
     }

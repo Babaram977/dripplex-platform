@@ -1,7 +1,17 @@
 export const REFERRAL_AUDIT_ACTIONS = {
   CODE_GENERATED: 'referral.code_generated',
   REDEEMED: 'referral.redeemed',
+  /** The referee met their milestone and screening passed. The hold starts. */
+  QUALIFIED: 'referral.qualified',
+  /** Released by an operator before the hold elapsed, or after clearing a flag. */
+  APPROVED: 'referral.approved',
+  /** Both wallets credited. Keeps its original name because it is the same
+   *  event the platform has always recorded here, and renaming an audit action
+   *  breaks every query anyone has written against the trail. */
   REWARDED: 'referral.rewarded',
+  REJECTED: 'referral.rejected',
+  REVERSED: 'referral.reversed',
+  PROGRAMME_UPDATED: 'referral.programme_updated',
 } as const;
 
 export const REFERRAL_PERMISSIONS = {
@@ -38,16 +48,37 @@ export const REFERRAL_PERMISSIONS = {
 export const REFERRAL_WALLET_REFERENCE_TYPES = {
   REFERRER_REWARD: 'referral_referrer_reward',
   REFEREE_REWARD: 'referral_referee_reward',
+  /** Clawing a paid reward back. Its own reference type rather than a second
+   *  entry under the reward's, because the ledger's uniqueness is per
+   *  (wallet, referenceType, referenceId) and the credit and the debit have to
+   *  coexist — and because a statement should say which of the two it is. */
+  REFERRER_REVERSAL: 'referral_referrer_reversal',
+  REFEREE_REVERSAL: 'referral_referee_reversal',
 } as const;
 
 /**
- * Reward amounts in NGN.
+ * How many redemptions one sweep pass will move.
  *
- * Founder decision, 2026-08-25: "350 not 500" — both sides. This was a
- * placeholder until then, and the customer app was already promising the
- * unapproved 500 on screen. No longer a placeholder; change it here and every
- * caller and the API's own stats response follow, because nothing hardcodes
- * a number.
+ * Bounded so a backlog is worked through over several passes rather than in one
+ * transaction-heavy burst that competes with live traffic for the database.
+ */
+export const REFERRAL_SWEEP_BATCH_SIZE = 200;
+
+/** How often the lifecycle sweep runs. Hold periods are measured in days, so
+ *  nothing needs to be noticed sooner than this. */
+export const REFERRAL_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
+ * Reward amounts in NGN — the fallback when no programme row exists.
+ *
+ * Founder decision, 2026-08-25: "350 not 500" — both sides.
+ *
+ * DPX-REFERRAL-003 moved the live numbers into `referral_programmes`, where an
+ * operator edits them without a deployment. These constants remain as the
+ * figure quoted to a user whose programme row is missing, which is the only
+ * state in which nothing has agreed an amount. They are never what gets paid:
+ * a referral with no programme does not qualify, so it cannot pay the wrong
+ * number — it simply does not pay.
  */
 export const REFERRAL_REWARD_AMOUNTS = {
   REFERRER: 350,

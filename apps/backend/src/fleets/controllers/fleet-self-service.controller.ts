@@ -1,7 +1,9 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
+import { ReferralRefereeType } from '@prisma/client';
 
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { ReferralsService } from '../../referrals/referrals.service';
 import { RegisterFleetDto, RequestFleetJoinDto } from '../dto/fleet.dto';
 import { FleetsService } from '../fleets.service';
 
@@ -26,7 +28,10 @@ import type { FleetJoinRequestDto, FleetRegistrationDto } from '@dripplex/types'
  */
 @Controller('fleet')
 export class FleetSelfServiceController {
-  constructor(private readonly fleets: FleetsService) {}
+  constructor(
+    private readonly fleets: FleetsService,
+    private readonly referrals: ReferralsService,
+  ) {}
 
   /**
    * Registers a fleet and issues its DX number immediately.
@@ -52,6 +57,19 @@ export class FleetSelfServiceController {
       ...(dto.contactPhone !== undefined ? { contactPhone: dto.contactPhone } : {}),
       context: { userId: user.id },
     });
+
+    // DPX-REFERRAL-003 — recorded after the fleet exists, and never in a way
+    // that can fail the registration: `tryRedeemAtRegistration` swallows an
+    // unknown code by design. A fleet referral qualifies later, on the fleet
+    // being activated with riders and a bank account, so nothing is owed yet.
+    if (dto.referralCode !== undefined) {
+      await this.referrals.tryRedeemAtRegistration(
+        user.id,
+        dto.referralCode,
+        { userId: user.id },
+        ReferralRefereeType.FLEET,
+      );
+    }
 
     return {
       success: true,

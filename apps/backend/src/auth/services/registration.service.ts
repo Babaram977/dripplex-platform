@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { RegistrationChannel, UserStatus } from '@prisma/client';
+import { ReferralRefereeType, RegistrationChannel, UserStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 import { AUTH_AUDIT_ACTIONS } from '../../audit/audit.constants';
@@ -45,6 +45,18 @@ interface PortalConfig {
   sendPhoneOtpOnRegister: boolean;
   requiresPhoneVerification: boolean;
 }
+
+/**
+ * Which referral programme a portal's signup belongs to, or null where none is
+ * priced. Null is a refusal to guess rather than an oversight — see the comment
+ * at the redemption site.
+ */
+const REFERRAL_REFEREE_TYPES: Record<PortalRegistrationType, ReferralRefereeType | null> = {
+  customer: ReferralRefereeType.CUSTOMER,
+  merchant: ReferralRefereeType.MERCHANT,
+  rider: null,
+  driver: null,
+};
 
 const PORTAL_CONFIG: Record<PortalRegistrationType, PortalConfig> = {
   customer: {
@@ -287,18 +299,33 @@ export class RegistrationService {
       { actorUserId: result.userId },
     );
 
-    if (portal === 'customer' && dto.referralCode) {
+    // DPX-REFERRAL-003 — merchants can be referred too, and are worth their own
+    // programme. `referralCode` has always been on the shared portal DTO; until
+    // now a merchant who typed one had it silently dropped, which reads to both
+    // sides as the code not working.
+    //
+    // Driver and rider portals are deliberately still excluded. There is no
+    // programme priced for either, and a referral with no programme cannot
+    // qualify — recording one would promise a reward nothing has agreed.
+    const refereeType = REFERRAL_REFEREE_TYPES[portal];
+    if (refereeType !== null && dto.referralCode) {
       const redemptionContext = { ...context, userId: result.userId };
-      const claimedByDriverCampaign = await this.driverCampaignService?.tryRedeemDriverCode(
-        result.userId,
-        dto.referralCode,
-        redemptionContext,
-      );
+      // The driver campaign owns its own codes and its own money. Only a code
+      // it does not claim falls through to the standing programme.
+      const claimedByDriverCampaign =
+        portal === 'customer'
+          ? await this.driverCampaignService?.tryRedeemDriverCode(
+              result.userId,
+              dto.referralCode,
+              redemptionContext,
+            )
+          : false;
       if (!claimedByDriverCampaign) {
         await this.referralsService?.tryRedeemAtRegistration(
           result.userId,
           dto.referralCode,
           redemptionContext,
+          refereeType,
         );
       }
     }

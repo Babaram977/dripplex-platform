@@ -4043,10 +4043,55 @@ model WithdrawalRequest {
   @@map("withdrawal_requests")
 }
 
+/// DPX-REFERRAL-003 — the full lifecycle of one referral, specified by Nora
+/// 2026-09-11. The three states this replaces (PENDING / REWARDED / EXPIRED)
+/// could not express the two things that matter for money: that a referral has
+/// *earned* its reward but is not yet payable, and that a reward which was paid
+/// has been taken back.
 enum ReferralRedemptionStatus {
+  /// Code redeemed at signup. The referee has not met their milestone yet.
   PENDING
-  REWARDED
+  /// Milestone met and anti-abuse screening passed. The hold clock is running.
+  QUALIFIED
+  /// Hold elapsed. Payable, but not yet paid.
+  APPROVED
+  /// Both wallets credited. Terminal unless reversed.
+  PAID
+  /// Anti-abuse screening or Operations refused it. Terminal, never paid.
+  REJECTED
+  /// Paid, then clawed back. Distinct from REJECTED because money moved and
+  /// moved back — the wallet ledger has two entries and this says why.
+  REVERSED
+  /// The qualification window closed before the milestone was met. Terminal.
   EXPIRED
+}
+
+/// Why a referral was refused. Recorded on the row rather than left to a free
+/// text note: Operations needs to count how often each abuse pattern fires in
+/// order to know whether a check is worth what it costs in false positives.
+enum ReferralRejectionReason {
+  /// Referrer and referee are the same account.
+  SELF_REFERRAL
+  /// A already referred B, and B is now referring A back.
+  RECIPROCAL_RELATIONSHIP
+  /// Both accounts have signed in from the same device.
+  SHARED_DEVICE
+  SHARED_PHONE
+  SHARED_EMAIL
+  /// Both accounts submitted the same identity document number.
+  SHARED_IDENTITY
+  /// A human at Operations refused it. No automated check fired.
+  OPERATIONS_DECISION
+}
+
+/// What the referred party signed up as. Decides which milestone qualifies the
+/// referral and which programme row sets the money — referring a fleet is worth
+/// several times what referring a customer is worth, because it is several
+/// times the work.
+enum ReferralRefereeType {
+  CUSTOMER
+  MERCHANT
+  FLEET
 }
 
 /// Whose referral code this is, and therefore which wallet their reward is
@@ -4089,23 +4134,132 @@ model Referral {
   @@map("referrals")
 }
 
+/// DPX-REFERRAL-003 — what DrippleX pays for a referral, per kind of referee,
+/// and what has to be true before it pays.
+///
+/// One row per `ReferralRefereeType`, because none of these numbers is a
+/// constant any more. Nora's specification, 2026-09-11: "₦350 customer and
+/// merchant referral, ₦2,500 configurable fleet referral", a configurable hold
+/// before payment, and configurable qualification. Every one of those is a row
+/// an operator edits, not a deployment — the same principle the commission
+/// campaigns and the driver tier table already run on.
+model ReferralProgramme {
+  id          String              @id @default(uuid()) @db.Uuid
+  /// One programme per kind of referee. Unique, so there is never a question
+  /// of which row set the price of a given referral.
+  refereeType ReferralRefereeType @unique @map("referee_type")
+
+  /// Paid to the person who shared the code. NGN.
+  referrerRewardAmount Decimal @default(350) @map("referrer_reward_amount") @db.Decimal(12, 2)
+  /// Paid to the person who used it. Zero is a legitimate setting — a fleet
+  /// referral rewards the referrer only — and means no credit is attempted.
+  refereeRewardAmount  Decimal @default(350) @map("referee_reward_amount") @db.Decimal(12, 2)
+
+  /// Days between qualifying and being paid. The founder-locked reason the
+  /// reward waits at all: a referral that qualifies through a fake account is
+  /// usually visible within a week, and money already withdrawn cannot be
+  /// clawed back. Zero pays immediately.
+  holdDays Int @default(7) @map("hold_days")
+
+  /// How long a referee has to reach their milestone before the referral
+  /// expires unpaid. Stops a redemption sitting PENDING forever against a
+  /// signup that never became a customer.
+  qualificationWindowDays Int @default(90) @map("qualification_window_days")
+
+  /// Whether the referee must be KYC-verified on top of their milestone.
+  ///
+  /// Seeded **false** for CUSTOMER deliberately. DrippleX already pays on the
+  /// referred customer's first completed ride with no verification gate, and
+  /// switching that on silently would stop paying referrals that today are
+  /// earned. Nora's specification asks for it; turning it on is an Operations
+  /// decision recorded here, not a deployment.
+  requireKycVerified Boolean @default(false) @map("require_kyc_verified")
+
+  /// A programme that is not active stops qualifying new referrals. Redemptions
+  /// already qualified keep the amounts snapshotted on them and still pay.
+  active Boolean @default(true)
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  redemptions ReferralRedemption[]
+
+  @@map("referral_programmes")
+}
+
 /// One row per referred user (a referee can only be referred once — see
-/// the unique constraint on refereeUserId). Reward crediting is deferred
-/// until the referee completes their first ride (see referral-reward
-/// .subscriber.ts) rather than at signup, to reduce free-money fraud.
+/// the unique constraint on refereeUserId).
+///
+/// Reward crediting is deferred until the referee reaches the milestone their
+/// programme sets, and then held for the programme's hold period, rather than
+/// paid at signup — a signup-only trigger is free money for anyone willing to
+/// create accounts.
 model ReferralRedemption {
   id            String                   @id @default(uuid()) @db.Uuid
   referralId    String                   @map("referral_id") @db.Uuid
   refereeUserId String                   @unique @map("referee_user_id") @db.Uuid
   status        ReferralRedemptionStatus @default(PENDING)
-  rewardedAt    DateTime?                @map("rewarded_at")
-  createdAt     DateTime                 @default(now()) @map("created_at")
-  updatedAt     DateTime                 @updatedAt @map("updated_at")
-  referral      Referral                 @relation(fields: [referralId], references: [id], onDelete: Cascade)
-  refereeUser   User                     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
+
+  /// What the referee signed up as, fixed at redemption. Decides the milestone
+  /// and the programme; recorded here rather than derived later, because a
+  /// customer who opens a shop next year was still referred as a customer.
+  refereeType ReferralRefereeType @default(CUSTOMER) @map("referee_type")
+
+  /// The programme that priced this referral. Nullable for every row that
+  /// predates programmes.
+  programmeId String?            @map("programme_id") @db.Uuid
+  programme   ReferralProgramme? @relation(fields: [programmeId], references: [id])
+
+  /// The amounts snapshotted when the referral qualified. Operations re-pricing
+  /// a programme must never rewrite what somebody already earned — the same
+  /// rule every settled row on this platform follows. Null until qualification.
+  referrerRewardAmount Decimal? @map("referrer_reward_amount") @db.Decimal(12, 2)
+  refereeRewardAmount  Decimal? @map("referee_reward_amount") @db.Decimal(12, 2)
+
+  /// The milestone was met and screening passed. The hold runs from here.
+  qualifiedAt DateTime? @map("qualified_at")
+  /// The hold elapsed and the reward became payable.
+  approvedAt  DateTime? @map("approved_at")
+  /// Both wallets were credited. Mapped to the original `rewarded_at` column:
+  /// it is the same fact under a name that now distinguishes itself from
+  /// qualifying and approving.
+  paidAt      DateTime? @map("rewarded_at")
+  rejectedAt  DateTime? @map("rejected_at")
+  reversedAt  DateTime? @map("reversed_at")
+
+  rejectionReason ReferralRejectionReason? @map("rejection_reason")
+
+  /// A signal that fired but did not refuse the referral.
+  ///
+  /// Not every abuse signal is worth the same. Two accounts sharing a device is
+  /// routine in a market where handsets are shared inside a household, so
+  /// refusing on it alone would reject real referrals in bulk; two accounts
+  /// sharing a verified identity document is not routine at all. The strong
+  /// signals refuse. The weak one flags, and the hold — which exists precisely
+  /// so somebody can look before the money moves — is when Operations looks.
+  flaggedReason ReferralRejectionReason? @map("flagged_reason")
+  /// Free text from Operations beside the coded reason, or the detail of an
+  /// automated match. Never the matched value itself — a rejection note is read
+  /// by support staff and must not leak one account's phone number to another.
+  reviewNote      String?                  @map("review_note") @db.VarChar(500)
+  reviewedBy      String?                  @map("reviewed_by") @db.Uuid
+
+  /// When this referral stops being able to qualify. Null for rows that predate
+  /// the window, which therefore never expire on their own.
+  expiresAt DateTime? @map("expires_at")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  referral    Referral @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  refereeUser User     @relation(fields: [refereeUserId], references: [id], onDelete: Cascade)
 
   @@index([referralId])
   @@index([status])
+  /// The sweep's two queries: what is waiting to qualify, and what has finished
+  /// its hold.
+  @@index([status, expiresAt])
+  @@index([status, qualifiedAt])
   @@map("referral_redemptions")
 }
 

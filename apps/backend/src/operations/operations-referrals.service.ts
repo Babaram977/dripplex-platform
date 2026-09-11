@@ -78,6 +78,13 @@ const PERSONA_BY_OWNER: Record<ReferralOwnerType, ReferralPersona> = {
   [ReferralOwnerType.FLEET_OWNER]: 'FLEET_OWNER',
 };
 
+/** Redemptions that have neither paid nor been refused. */
+const IN_FLIGHT = new Set<ReferralRedemptionStatus>([
+  ReferralRedemptionStatus.PENDING,
+  ReferralRedemptionStatus.QUALIFIED,
+  ReferralRedemptionStatus.APPROVED,
+]);
+
 /**
  * DPX-OPS — referral performance, read one persona at a time.
  *
@@ -137,10 +144,15 @@ export class OperationsReferralsService {
       }
       bucket.redemptions += 1;
       bucket.referrers.add(redemption.referral.userId);
-      if (redemption.status === ReferralRedemptionStatus.PENDING) {
+      // In flight, from an operator's point of view: the referral has neither
+      // paid nor been refused. Three states rather than one since
+      // DPX-REFERRAL-003 — waiting on the referee, waiting on the hold, and
+      // waiting on the next sweep — and counting only the first would have
+      // made this screen report a shrinking pipeline as referrals qualified.
+      if (IN_FLIGHT.has(redemption.status)) {
         bucket.pending += 1;
       }
-      if (redemption.status === ReferralRedemptionStatus.REWARDED) {
+      if (redemption.status === ReferralRedemptionStatus.PAID) {
         bucket.rewarded += 1;
       }
     }
@@ -244,7 +256,7 @@ export class OperationsReferralsService {
           code: referral.code,
           redemptions: referral.redemptions.length,
           rewardedRedemptions: referral.redemptions.filter(
-            (redemption) => redemption.status === ReferralRedemptionStatus.REWARDED,
+            (redemption) => redemption.status === ReferralRedemptionStatus.PAID,
           ).length,
           rewardAmountEarned: rewards?.earned ?? null,
           rewardAmountUnpaid: rewards?.unpaid ?? null,

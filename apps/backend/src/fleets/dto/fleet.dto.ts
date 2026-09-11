@@ -17,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import { REFERRAL_CODE_PATTERN } from '../../referrals/referral.constants';
 import { FLEET_NUMBER_PATTERN } from '../fleet.constants';
 
 export class CreateFleetDto {
@@ -49,6 +50,24 @@ export class RegisterFleetDto {
   @IsString()
   @MaxLength(20)
   public contactPhone?: string;
+
+  /**
+   * A referral code the owner was given.
+   *
+   * DPX-REFERRAL-003 — a fleet is worth several times what a customer is worth
+   * to whoever brought it, and this is the only place a fleet signup can be
+   * attributed: the owner already had a DrippleX account before they registered
+   * the company, so the code cannot be collected at account registration.
+   *
+   * An unknown or invalid code is ignored rather than refused. Nobody's fleet
+   * registration fails over somebody else's marketing.
+   */
+  @IsOptional()
+  @IsString()
+  @Matches(REFERRAL_CODE_PATTERN, {
+    message: 'Referral code must be 4 to 16 letters or digits',
+  })
+  public referralCode?: string;
 }
 
 /**

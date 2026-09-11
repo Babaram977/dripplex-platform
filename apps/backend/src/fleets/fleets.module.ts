@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { CommercialModule } from '../commercial/commercial.module';
 import { EventsModule } from '../events/events.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { ReferralsModule } from '../referrals/referrals.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminFleetSettlementController } from './controllers/admin-fleet-settlement.controller';
@@ -18,7 +19,17 @@ import { FleetOverviewService } from './fleet-overview.service';
 import { FleetsService } from './fleets.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, CommercialModule, EventsModule, WalletModule],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    CommercialModule,
+    EventsModule,
+    WalletModule,
+    // DPX-REFERRAL-003 — a fleet owner can quote a referral code when they
+    // register their company, which is the only place a fleet signup can be
+    // attributed to whoever brought it.
+    ReferralsModule,
+  ],
   controllers: [
     FleetSelfServiceController,
     FleetOwnerController,

@@ -15,6 +15,10 @@ import { DriverCampaignService } from './driver-campaign.service';
 import { DriverReferralsController } from './driver-referrals.controller';
 import { FleetReferralsController } from './fleet-referrals.controller';
 import { MerchantReferralsController } from './merchant-referrals.controller';
+import { ReferralAntiAbuseService } from './referral-anti-abuse.service';
+import { ReferralLifecycleSweepService } from './referral-lifecycle-sweep.service';
+import { ReferralLifecycleService } from './referral-lifecycle.service';
+import { ReferralQualificationService } from './referral-qualification.service';
 import { ReferralRewardSubscriber } from './referral-reward.subscriber';
 import { ReferralsService } from './referrals.service';
 import { RiderReferralsController } from './rider-referrals.controller';
@@ -33,11 +37,15 @@ import { RiderReferralsController } from './rider-referrals.controller';
   ],
   providers: [
     ReferralsService,
+    ReferralLifecycleService,
+    ReferralLifecycleSweepService,
+    ReferralQualificationService,
+    ReferralAntiAbuseService,
     ReferralRewardSubscriber,
     DriverCampaignService,
     DriverCampaignTripSubscriber,
     DriverCampaignSweepService,
   ],
-  exports: [ReferralsService, DriverCampaignService],
+  exports: [ReferralsService, ReferralLifecycleService, DriverCampaignService],
 })
 export class ReferralsModule {}
