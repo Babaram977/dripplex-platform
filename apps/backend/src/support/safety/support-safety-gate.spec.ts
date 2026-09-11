@@ -73,6 +73,43 @@ describe('detectMandatoryHumanCategory', () => {
     });
   });
 
+  describe('semantic safety precedence over a generic money match', () => {
+    // Founder decision 2026-09-11. The gate is a risk-escalation boundary, not a
+    // final support-team classifier: "somebody took my money" may be a
+    // compromised account, coercion, or a person still standing there. Payments
+    // can pick it up afterwards; the reverse is not recoverable the same way.
+    it.each([
+      ['Someone stole my money'],
+      ['Someone has stolen my money'],
+      ['Someone took money from my wallet without permission'],
+      ['The driver robbed me'],
+      ['Someone hacked my account and took my money'],
+    ])('routes "%s" to SAFETY even though it is about money', (text) => {
+      expect(detectMandatoryHumanCategory(text).category).toBe(SupportCategory.SAFETY);
+    });
+
+    // The other half of the rule, and the harder half. Not every mention of
+    // money going wrong is an emergency — routing disputed charges to the
+    // safety queue would dilute it until real emergencies are hard to find.
+    it.each([
+      ['My wallet was charged twice'],
+      ["I was charged for something I didn't buy"],
+      ['I did not authorise this charge'],
+      ['Is this merchant a scam?'],
+      ['I think I was cheated on the price'],
+      ['I want to report fraud on my last order'],
+    ])('leaves "%s" as a PAYMENT matter', (text) => {
+      expect(detectMandatoryHumanCategory(text).category).toBe(SupportCategory.PAYMENT);
+    });
+
+    it('does not treat "stole" as unreachable behind the word money', () => {
+      // Before this rule, "Someone stole my money" matched only on `money` and
+      // was filed as a payment question — the theft went unnoticed, because the
+      // past tense of the commonest theft verb in English was not in the list.
+      expect(detectMandatoryHumanCategory('Someone stole my money').matchedTerm).toBe('stole');
+    });
+  });
+
   describe('safety outranks money', () => {
     it('classifies a robbery that mentions money as SAFETY', () => {
       // A message describing being robbed mentions both. It is a safety case;

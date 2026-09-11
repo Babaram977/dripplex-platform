@@ -135,33 +135,64 @@ to leave / log out / delete my account".
 **Question for you:** are these safe to keep, or do they need the vehicle
 context spelled out?
 
-### 8. The English list breaks the rule we just made
+### 8. The English list broke that rule — FIXED, not a question for you
 
-The decision above is not a Hausa question — it is a general rule, and the
-English list does not currently follow it. Run against the shipping gate:
+Applying the decision above to the rest of the lexicon showed the English list
+did not follow it. That is now corrected, so you will not see it in the terms
+below. Recorded here because it changes what the rule means.
 
-| Sentence                                               | Goes to | Because of | Should be |
-| ------------------------------------------------------ | ------- | ---------- | --------- |
-| `Someone stole my money`                               | PAYMENT | `money`    | SAFETY    |
-| `Someone has stolen my money`                          | PAYMENT | `stolen`   | SAFETY    |
-| `Someone took money from my wallet without permission` | PAYMENT | `money`    | SAFETY    |
-| `The driver robbed me`                                 | SAFETY  | `robbed`   | SAFETY    |
-| `My wallet was charged twice`                          | PAYMENT | `wallet`   | PAYMENT   |
-| `An cire kudi daga account dina`                       | PAYMENT | `kudi`     | PAYMENT   |
+**The corrected rule is semantic, not keyword-based.** Safety wins over a
+generic money match when the wording says _somebody took it_; it does not win
+just because a word relates to money going wrong.
 
-Two separate problems, both ours and neither yours to solve:
+| Sentence                                             | Now routes to |
+| ---------------------------------------------------- | ------------- |
+| Someone stole my money                               | SAFETY        |
+| Someone has stolen my money                          | SAFETY        |
+| Someone took money from my wallet without permission | SAFETY        |
+| The driver robbed me                                 | SAFETY        |
+| Someone hacked my account and took my money          | SAFETY        |
+| My wallet was charged twice                          | PAYMENT       |
+| I was charged for something I didn't buy             | PAYMENT       |
+| I did not authorise this charge                      | PAYMENT       |
+| Is this merchant a scam?                             | PAYMENT       |
+| I think I was cheated on the price                   | PAYMENT       |
 
-1. **stolen, theft, thief, fraud, scam, cheated and duped are all filed under
-   money.** Under the rule above, the theft and coercion ones belong under
-   safety.
-2. **The word "stole" is not in the list at all.** "Someone stole my money"
-   only matched because it contains the word _money_ — the theft itself went
-   unnoticed. The past tense of the commonest theft verb in English is missing.
+Moved to safety: _steal, steals, stealing, stole, stolen, theft, thief,
+thieves_, the phrases _took my money / taking my money / took my cash_, the
+consent phrases _without my permission / without consent / without my
+approval_, and account compromise (_hacked, hacker, account compromised,
+someone accessed my account_).
 
-Recorded here rather than fixed immediately, because the corrections all land in
-one reviewed commit after you have been through the list. But note what it
-means: **the English list was not as safe as we said it was**, and it took
-writing this document for us to see it.
+**Deliberately left with money:** _fraud, fraudulent, scam, scammed, cheated,
+duped_. Not every mention of fraud is an emergency — "is this merchant a scam?"
+is a Payments question, and sending those to the safety queue would dilute it
+until real emergencies are hard to find. That is the same failure the Hausa word
+for "help" is causing right now. These six sit on the line between a dispute and
+an allegation, and are flagged as genuinely uncertain.
+
+Also fixed: **the word "stole" was not in the list at all.** "Someone stole my
+money" only matched because it contains the word _money_, so the theft itself
+went unnoticed. The past tense of the commonest theft verb in English was
+missing.
+
+### 9. The same rule still has to be applied to Hausa and Pidgin
+
+These theft words are still filed under money, and under the rule above they
+almost certainly belong under safety:
+
+`sata` · `barawo` · `damfara` · `an sace` · `dem thief my money` ·
+`dem tief my money`
+
+They are deliberately **left where they are** for now, so that you review the
+list as it actually ships rather than one already half-changed. Confirm the
+meanings when you reach them and they move with the rest of the corrections.
+
+Until then there is a gap we are carrying knowingly: an English speaker
+reporting theft reaches the safety queue and a Hausa speaker reporting the same
+thing does not. Nothing is live — the change is blocked until you have been
+through this — but it is the exact inequity this whole review exists to stop,
+so it should not be left standing for long.
 
 ### What these flags actually do, run against the shipping code
 
@@ -337,6 +368,28 @@ versions:
 12. Being forced or coerced into something
 
 Short forms matter most. Someone in trouble does not write full sentences.
+
+# Then please test whole sentences, not just words
+
+Single words are not enough. A list can look right term by term and still fail
+on the way people really write. So for **each language you review**, please
+write one natural sentence for each of these, and tell us where you think it
+should go:
+
+|     | Situation                                            | Should reach                |
+| --- | ---------------------------------------------------- | --------------------------- |
+| 1   | An ordinary support request                          | ordinary queue              |
+| 2   | An ordinary payment problem                          | Payments                    |
+| 3   | A payment genuinely taken without permission         | Safety                      |
+| 4   | Theft or fraud                                       | Safety                      |
+| 5   | A real physical emergency                            | Safety                      |
+| 6   | An ambiguous word used in its **harmless** sense     | ordinary queue              |
+| 7   | Mixed Hausa/English or Pidgin/English in one message | as the meaning requires     |
+| 8   | A word spelled a different way, or without accents   | same as the normal spelling |
+
+Row 6 is the one that catches the mistakes we have already found — _taimako_,
+_kashe_, _tsaro_. Row 7 matters because almost nobody writes one language
+cleanly in a support form.
 
 # Deliberately excluded, and why
 

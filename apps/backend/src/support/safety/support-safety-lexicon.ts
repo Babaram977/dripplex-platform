@@ -100,17 +100,29 @@ const MONEY_TERMS: readonly string[] = [
   'dx points',
   'voucher',
   'coupon',
-  // Money problems are often described as theft before they are described as
-  // errors, and a user who believes they were robbed must reach a person.
+  // Theft words have MOVED to the safety list. Founder decision 2026-09-11:
+  // safety outranks financial classification whenever the wording indicates
+  // theft, robbery, fraud, coercion or unauthorised taking — even when the
+  // object is money.
+  //
+  // What stays here is the language of a disputed charge rather than of a crime,
+  // and the distinction is deliberate: not every mention of fraud is an
+  // emergency. "Is this merchant a scam?" and "I was cheated on the price" are
+  // Payments questions, and routing them to the safety queue would dilute it
+  // until the real emergencies are hard to find — the same failure the Hausa
+  // word for "help" is currently causing.
+  //
+  // These four are flagged for the lexicon review as genuinely uncertain: they
+  // sit on the line between a dispute and an allegation, and which side they
+  // fall on depends on how people actually use them, not on what they denote.
   'fraud',
   'fraudulent',
   'scam',
   'scammed',
-  'stolen',
-  'theft',
-  'thief',
   'cheated',
   'duped',
+  'short-changed',
+  'shortchanged',
 
   // --- Nigerian Pidgin ---
   // Written as phrases because the individual words ("enter", "go", "collect")
@@ -248,6 +260,47 @@ const SAFETY_TERMS: readonly string[] = [
   'die',
   'dying',
   'dead',
+
+  // Theft, and money moved by somebody else without permission.
+  //
+  // Founder decision 2026-09-11. The gate is a risk-escalation boundary, not a
+  // final support-team classifier: somebody saying their money was taken may be
+  // describing a compromised account, coercion, or a person still standing in
+  // front of them. Payments can pick it up afterwards if that is all it was; the
+  // reverse — finding out too late that a payment ticket was a robbery — is not
+  // recoverable in the same way.
+  //
+  // The line drawn here is "somebody took it" rather than "the amount is wrong".
+  // "I did not authorise this charge" stays a Payments matter and is not listed:
+  // it already reaches a human through `charge`, and it is the ordinary wording
+  // of a chargeback, not of a theft.
+  'steal',
+  'steals',
+  'stealing',
+  'stole',
+  'stolen',
+  'theft',
+  'thief',
+  'thieves',
+  'took my money',
+  'taking my money',
+  'took my cash',
+  'took all my money',
+  'without my permission',
+  'without permission',
+  'without my consent',
+  'without consent',
+  'without my approval',
+  // Account compromise, named in the decision as a safety matter. The bare word
+  // "compromised" is deliberately absent — too broad on its own.
+  'hacked',
+  'hacker',
+  'account was hacked',
+  'account hacked',
+  'account compromised',
+  'someone accessed my account',
+  'someone used my account',
+  'someone is using my account',
 
   // --- Nigerian Pidgin ---
   'dem wan kill me',
