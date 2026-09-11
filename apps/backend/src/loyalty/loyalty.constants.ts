@@ -103,6 +103,14 @@ export const LOYALTY_WALLET_REFERENCE_TYPE = 'LOYALTY_REDEMPTION';
 export const LOYALTY_MERCHANT_WALLET_REFERENCE_TYPE = 'LOYALTY_STORE_REDEMPTION';
 
 /**
+ * How a coupon redeemed at a counter is labelled, on both the promotion
+ * redemption and the merchant's wallet credit. Paired with the till code's id,
+ * which is what makes the payment idempotent: the wallet's unique index on
+ * (wallet, reference type, reference id) means a retry pays once.
+ */
+export const LOYALTY_STORE_COUPON_REFERENCE_TYPE = 'LOYALTY_STORE_COUPON';
+
+/**
  * How long a counter code is good for. Long enough to find the app, read it out
  * and have it typed in; short enough that a code glimpsed over a shoulder is
  * worthless by the time anybody could use it.

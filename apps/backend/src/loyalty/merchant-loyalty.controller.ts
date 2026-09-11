@@ -51,13 +51,18 @@ export class MerchantLoyaltyController {
     @Body() dto: RedeemStoreCodeDto,
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<StoreRedemptionResult>> {
-    const data = await this.redemptions.redeem(merchant.id, dto.code, {
-      userId: merchant.id,
-      ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
-      ...(typeof request.headers['user-agent'] === 'string'
-        ? { userAgent: request.headers['user-agent'] }
-        : {}),
-    });
+    const data = await this.redemptions.redeem(
+      merchant.id,
+      dto.code,
+      { ...(dto.billAmount !== undefined ? { billAmount: dto.billAmount } : {}) },
+      {
+        userId: merchant.id,
+        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+        ...(typeof request.headers['user-agent'] === 'string'
+          ? { userAgent: request.headers['user-agent'] }
+          : {}),
+      },
+    );
     return { success: true, data };
   }
 }

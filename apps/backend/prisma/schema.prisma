@@ -3615,8 +3615,17 @@ model LoyaltyRedemptionCode {
 
   /// What the holder authorised, fixed at generation. The merchant sees both
   /// before confirming, so a code cannot quietly be worth less than the bill.
+  /// Zero when the code carries only a coupon.
   points Int
   amount Decimal @db.Decimal(12, 2)
+
+  /// A coupon the holder chose to spend at this counter, if any.
+  ///
+  /// Coupons carry per-user and per-device limits, so redeeming one needs to
+  /// know *whose* redemption it is. A merchant typing a campaign code they saw
+  /// on a poster could otherwise spend it against anybody. Putting the coupon
+  /// on the holder's own till code is what ties it to the person who chose it.
+  couponCode String? @map("coupon_code") @db.VarChar(50)
 
   expiresAt  DateTime  @map("expires_at")
   redeemedAt DateTime? @map("redeemed_at")

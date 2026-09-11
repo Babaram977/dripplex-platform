@@ -2,6 +2,7 @@ import { Transform } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   Matches,
@@ -85,13 +86,32 @@ export class UpdateLoyaltyAchievementDto {
 }
 
 export class IssueRedemptionCodeDto {
+  /** Omit, or send 0, for a coupon-only code. */
+  @IsOptional()
   @Transform(({ value }: { value: unknown }) => toNumber(value))
   @IsInt()
-  @Min(1)
-  public points!: number;
+  @Min(0)
+  public points?: number;
+
+  /** A coupon to spend at the same counter, on the same code. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  public couponCode?: string;
 }
 
 export class RedeemStoreCodeDto {
+  /**
+   * The bill total, required when the code carries a coupon — a percentage
+   * discount is meaningless without something to take it off, and guessing
+   * would either short the merchant or overpay them.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => toNumber(value))
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  public billAmount?: number;
+
   /**
    * The code the holder is showing. Sent in a body rather than a path so it
    * does not end up in access logs or browser history — it is a bearer

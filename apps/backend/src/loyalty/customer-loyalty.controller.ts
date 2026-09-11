@@ -89,7 +89,10 @@ export class CustomerLoyaltyController {
   ): Promise<ApiSuccessResponse<IssuedRedemptionCode>> {
     const data = await this.storeRedemptions.issueCode(
       user.id,
-      dto.points,
+      {
+        ...(dto.points !== undefined ? { points: dto.points } : {}),
+        ...(dto.couponCode !== undefined ? { couponCode: dto.couponCode } : {}),
+      },
       this.auditContext(request, user.id),
     );
     return { success: true, data };

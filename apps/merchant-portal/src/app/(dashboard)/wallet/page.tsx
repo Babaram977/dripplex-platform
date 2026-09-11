@@ -178,6 +178,7 @@ function RedeemPointsCard({
   onRedeemed: () => void;
 }): React.JSX.Element {
   const [code, setCode] = React.useState('');
+  const [bill, setBill] = React.useState('');
   const [preview, setPreview] = React.useState<RedemptionCodePreviewDto | null>(null);
   const [result, setResult] = React.useState<StoreRedemptionResultDto | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -185,6 +186,7 @@ function RedeemPointsCard({
 
   function reset(): void {
     setCode('');
+    setBill('');
     setPreview(null);
     setError(null);
   }
@@ -207,7 +209,12 @@ function RedeemPointsCard({
     setBusy(true);
     setError(null);
     try {
-      const redeemed = await sdk.loyalty.redeem({ code: code.trim() });
+      const redeemed = await sdk.loyalty.redeem({
+        code: code.trim(),
+        ...(preview?.couponCode === null || preview?.couponCode === undefined
+          ? {}
+          : { billAmount: Number(bill) }),
+      });
       setResult(redeemed);
       reset();
       onRedeemed();
@@ -223,8 +230,10 @@ function RedeemPointsCard({
       <CardHeader>
         <CardTitle>Redeem DX points</CardTitle>
         <p className="text-muted-foreground text-sm">
-          A customer, driver or rider can pay with DX points in your store. Ask them to generate a
-          code in their DrippleX app, type it in below, and the value lands in your wallet.
+          A customer, driver or rider can pay with DX points — or spend a coupon — in your store.
+          Ask them to generate a code in their DrippleX app, type it in below, and the value lands
+          in your wallet. DrippleX funds any coupon discount, so giving money off at the till costs
+          you nothing.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -277,15 +286,47 @@ function RedeemPointsCard({
                 <p className="text-muted-foreground text-xs">Customer</p>
                 <p className="text-lg font-medium">{preview.holderName}</p>
               </div>
+              {preview.couponCode === null ? null : (
+                <div>
+                  <p className="text-muted-foreground text-xs">Coupon</p>
+                  <p className="font-mono text-lg font-medium">{preview.couponCode}</p>
+                </div>
+              )}
             </div>
+            {preview.couponCode === null ? null : (
+              <div className="max-w-xs">
+                <Label htmlFor="dx-bill-total">Bill total</Label>
+                <Input
+                  id="dx-bill-total"
+                  value={bill}
+                  inputMode="decimal"
+                  placeholder="What the customer owes"
+                  onChange={(event) => {
+                    setBill(event.target.value.replace(/[^0-9.]/g, ''));
+                  }}
+                />
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Needed to work out the {preview.couponCode} discount. DrippleX covers it — the
+                  amount lands in your wallet.
+                </p>
+              </div>
+            )}
+
             <div className="flex gap-3">
               <Button
                 onClick={() => {
                   void confirm();
                 }}
-                disabled={busy}
+                disabled={
+                  busy ||
+                  (preview.couponCode !== null && (bill.trim() === '' || !(Number(bill) > 0)))
+                }
               >
-                {busy ? 'Redeeming…' : `Confirm ${formatMoney(preview.amount, currency)}`}
+                {busy
+                  ? 'Redeeming…'
+                  : preview.couponCode === null
+                    ? `Confirm ${formatMoney(preview.amount, currency)}`
+                    : `Confirm points + ${preview.couponCode}`}
               </Button>
               <Button variant="secondary" onClick={reset} disabled={busy}>
                 Cancel
@@ -299,8 +340,13 @@ function RedeemPointsCard({
 
         {result ? (
           <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-700">
-            {formatMoney(result.amount, currency)} added to your wallet from {result.holderName}
-            &apos;s {result.points.toLocaleString('en-NG')} DX points.
+            {formatMoney(result.totalCredited, currency)} added to your wallet from{' '}
+            {result.holderName}
+            {result.points > 0 ? ` — ${result.points.toLocaleString('en-NG')} DX points` : ''}
+            {result.couponDiscount > 0
+              ? `${result.points > 0 ? ' and' : ' —'} ${formatMoney(result.couponDiscount, currency)} of coupon discount DrippleX covered`
+              : ''}
+            .
           </p>
         ) : null}
       </CardContent>

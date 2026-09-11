@@ -6,6 +6,7 @@ import {
   NotificationChannel,
   NotificationType,
   Prisma,
+  PromotionDomain,
   WalletOwnerType,
 } from '@prisma/client';
 
@@ -16,6 +17,7 @@ import {
 } from '../common/exceptions/domain.exception';
 import { NotificationCenterService } from '../notification-center/notification-center.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { PromotionsService } from '../promotions/promotions.service';
 import { WalletService } from '../wallet/wallet.service';
 
 import {
@@ -26,6 +28,7 @@ import {
   LOYALTY_REDEMPTION_CODE_LENGTH,
   LOYALTY_REDEMPTION_CODE_TTL_MS,
   LOYALTY_REFERENCE_TYPES,
+  LOYALTY_STORE_COUPON_REFERENCE_TYPE,
 } from './loyalty.constants';
 
 /** What the holder's app shows once, and never again. */
@@ -34,6 +37,8 @@ export interface IssuedRedemptionCode {
   code: string;
   points: number;
   amount: number;
+  /** A coupon the holder chose to spend at the counter, if any. */
+  couponCode: string | null;
   expiresAt: string;
 }
 
@@ -41,13 +46,20 @@ export interface IssuedRedemptionCode {
 export interface RedemptionCodePreview {
   points: number;
   amount: number;
+  couponCode: string | null;
   holderName: string;
   expiresAt: string;
 }
 
 export interface StoreRedemptionResult {
   points: number;
+  /** Naira credited from the points the holder spent. */
   amount: number;
+  couponCode: string | null;
+  /** Naira credited to cover a coupon discount DrippleX funded. */
+  couponDiscount: number;
+  /** Everything credited to the merchant for this code. */
+  totalCredited: number;
   holderName: string;
   /** The merchant's wallet balance after the credit. */
   merchantWalletBalance: number;
@@ -88,6 +100,7 @@ export class LoyaltyStoreRedemptionService {
     private readonly auditService: AuditService,
     private readonly walletService: WalletService,
     private readonly notifications: NotificationCenterService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   /**
@@ -100,11 +113,17 @@ export class LoyaltyStoreRedemptionService {
    */
   public async issueCode(
     userId: string,
-    points: number,
+    input: { points?: number; couponCode?: string },
     context: AuditContext = {},
   ): Promise<IssuedRedemptionCode> {
-    if (!Number.isInteger(points) || points <= 0) {
-      throw new ValidationDomainException('Points must be a positive integer');
+    const points = input.points ?? 0;
+    const couponCode = input.couponCode?.trim().toUpperCase();
+
+    if (points === 0 && (couponCode === undefined || couponCode === '')) {
+      throw new ValidationDomainException('Give the code some points to spend, a coupon, or both');
+    }
+    if (!Number.isInteger(points) || points < 0) {
+      throw new ValidationDomainException('Points must be a whole number');
     }
     if (points % LOYALTY_POINTS_PER_NAIRA !== 0) {
       throw new ValidationDomainException(
@@ -136,6 +155,7 @@ export class LoyaltyStoreRedemptionService {
           codeHash: this.hash(code),
           points,
           amount: new Prisma.Decimal(amount),
+          couponCode: couponCode ?? null,
           expiresAt,
         },
       });
@@ -149,11 +169,22 @@ export class LoyaltyStoreRedemptionService {
         resourceId: issued.id,
         // Never the code itself, and never its hash: an audit log is read by
         // more people than a redemption needs to be.
-        metadata: { points, amount, expiresAt: expiresAt.toISOString() },
+        metadata: {
+          points,
+          amount,
+          couponCode: couponCode ?? null,
+          expiresAt: expiresAt.toISOString(),
+        },
       },
     );
 
-    return { code, points, amount, expiresAt: expiresAt.toISOString() };
+    return {
+      code,
+      points,
+      amount,
+      couponCode: couponCode ?? null,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
   /** Revokes the holder's outstanding code, if they have one. */
@@ -192,6 +223,7 @@ export class LoyaltyStoreRedemptionService {
     return {
       points: record.points,
       amount: Number(record.amount),
+      couponCode: record.couponCode,
       holderName: `${holder.firstName} ${holder.lastName}`.trim(),
       expiresAt: record.expiresAt.toISOString(),
     };
@@ -209,11 +241,20 @@ export class LoyaltyStoreRedemptionService {
   public async redeem(
     merchantUserId: string,
     code: string,
+    options: { billAmount?: number } = {},
     context: AuditContext = {},
   ): Promise<StoreRedemptionResult> {
     const record = await this.requireLiveCode(code);
     const now = new Date();
     const amount = Number(record.amount);
+
+    if (record.couponCode !== null && options.billAmount === undefined) {
+      // A percentage coupon is meaningless without a bill to take it off, and
+      // guessing one would either short the merchant or overpay them.
+      throw new ValidationDomainException(
+        'This code carries a coupon. Enter the bill total so the discount can be worked out.',
+      );
+    }
 
     const creditInput = {
       ownerType: WalletOwnerType.MERCHANT,
@@ -238,6 +279,13 @@ export class LoyaltyStoreRedemptionService {
       });
       if (claimed.count !== 1) {
         throw new ValidationDomainException('This code has already been used');
+      }
+
+      if (record.points === 0) {
+        // A coupon-only code. The claim above is the whole of the points side:
+        // there is nothing to burn and nothing to credit, and a zero-naira
+        // wallet movement is refused by design.
+        return { outcome: null, ledgerEntryId: null };
       }
 
       const account = await tx.loyaltyAccount.findUniqueOrThrow({
@@ -280,7 +328,20 @@ export class LoyaltyStoreRedemptionService {
       return { outcome: credited, ledgerEntryId: entry.id };
     });
 
-    await this.walletService.publishCredit({ ...creditInput, referenceId: ledgerEntryId }, outcome);
+    if (outcome !== null) {
+      await this.walletService.publishCredit(
+        { ...creditInput, referenceId: ledgerEntryId },
+        outcome,
+      );
+    }
+
+    // The coupon, after the points. Deliberately outside the points
+    // transaction: a coupon that turns out to be expired or over its limit
+    // must not un-spend points the holder genuinely authorised and the
+    // merchant has already been paid for. `redeemForReference` enforces the
+    // promotion's own rules and is keyed on this code's id, so it cannot pay
+    // twice.
+    const coupon = await this.applyCoupon(record, merchantUserId, options.billAmount ?? 0, context);
 
     await this.auditService.record(
       LOYALTY_AUDIT_ACTIONS.MERCHANT_REDEEMED,
@@ -292,7 +353,8 @@ export class LoyaltyStoreRedemptionService {
           holderUserId: record.userId,
           points: record.points,
           amount,
-          walletLedgerEntryId: outcome.ledgerId,
+          couponCode: record.couponCode,
+          walletLedgerEntryId: outcome?.ledgerId ?? null,
         },
       },
     );
@@ -301,14 +363,81 @@ export class LoyaltyStoreRedemptionService {
       where: { id: record.userId },
       select: { firstName: true, lastName: true },
     });
-    await this.notifyHolder(record.userId, record.points, amount);
+    if (record.points > 0) {
+      await this.notifyHolder(record.userId, record.points, amount);
+    }
 
     return {
       points: record.points,
       amount,
+      couponCode: record.couponCode,
+      couponDiscount: coupon.discount,
+      totalCredited: Math.round((amount + coupon.discount) * 100) / 100,
       holderName: `${holder.firstName} ${holder.lastName}`.trim(),
-      merchantWalletBalance: outcome.wallet.availableBalance,
+      merchantWalletBalance: coupon.walletBalance ?? outcome?.wallet.availableBalance ?? 0,
       redeemedAt: now.toISOString(),
+    };
+  }
+
+  /**
+   * Applies the coupon riding on this code and pays the merchant for it.
+   *
+   * Founder decision 2026-09-11: **DrippleX funds the in-store discount** and
+   * settles the merchant the same way it settles a points redemption — into
+   * their DX wallet. The merchant gives the customer money off at the till and
+   * is made whole here, so an in-store coupon costs them nothing.
+   *
+   * Wallet-credit promotions are refused rather than paid: those put money in
+   * the *customer's* wallet, which is not a discount on a bill and would have
+   * the merchant credited for something the customer never saved at the
+   * counter.
+   */
+  private async applyCoupon(
+    record: { id: string; userId: string; couponCode: string | null },
+    merchantUserId: string,
+    billAmount: number,
+    context: AuditContext,
+  ): Promise<{ discount: number; walletBalance: number | null }> {
+    if (record.couponCode === null) {
+      return { discount: 0, walletBalance: null };
+    }
+
+    const redeemed = await this.promotions.redeemForReference(
+      {
+        userId: record.userId,
+        domain: PromotionDomain.MERCHANT,
+        subtotal: billAmount,
+        merchantId: merchantUserId,
+        couponCode: record.couponCode,
+        referenceType: LOYALTY_STORE_COUPON_REFERENCE_TYPE,
+        referenceId: record.id,
+      },
+      { ...context, userId: record.userId },
+    );
+
+    if (redeemed.creditAmount > 0 && redeemed.discountAmount <= 0) {
+      throw new ValidationDomainException(
+        'That coupon pays wallet credit rather than money off a bill, so it cannot be used at a counter',
+      );
+    }
+    if (redeemed.discountAmount <= 0) {
+      return { discount: 0, walletBalance: null };
+    }
+
+    const wallet = await this.walletService.credit({
+      ownerType: WalletOwnerType.MERCHANT,
+      ownerId: merchantUserId,
+      amount: redeemed.discountAmount,
+      description: `Coupon ${record.couponCode} redeemed in store`,
+      referenceType: LOYALTY_STORE_COUPON_REFERENCE_TYPE,
+      referenceId: record.id,
+      metadata: { couponCode: record.couponCode, billAmount },
+      context: { ...context, userId: merchantUserId },
+    });
+
+    return {
+      discount: redeemed.discountAmount,
+      walletBalance: wallet.availableBalance,
     };
   }
 
@@ -343,6 +472,7 @@ export class LoyaltyStoreRedemptionService {
     userId: string;
     points: number;
     amount: Prisma.Decimal;
+    couponCode: string | null;
     expiresAt: Date;
   }> {
     const normalized = code.trim().toUpperCase();

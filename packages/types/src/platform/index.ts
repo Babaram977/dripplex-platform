@@ -1075,9 +1075,12 @@ export interface LoyaltyRedemptionResultDto {
  */
 export interface IssuedRedemptionCodeDto {
   code: string;
+  /** Zero when the code carries only a coupon. */
   points: number;
-  /** Naira the merchant will be credited. */
+  /** Naira the merchant will be credited for the points. */
   amount: number;
+  /** A coupon the holder chose to spend at the same counter, if any. */
+  couponCode: string | null;
   expiresAt: string;
 }
 
@@ -1085,13 +1088,20 @@ export interface IssuedRedemptionCodeDto {
 export interface RedemptionCodePreviewDto {
   points: number;
   amount: number;
+  couponCode: string | null;
   holderName: string;
   expiresAt: string;
 }
 
 export interface StoreRedemptionResultDto {
   points: number;
+  /** Naira credited from the points the holder spent. */
   amount: number;
+  couponCode: string | null;
+  /** Naira credited to cover a coupon discount DrippleX funded. */
+  couponDiscount: number;
+  /** Everything credited to the merchant for this code. */
+  totalCredited: number;
   holderName: string;
   /** The merchant's wallet balance after the credit. */
   merchantWalletBalance: number;
@@ -1099,11 +1109,18 @@ export interface StoreRedemptionResultDto {
 }
 
 export interface IssueRedemptionCodeRequest {
-  points: number;
+  /** Omit, or send 0, for a coupon-only code. */
+  points?: number;
+  couponCode?: string;
 }
 
 export interface RedeemStoreCodeRequest {
   code: string;
+  /**
+   * The bill total. Required when the code carries a coupon — a percentage
+   * discount is meaningless without something to take it off.
+   */
+  billAmount?: number;
 }
 
 /** A merchant paying down what they owe DrippleX out of their wallet balance. */
