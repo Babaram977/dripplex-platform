@@ -13,6 +13,7 @@ import { CustomerLoyaltyController } from './customer-loyalty.controller';
 import { LoyaltyEventsSubscriber } from './loyalty-events.subscriber';
 import { LoyaltyExpirySweepService } from './loyalty-expiry-sweep.service';
 import { LoyaltyRewardsService } from './loyalty-rewards.service';
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LoyaltyStoreRedemptionService } from './loyalty-store-redemption.service';
 import { LoyaltyService } from './loyalty.service';
 import { MerchantLoyaltyController } from './merchant-loyalty.controller';
@@ -28,11 +29,17 @@ import { MerchantLoyaltyController } from './merchant-loyalty.controller';
   ],
   providers: [
     LoyaltyService,
+    LoyaltySettingsService,
     LoyaltyStoreRedemptionService,
     LoyaltyRewardsService,
     LoyaltyEventsSubscriber,
     LoyaltyExpirySweepService,
   ],
-  exports: [LoyaltyService, LoyaltyStoreRedemptionService, LoyaltyRewardsService],
+  exports: [
+    LoyaltyService,
+    LoyaltySettingsService,
+    LoyaltyStoreRedemptionService,
+    LoyaltyRewardsService,
+  ],
 })
 export class LoyaltyModule {}

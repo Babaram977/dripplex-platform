@@ -521,6 +521,7 @@ export type {
   LoyaltyNextTierDto,
   LoyaltyPointsSummaryDto,
   LoyaltyRedemptionResultDto,
+  LoyaltySettingDto,
   LoyaltyTier,
   UserAchievementDto,
   DevicePlatform,

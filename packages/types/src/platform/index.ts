@@ -1097,6 +1097,10 @@ export interface LoyaltyPointsSummaryDto {
   /** The largest multiple of `pointsPerNaira` redeemable right now. */
   redeemablePoints: number;
   minimumRedeemablePoints: number;
+  /** DPX-LOYALTY-005 — whether points can be cashed out to the wallet at all.
+   *  When false they stay fully spendable in store and against the rewards
+   *  catalogue, and a client must not offer a cash-out that will be refused. */
+  walletRedemptionEnabled: boolean;
   /** Points earned so far this calendar month, Lagos time. */
   earnedThisMonth: number;
   nextExpiry: { at: string; points: number } | null;
@@ -1656,3 +1660,18 @@ export {
   RIDE_ALERT_ANDROID_CHANNEL_ID_V1,
   CALL_ALERT_ANDROID_CHANNEL_ID_V1,
 } from './android-notification-channels.js';
+
+/** DPX-LOYALTY-005 — the Ops-controlled terms on which DX Points convert. */
+export interface LoyaltySettingDto {
+  /** How many points buy one naira. Founder decision: 200. */
+  pointsPerNaira: number;
+  /** Whether points may be turned into withdrawable wallet cash. */
+  walletRedemptionEnabled: boolean;
+  /** Whether points may be spent at a merchant's counter. */
+  storeRedemptionEnabled: boolean;
+  minRedemptionPoints: number;
+  /** The most a holder may cash out in a rolling 24 hours, in points. Null is
+   *  uncapped. */
+  dailyRedemptionPointsCap: number | null;
+  updatedAt: string;
+}

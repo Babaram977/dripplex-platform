@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LoyaltyService } from './loyalty.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -50,7 +51,12 @@ describe('Loyalty redemption (database)', () => {
     };
     const auditService = new AuditService(auditLogRepository);
     walletService = new WalletService(prisma, auditService, new DomainEventBus());
-    service = new LoyaltyService(prisma, auditService, walletService);
+    service = new LoyaltyService(
+      prisma,
+      auditService,
+      walletService,
+      new LoyaltySettingsService(prisma, auditService),
+    );
 
     const user = await prisma.user.create({
       data: {

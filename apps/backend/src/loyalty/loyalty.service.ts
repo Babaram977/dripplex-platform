@@ -9,12 +9,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService, type WalletDto } from '../wallet/wallet.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import {
   LOYALTY_AUDIT_ACTIONS,
   LOYALTY_BENEFIT_THRESHOLDS,
   LOYALTY_MILESTONE_ACHIEVEMENTS,
   LOYALTY_POINT_EXPIRY_DAYS,
-  LOYALTY_POINTS_PER_NAIRA,
   LOYALTY_REFERENCE_TYPES,
   LOYALTY_TIER_THRESHOLDS,
   LOYALTY_WALLET_REFERENCE_TYPE,
@@ -44,14 +44,19 @@ export interface LoyaltyAccountOverview {
  */
 export interface LoyaltyPointsSummary {
   balance: number;
-  /** Founder decision: 200 points = ₦1. */
+  /** Founder decision: 200 points = ₦1 — now an Ops setting rather than a
+   *  constant, so a screen quoting it must read it from here. */
   pointsPerNaira: number;
   /** Naira the current balance is worth, rounded down to whole naira. */
   balanceValue: number;
   /** The largest multiple of `pointsPerNaira` that can be redeemed now. */
   redeemablePoints: number;
-  /** Smallest redemption the platform accepts — one naira's worth. */
+  /** Smallest cash-out the platform accepts, in points. Ops-configurable. */
   minimumRedeemablePoints: number;
+  /** Whether points can be cashed out to the wallet at all. When false they
+   *  remain fully spendable in store and against the rewards catalogue, and a
+   *  client must not offer a cash-out that will be refused. */
+  walletRedemptionEnabled: boolean;
   /** Points earned so far this calendar month, in Lagos time. */
   earnedThisMonth: number;
   /** The next award to fall due, and how much goes with it. */
@@ -133,6 +138,7 @@ export class LoyaltyService {
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
     private readonly walletService: WalletService,
+    private readonly settings: LoyaltySettingsService,
   ) {}
 
   public calculateTier(lifetimePoints: number): LoyaltyTier {
@@ -196,16 +202,21 @@ export class LoyaltyService {
     ]);
 
     const balance = account.pointsBalance;
-    const redeemablePoints =
-      Math.floor(balance / LOYALTY_POINTS_PER_NAIRA) * LOYALTY_POINTS_PER_NAIRA;
+    // DPX-LOYALTY-005 — read from the Ops setting, not a constant. A screen
+    // telling somebody their points are worth ₦X has to follow the figure
+    // Operations actually set, or it is quoting a price nobody honours.
+    const setting = await this.settings.getEffective();
+    const pointsPerNaira = setting.pointsPerNaira;
+    const redeemablePoints = Math.floor(balance / pointsPerNaira) * pointsPerNaira;
     const upcoming = nextExpiry(lots, now);
 
     return {
       balance,
-      pointsPerNaira: LOYALTY_POINTS_PER_NAIRA,
-      balanceValue: Math.floor(balance / LOYALTY_POINTS_PER_NAIRA),
+      pointsPerNaira,
+      balanceValue: Math.floor(balance / pointsPerNaira),
       redeemablePoints,
-      minimumRedeemablePoints: LOYALTY_POINTS_PER_NAIRA,
+      minimumRedeemablePoints: setting.minRedemptionPoints,
+      walletRedemptionEnabled: setting.walletRedemptionEnabled,
       earnedThisMonth,
       nextExpiry:
         upcoming === null ? null : { at: upcoming.at.toISOString(), points: upcoming.points },
@@ -368,20 +379,37 @@ export class LoyaltyService {
     context: AuditContext = {},
   ): Promise<LoyaltyRedemptionResult> {
     this.assertPositivePoints(points);
-    if (points % LOYALTY_POINTS_PER_NAIRA !== 0) {
+
+    // DPX-LOYALTY-005 — the terms of the cash-out are Operations settings now.
+    // Founder decision 2026-09-11: "as shipped, but can be controlled."
+    const setting = await this.settings.getEffective();
+    if (!setting.walletRedemptionEnabled) {
       throw new ValidationDomainException(
-        `Points must be redeemed in multiples of ${String(LOYALTY_POINTS_PER_NAIRA)} (${String(LOYALTY_POINTS_PER_NAIRA)} points = NGN 1)`,
+        'DX Points cannot be cashed out to your wallet at the moment. They can still be spent in store and on rewards.',
       );
     }
+    if (points < setting.minRedemptionPoints) {
+      throw new ValidationDomainException(
+        `The smallest redemption is ${String(setting.minRedemptionPoints)} DX points`,
+      );
+    }
+    if (points % setting.pointsPerNaira !== 0) {
+      throw new ValidationDomainException(
+        `Points must be redeemed in multiples of ${String(setting.pointsPerNaira)} (${String(setting.pointsPerNaira)} points = NGN 1)`,
+      );
+    }
+    await this.assertWithinDailyCap(userId, points, setting);
 
-    const amount = points / LOYALTY_POINTS_PER_NAIRA;
+    const amount = points / setting.pointsPerNaira;
     const creditInput = {
       ownerType: WalletOwnerType.CUSTOMER,
       ownerId: userId,
       amount,
       description: `Redeemed ${String(points)} DX points`,
       referenceType: LOYALTY_WALLET_REFERENCE_TYPE,
-      metadata: { points, pointsPerNaira: LOYALTY_POINTS_PER_NAIRA },
+      // Snapshotted, so re-pricing points later never rewrites what this
+      // redemption was worth.
+      metadata: { points, pointsPerNaira: setting.pointsPerNaira },
       context: { ...context, userId },
     };
 
@@ -760,6 +788,46 @@ export class LoyaltyService {
 
   private defaultExpiryDate(): Date {
     return new Date(Date.now() + LOYALTY_POINT_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+  }
+
+  /**
+   * DPX-LOYALTY-005 — the rolling 24-hour cash-out cap, when one is set.
+   *
+   * Counted off the loyalty ledger rather than the wallet, because the ledger
+   * is where a redemption is recorded first and is the record that cannot
+   * disagree with the points actually taken. A rolling window rather than a
+   * calendar day: a midnight boundary would let somebody take two days' worth
+   * in a few minutes, which is exactly what a cap exists to stop.
+   */
+  private async assertWithinDailyCap(
+    userId: string,
+    points: number,
+    setting: { dailyRedemptionPointsCap: number | null },
+  ): Promise<void> {
+    const cap = setting.dailyRedemptionPointsCap;
+    if (cap === null) {
+      return;
+    }
+
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const spent = await this.prisma.loyaltyLedgerEntry.aggregate({
+      where: {
+        account: { userId },
+        referenceType: LOYALTY_REFERENCE_TYPES.REDEMPTION,
+        createdAt: { gte: since },
+      },
+      _sum: { points: true },
+    });
+    // Redemption entries are stored negative; the cap is a positive quantity.
+    const alreadyRedeemed = Math.abs(spent._sum.points ?? 0);
+    if (alreadyRedeemed + points > cap) {
+      const remaining = Math.max(0, cap - alreadyRedeemed);
+      throw new ValidationDomainException(
+        remaining === 0
+          ? `You have reached the ${String(cap)}-point daily redemption limit. Try again tomorrow.`
+          : `That would pass the ${String(cap)}-point daily redemption limit — you can redeem ${String(remaining)} more today.`,
+      );
+    }
   }
 
   private assertPositivePoints(points: number): void {

@@ -156,3 +156,40 @@ export class AdvanceFulfilmentDto {
   @MaxLength(500)
   public note?: string;
 }
+
+/**
+ * DPX-LOYALTY-005 — the Ops-controlled terms on which DX Points convert.
+ *
+ * Every field optional: an operator closing the cash-out must not have to
+ * restate the conversion rate, and restating it is how it gets changed by
+ * accident.
+ */
+export class UpdateLoyaltySettingDto {
+  /** How many points buy one naira. Re-prices every unspent balance on the
+   *  platform at once, so it is validated again in the service. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public pointsPerNaira?: number;
+
+  /** Whether points may be cashed out to the wallet. False leaves them fully
+   *  spendable in store and against the rewards catalogue. */
+  @IsOptional()
+  @IsBoolean()
+  public walletRedemptionEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  public storeRedemptionEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public minRedemptionPoints?: number;
+
+  /** Null removes the cap. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public dailyRedemptionPointsCap?: number | null;
+}

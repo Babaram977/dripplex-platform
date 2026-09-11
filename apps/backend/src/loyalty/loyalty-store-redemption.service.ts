@@ -20,10 +20,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 import { WalletService } from '../wallet/wallet.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import {
   LOYALTY_AUDIT_ACTIONS,
   LOYALTY_MERCHANT_WALLET_REFERENCE_TYPE,
-  LOYALTY_POINTS_PER_NAIRA,
   LOYALTY_REDEMPTION_CODE_ALPHABET,
   LOYALTY_REDEMPTION_CODE_LENGTH,
   LOYALTY_REDEMPTION_CODE_TTL_MS,
@@ -101,6 +101,7 @@ export class LoyaltyStoreRedemptionService {
     private readonly walletService: WalletService,
     private readonly notifications: NotificationCenterService,
     private readonly promotions: PromotionsService,
+    private readonly settings: LoyaltySettingsService,
   ) {}
 
   /**
@@ -125,9 +126,20 @@ export class LoyaltyStoreRedemptionService {
     if (!Number.isInteger(points) || points < 0) {
       throw new ValidationDomainException('Points must be a whole number');
     }
-    if (points % LOYALTY_POINTS_PER_NAIRA !== 0) {
+
+    // DPX-LOYALTY-005 — the conversion rate is an Operations setting now. The
+    // in-store switch is seeded on and the rate seeded at 200, so nothing about
+    // spending at a counter changes; the founder's instruction was explicitly
+    // not to change in-store spending, and a switch that starts on does not.
+    const setting = await this.settings.getEffective();
+    if (points > 0 && !setting.storeRedemptionEnabled) {
       throw new ValidationDomainException(
-        `Points must be spent in multiples of ${String(LOYALTY_POINTS_PER_NAIRA)} (${String(LOYALTY_POINTS_PER_NAIRA)} points = NGN 1)`,
+        'DX Points cannot be spent in store at the moment. A coupon can still be presented.',
+      );
+    }
+    if (points % setting.pointsPerNaira !== 0) {
+      throw new ValidationDomainException(
+        `Points must be spent in multiples of ${String(setting.pointsPerNaira)} (${String(setting.pointsPerNaira)} points = NGN 1)`,
       );
     }
 
@@ -142,7 +154,7 @@ export class LoyaltyStoreRedemptionService {
 
     const code = this.generateCode();
     const expiresAt = new Date(Date.now() + LOYALTY_REDEMPTION_CODE_TTL_MS);
-    const amount = points / LOYALTY_POINTS_PER_NAIRA;
+    const amount = points / setting.pointsPerNaira;
 
     const issued = await this.prisma.$transaction(async (tx) => {
       await tx.loyaltyRedemptionCode.updateMany({
@@ -264,7 +276,10 @@ export class LoyaltyStoreRedemptionService {
       referenceType: LOYALTY_MERCHANT_WALLET_REFERENCE_TYPE,
       metadata: {
         points: record.points,
-        pointsPerNaira: LOYALTY_POINTS_PER_NAIRA,
+        // The rate the code was issued at, recovered from what was actually
+        // promised rather than read fresh — a re-pricing between a customer
+        // showing a code and a merchant typing it must not change the payout.
+        pointsPerNaira: record.points === 0 ? null : record.points / Number(record.amount),
         redemptionCodeId: record.id,
       },
       context: { ...context, userId: merchantUserId },

@@ -3645,6 +3645,57 @@ model PromotionRedemption {
   @@map("promotion_redemptions")
 }
 
+/// DPX-LOYALTY-005 — what DX Points convert to, and whether they may.
+///
+/// Founder decision 2026-09-11: "let it be as shipped but can be controlled."
+/// Redeeming points for wallet cash at 200:1 stays exactly as it shipped; what
+/// changes is that every number behind it becomes a row an operator edits
+/// rather than a constant that needs a deployment. Nora's §7 concern — that
+/// points must not become a cash instrument — is answered by the switch rather
+/// than by removing the feature: Operations can close the cash door and leave
+/// the in-store door open, or narrow the cash door with a daily cap, without
+/// anybody shipping code.
+///
+/// One row, the same fixed-id singleton pattern as PlatformCommissionSetting.
+model LoyaltySetting {
+  id String @id @db.Uuid
+
+  /// How many points buy one naira. Founder decision: 200.
+  ///
+  /// The most consequential number on this table — it re-prices every unspent
+  /// balance on the platform at once — so it is validated hard and every change
+  /// is audited with the figure before and after. A redemption snapshots the
+  /// rate it used, so re-pricing never rewrites one that already happened.
+  pointsPerNaira Int @default(200) @map("points_per_naira")
+
+  /// Whether points may be turned into withdrawable wallet cash at all.
+  ///
+  /// Seeded true, because that is what is live today and this decision was
+  /// explicitly "as shipped". Turning it off leaves points fully spendable in
+  /// store and against the rewards catalogue; it closes only the cash-out.
+  walletRedemptionEnabled Boolean @default(true) @map("wallet_redemption_enabled")
+
+  /// Whether points may be spent at a merchant's counter. Seeded true — the
+  /// founder's instruction was not to change in-store spending, and a switch
+  /// that starts on changes nothing.
+  storeRedemptionEnabled Boolean @default(true) @map("store_redemption_enabled")
+
+  /// The smallest cash-out allowed, in points. Seeded at one naira's worth,
+  /// which is the floor the conversion already implied.
+  minRedemptionPoints Int @default(200) @map("min_redemption_points")
+
+  /// The most a holder may cash out in a rolling 24 hours, in points. Null is
+  /// uncapped, which is what shipped. A cap is the middle setting between
+  /// "points are cash" and "points are not cash at all".
+  dailyRedemptionPointsCap Int? @map("daily_redemption_points_cap")
+
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("loyalty_settings")
+}
+
 model LoyaltyAccount {
   id             String               @id @default(uuid()) @db.Uuid
   userId         String               @unique @map("user_id") @db.Uuid

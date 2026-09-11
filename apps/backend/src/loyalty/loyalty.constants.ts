@@ -27,6 +27,7 @@ export const LOYALTY_AUDIT_ACTIONS = {
   MERCHANT_REDEEMED: 'loyalty.merchant_redeemed',
   REWARD_REDEEMED: 'loyalty.reward_redeemed',
   REWARD_FULFILMENT_UPDATED: 'loyalty.reward_fulfilment_updated',
+  SETTINGS_UPDATED: 'loyalty.settings_updated',
 } as const;
 
 export const LOYALTY_EVENT_POINTS = {
@@ -37,11 +38,19 @@ export const LOYALTY_EVENT_POINTS = {
   CASHBACK: 1,
 } as const;
 
+/** The fixed id of the singleton `LoyaltySetting` row — same pattern as
+ *  PLATFORM_COMMISSION_SETTING_ID. */
+export const LOYALTY_SETTING_ID = '00000000-0000-4000-8000-00000000100a';
+
 /**
  * What a DX point is worth. Founder decision: 200 points = ₦1.
  *
  * Redemptions are required to be whole multiples of this, so no fraction of a
  * naira is ever silently rounded away from a customer.
+ *
+ * DPX-LOYALTY-005 moved the live figure into `loyalty_settings`, where an
+ * operator edits it without a deployment. This constant now only seeds that
+ * row, and is the fallback for a read that somehow finds no row at all.
  */
 export const LOYALTY_POINTS_PER_NAIRA = 200;
 

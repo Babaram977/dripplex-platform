@@ -2,6 +2,7 @@ import { LoyaltyTier } from '@prisma/client';
 
 import { ValidationDomainException } from '../common/exceptions/domain.exception';
 
+import { type LoyaltySettingsService } from './loyalty-settings.service';
 import { LOYALTY_REFERENCE_TYPES } from './loyalty.constants';
 import { LoyaltyService } from './loyalty.service';
 
@@ -116,6 +117,17 @@ describe('LoyaltyService', () => {
       prisma as unknown as PrismaService,
       auditService as unknown as AuditService,
       walletService as unknown as WalletService,
+      {
+        // The seeded defaults, stated here because this suite has no database
+        // to read the real row from. They are the figures that shipped.
+        getEffective: jest.fn().mockResolvedValue({
+          pointsPerNaira: 200,
+          walletRedemptionEnabled: true,
+          storeRedemptionEnabled: true,
+          minRedemptionPoints: 200,
+          dailyRedemptionPointsCap: null,
+        }),
+      } as unknown as LoyaltySettingsService,
     );
   });
 

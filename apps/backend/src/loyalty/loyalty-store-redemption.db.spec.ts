@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LoyaltyStoreRedemptionService } from './loyalty-store-redemption.service';
 import { LoyaltyService } from './loyalty.service';
 
@@ -57,7 +58,8 @@ describe('Loyalty store redemption (database)', () => {
     const auditService = new AuditService(auditLogRepository);
     const walletService = new WalletService(prisma, auditService, new DomainEventBus());
     send = jest.fn().mockResolvedValue({ skipped: false });
-    loyalty = new LoyaltyService(prisma, auditService, walletService);
+    const loyaltySettings = new LoyaltySettingsService(prisma, auditService);
+    loyalty = new LoyaltyService(prisma, auditService, walletService, loyaltySettings);
     promotions = {
       redeemForReference: jest.fn(),
     };
@@ -67,6 +69,7 @@ describe('Loyalty store redemption (database)', () => {
       walletService,
       { send } as unknown as NotificationCenterService,
       promotions as unknown as PromotionsService,
+      loyaltySettings,
     );
 
     holderId = await createUser('holder');

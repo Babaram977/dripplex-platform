@@ -7,6 +7,7 @@ import { DomainEventBus } from '../events/domain-event-bus';
 import { WalletService } from '../wallet/wallet.service';
 
 import { LoyaltyRewardsService } from './loyalty-rewards.service';
+import { LoyaltySettingsService } from './loyalty-settings.service';
 import { LoyaltyService } from './loyalty.service';
 
 import type { AuditLogRepository } from '../audit/repositories/audit-log.repository';
@@ -56,6 +57,7 @@ describe('LoyaltyRewardsService', () => {
       prisma,
       auditService,
       new WalletService(prisma, auditService, new DomainEventBus()),
+      new LoyaltySettingsService(prisma, auditService),
     );
 
     const user = await prisma.user.create({
