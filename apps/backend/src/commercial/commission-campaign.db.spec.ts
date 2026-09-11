@@ -38,6 +38,8 @@ describe('Commission campaigns (database)', () => {
   let sweep: CommissionCampaignSweepService;
   let broadcast: jest.Mock;
   const createdIds: string[] = [];
+  const createdUserIds: string[] = [];
+  const createdRoleIds: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -63,9 +65,42 @@ describe('Commission campaigns (database)', () => {
     sweep = new CommissionCampaignSweepService(campaigns);
   });
 
+  /**
+   * A user holding the merchant role, created here rather than assumed. CI
+   * migrates the schema and never seeds it, so neither the role nor any user
+   * exists unless a test makes one.
+   */
+  async function createMerchantUser(): Promise<string> {
+    const role = await prisma.role.upsert({
+      where: { name: 'merchant' },
+      update: {},
+      create: { name: 'merchant', description: 'Merchant' },
+    });
+    createdRoleIds.push(role.id);
+
+    const user = await prisma.user.create({
+      data: {
+        email: `commission-campaign-merchant-${randomUUID()}@dripplex.test`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Test',
+        lastName: 'Merchant',
+        roles: { create: { roleId: role.id } },
+      },
+    });
+    createdUserIds.push(user.id);
+    return user.id;
+  }
+
   afterAll(async () => {
     if (databaseAvailable) {
       await prisma.commissionCampaign.deleteMany({ where: { id: { in: createdIds } } });
+      await prisma.userRole.deleteMany({ where: { userId: { in: createdUserIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+      // Only roles this suite created; an existing seeded role is not ours to
+      // delete, and upsert means we may not have created one at all.
+      await prisma.role.deleteMany({
+        where: { id: { in: createdRoleIds }, users: { none: {} } },
+      });
     }
     await prisma.$disconnect();
   });
@@ -173,10 +208,16 @@ describe('Commission campaigns (database)', () => {
     });
   });
 
-  it('announces a campaign once, however many times the sweep runs', async () => {
+  it('announces a campaign once, to the partners it charges', async () => {
     if (!databaseAvailable) return;
 
-    await create({ announce: true });
+    // A merchant of this suite's own making. Relying on whoever happens to hold
+    // the role in the database made this pass locally and fail in CI, where the
+    // schema is migrated but never seeded — and it was the assertion, not the
+    // code, that was wrong: an announcement with no audience is not a bug.
+    const merchantUserId = await createMerchantUser();
+
+    await create({ announce: true, scope: CommissionScope.MERCHANT_ORDER });
 
     await sweep.runSweep();
     await sweep.runSweep();
@@ -186,7 +227,30 @@ describe('Commission campaigns (database)', () => {
       ([dto]: [{ type: NotificationType }]) =>
         dto.type === NotificationType.COMMISSION_CAMPAIGN_STARTED,
     );
+    // Once, however many times the sweep runs — three sweeps must not mean
+    // three "your commission has changed" notices to every merchant.
     expect(starts).toHaveLength(1);
+    expect(starts[0]?.[0]).toMatchObject({
+      userIds: expect.arrayContaining([merchantUserId]),
+    });
+  });
+
+  it('announces a rider campaign to riders, not to merchants', async () => {
+    if (!databaseAvailable) return;
+
+    const merchantUserId = await createMerchantUser();
+    await create({ announce: true, scope: CommissionScope.DELIVERY });
+
+    await sweep.runSweep();
+
+    const starts = broadcast.mock.calls.filter(
+      ([dto]: [{ type: NotificationType }]) =>
+        dto.type === NotificationType.COMMISSION_CAMPAIGN_STARTED,
+    );
+    // A merchant told their rate changed when it did not is worse than silence.
+    for (const [dto] of starts as [{ userIds: string[] }][]) {
+      expect(dto.userIds).not.toContain(merchantUserId);
+    }
   });
 
   it('pausing stops the campaign charging without waiting for its window', async () => {
