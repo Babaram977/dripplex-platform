@@ -3501,14 +3501,33 @@ export const api = {
       selfieImage?: string;
     }) => dx<MerchantKycDto>('POST', '/merchant/kyc', body),
 
-    // Settlement bank account. bankName is free text (any Nigerian bank),
-    // accountName is the resolved holder name (typed by the merchant — the
-    // backend has no NUBAN resolution service yet), accountNumber is 8–20 digits.
+    // Settlement bank account — the destination every merchant payout is sent
+    // to, so none of it is typed. The backend gained NUBAN resolution some time
+    // ago (this comment used to say it hadn't) and `POST /merchant/bank-account`
+    // now *requires* it: the bank must match the provider's list, the number
+    // must be exactly 10 digits, and the stored account name is the bank's
+    // answer rather than anything the merchant entered.
     listBankAccounts: () => dx<MerchantBankAccountDto[]>('GET', '/merchant/bank-account'),
+    /** The banks the payment provider will actually accept, for the picker.
+     * A typed bank name is how a settlement destination ends up unlinkable:
+     * the provider spells OPay "OPay Digital Services Limited (OPay)". */
+    listBanks: () => dx<BankOptionDto[]>('GET', '/merchant/bank-account/banks'),
+    /** Ask the bank who owns a number, before anything is saved. A transposed
+     * digit is a valid-looking number belonging to somebody else, and this is
+     * what catches it. */
+    resolveBankAccount: (bankCode: string, accountNumber: string) =>
+      dx<ResolvedBankAccountDto>(
+        'GET',
+        `/merchant/bank-account/resolve?bankCode=${encodeURIComponent(bankCode)}&accountNumber=${encodeURIComponent(accountNumber)}`,
+      ),
     createBankAccount: (body: {
       bankName: string;
       accountName: string;
       accountNumber: string;
+      /** The provider's code for the chosen bank. The backend matches on this
+       * when present, so it saves re-deriving the bank from a display name at
+       * the moment money moves. */
+      bankCode?: string;
       currency?: string;
       isDefault?: boolean;
     }) => dx<MerchantBankAccountDto>('POST', '/merchant/bank-account', body),

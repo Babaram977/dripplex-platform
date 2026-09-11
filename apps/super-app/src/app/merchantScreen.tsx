@@ -35,6 +35,8 @@ import type {
   MerchantKycDto,
   MerchantKycStatusDto,
   MerchantBankAccountDto,
+  BankOptionDto,
+  ResolvedBankAccountDto,
   OrderPaymentProofDto,
   WalletLedgerEntryDto,
 } from '../lib/api';
@@ -3911,14 +3913,44 @@ function MerchantKYCPage() {
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 7 — BANK ACCOUNT
 // ─────────────────────────────────────────────────────────────────────────────
-function BankAccountPage() {
+/**
+ * The settlement destination — where every payout this merchant earns is sent.
+ *
+ * This form used to ask for all three fields as free text: type your bank, type
+ * 8–20 digits, type the account name "exactly as at the bank". None of that
+ * matched what the backend does, and each mismatch cost the merchant something:
+ *
+ *  - The typed account name was **discarded**. `POST /merchant/bank-account`
+ *    stores the bank's answer from name enquiry, not what was entered, so the
+ *    field asked for care it then threw away.
+ *  - A typed bank name had to match the provider's list anyway. "GTB", or any
+ *    spelling the provider doesn't use, came back as "Choose a valid Nigerian
+ *    bank" — an instruction the form gave no way to follow, because it offered
+ *    no list to choose from.
+ *  - 8–20 digits was never true. NUBAN is exactly 10, and the backend rejects
+ *    anything else, so the form accepted input it knew would fail.
+ *
+ * It is now what the backend has required for some time, and what the merchant
+ * portal already does: choose the bank from the provider's own list, enter ten
+ * digits, and confirm the name the bank returns. Nothing is saved until the
+ * bank has answered — a transposed digit is a valid-looking number belonging to
+ * somebody else, and this is the only step that catches it.
+ */
+export function BankAccountPage() {
   const [account, setAccount] = useState<MerchantBankAccountDto | null>(null);
   const [loading, setLoading] = useState(true);
-  // `editing` is null when viewing; true when the form is open (add or replace).
+  // `editing` is false when viewing; true when the form is open (add or replace).
   const [editing, setEditing] = useState(false);
-  const [bank, setBank] = useState('');
+  const [banks, setBanks] = useState<BankOptionDto[]>([]);
+  // Verification is a backend dependency, not a nicety: `create` refuses
+  // outright when no resolver is configured. If the list cannot be fetched,
+  // saying so beats showing a form that cannot succeed.
+  const [banksUnavailable, setBanksUnavailable] = useState(false);
+  const [bankCode, setBankCode] = useState('');
   const [accNo, setAccNo] = useState('');
-  const [accName, setAccName] = useState('');
+  // The bank's answer. Nothing is saved until there is one.
+  const [resolved, setResolved] = useState<ResolvedBankAccountDto | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
 
@@ -3941,28 +3973,77 @@ function BankAccountPage() {
     void load();
   }, [load]);
 
+  // The provider's own list. Fetched once, not per form opening.
+  useEffect(() => {
+    void api.merchant
+      .listBanks()
+      .then((list) => {
+        setBanks(list);
+        setBanksUnavailable(list.length === 0);
+      })
+      .catch(() => {
+        // Left empty rather than falling back to a guessed list: a bank this
+        // provider does not know is a payout that silently never arrives.
+        setBanksUnavailable(true);
+      });
+  }, []);
+
+  /**
+   * Ask the bank once there is a bank and ten digits.
+   *
+   * Re-run on every keystroke, so an answer that arrives after the merchant has
+   * moved on must not be shown as confirmed — hence the abandon flag.
+   */
+  useEffect(() => {
+    setResolved(null);
+    if (bankCode === '' || !/^[0-9]{10}$/.test(accNo)) return;
+
+    let abandoned = false;
+    setResolving(true);
+    setErr('');
+    void api.merchant
+      .resolveBankAccount(bankCode, accNo)
+      .then((r) => {
+        if (!abandoned) setResolved(r);
+      })
+      .catch((e: unknown) => {
+        if (!abandoned) {
+          setErr(
+            (e as { message?: string }).message ??
+              'We could not confirm that account. Check the number and try again.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!abandoned) setResolving(false);
+      });
+
+    return () => {
+      abandoned = true;
+    };
+  }, [bankCode, accNo]);
+
   const openForm = () => {
-    setBank('');
+    setBankCode('');
     setAccNo('');
-    setAccName('');
+    setResolved(null);
     setErr('');
     setEditing(true);
   };
 
-  const canSave =
-    bank.trim().length >= 2 &&
-    accName.trim().length >= 2 &&
-    accNo.length >= 8 &&
-    accNo.length <= 20;
+  // Only the bank's answer unlocks saving.
+  const canSave = resolved !== null && !resolving;
 
   const handleSave = async () => {
-    if (!canSave) return;
+    if (!canSave || resolved === null) return;
     setSaving(true);
     setErr('');
     try {
       const created = await api.merchant.createBankAccount({
-        bankName: bank.trim(),
-        accountName: accName.trim(),
+        // All of it the bank's spelling, none of it anyone's typing.
+        bankName: resolved.bankName,
+        bankCode: resolved.bankCode,
+        accountName: resolved.accountName,
         accountNumber: accNo,
         isDefault: true,
       });
@@ -4043,30 +4124,58 @@ function BankAccountPage() {
                     color: account.verifiedAt ? C_OK : C_WARN,
                   }}
                 >
-                  {account.verifiedAt ? 'Account verified' : 'Pending verification by Operations'}
+                  {/* This is not a cosmetic badge: bank settlement skips any
+                      account without `verifiedAt`, so an unverified row is a
+                      merchant who never gets paid. Accounts added through this
+                      screen are verified by the bank as they are saved; a row
+                      without it predates that and needs re-adding. */}
+                  {account.verifiedAt
+                    ? 'Verified with your bank'
+                    : 'Not verified — payouts are on hold. Please re-add this account.'}
                 </span>
               </div>
             </div>
           ) : (
             <div>
-              <MxInput
-                label="Bank *"
-                value={bank}
-                onChange={setBank}
-                placeholder="Type your bank name"
-              />
-              <MxInput
-                label="Account Number *"
-                value={accNo}
-                onChange={(v) => setAccNo(v.replace(/\D/g, '').slice(0, 20))}
-                placeholder="Account number (8–20 digits)"
-              />
-              <MxInput
-                label="Account Name *"
-                value={accName}
-                onChange={setAccName}
-                placeholder="Account holder name, exactly as at the bank"
-              />
+              {banksUnavailable ? (
+                <div style={{ fontFamily: IT, fontSize: 12, color: C_WARN, marginBottom: 12 }}>
+                  Bank verification is unavailable right now, so a settlement account cannot be
+                  added. Please try again shortly, or contact support.
+                </div>
+              ) : (
+                <>
+                  <MxSelect
+                    label="Bank *"
+                    value={bankCode}
+                    onChange={setBankCode}
+                    options={banks.map((b) => ({ value: b.code, label: b.name }))}
+                  />
+                  <MxInput
+                    label="Account Number *"
+                    value={accNo}
+                    onChange={(v) => setAccNo(v.replace(/\D/g, '').slice(0, 10))}
+                    placeholder="10-digit NUBAN account number"
+                  />
+                  {/* The account name is the bank's answer, shown to be checked
+                      rather than typed — so the merchant confirms a real account
+                      holder instead of restating what they already believe. */}
+                  {resolving ? (
+                    <ReadOnlyField label="Account Name" value="" hint="Checking with the bank…" />
+                  ) : resolved ? (
+                    <ReadOnlyField
+                      label="Account Name"
+                      value={resolved.accountName}
+                      hint="Confirmed by the bank. Check this is you before saving."
+                    />
+                  ) : (
+                    <ReadOnlyField
+                      label="Account Name"
+                      value=""
+                      hint="Choose your bank and enter 10 digits — the name appears here."
+                    />
+                  )}
+                </>
+              )}
               {err && (
                 <div style={{ fontFamily: IT, fontSize: 12, color: C_ERR, marginBottom: 12 }}>
                   {err}
