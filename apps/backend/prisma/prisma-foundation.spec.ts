@@ -148,7 +148,12 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // created and decides which wallet the reward lands in, so a persona
     // issued a code under another's permission would have their reward filed
     // under the wrong one.
-    expect(PERMISSION_SEEDS).toHaveLength(150);
+    // 150 -> 152: `support:tickets:use` and `admin:support:tickets:manage`
+    // (DPX-SUPPORT-001). The persona-neutral pair replacing
+    // `driver:support-ticket:manage` / `admin:drivers:support-ticket:manage`,
+    // which stay in the catalogue because deployed driver apps still call the
+    // routes behind them.
+    expect(PERMISSION_SEEDS).toHaveLength(152);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

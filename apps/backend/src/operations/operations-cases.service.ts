@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  DriverSupportTicketStatus,
   IncidentReportStatus,
   IncidentSeverity,
   OperationsAssigneeRole,
@@ -9,6 +8,7 @@ import {
   OperationsLifecycleStatus,
   OperationsPriority,
   SosAlertStatus,
+  SupportTicketStatus,
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
@@ -18,8 +18,8 @@ import {
 } from '../common/exceptions/domain.exception';
 import { IncidentReportService } from '../drivers/incidents/incident-report.service';
 import { SosAlertService } from '../drivers/sos/sos-alert.service';
-import { DriverSupportService } from '../drivers/support/driver-support.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { SupportService } from '../support/support.service';
 
 import { OPERATIONS_AUDIT_ACTIONS, OPERATIONS_PERMISSIONS } from './operations.constants';
 import {
@@ -141,7 +141,7 @@ export class OperationsCasesService {
     private readonly auditService: AuditService,
     private readonly sosAlertService: SosAlertService,
     private readonly incidentReportService: IncidentReportService,
-    private readonly driverSupportService: DriverSupportService,
+    private readonly supportService: SupportService,
   ) {}
 
   public async getSosQueue(filter: OperationsQueueFilter = {}): Promise<SosQueueDto> {
@@ -210,18 +210,23 @@ export class OperationsCasesService {
   }
 
   public async getSupportQueue(filter: OperationsQueueFilter = {}): Promise<SupportQueueDto> {
-    // DriverSupportTicket (frozen) has neither a rideId nor a vehicleId
-    // column — no support ticket can ever match either filter.
-    if (filter.rideId || filter.vehicleId) {
+    // DPX-SUPPORT-001 — a support ticket now captures the ride it is about,
+    // so filter.rideId is answerable where it previously could not be. There
+    // is still no vehicle on a ticket, so that filter matches nothing.
+    if (filter.vehicleId) {
       return { items: [], summary: emptyCounters() };
     }
 
-    const tickets = await this.prisma.driverSupportTicket.findMany({
+    const tickets = await this.prisma.supportTicket.findMany({
       where: {
-        ...(filter.driverId ? { driverId: filter.driverId } : {}),
+        // `driverId` is the filter's name for "the person this case is about",
+        // shared with the SOS and incident queues where that person is always
+        // a driver. Here it is whoever filed, of any persona.
+        ...(filter.driverId ? { userId: filter.driverId } : {}),
+        ...(filter.rideId ? { rideId: filter.rideId } : {}),
         ...this.dateRangeWhere(filter),
       },
-      include: { driver: true },
+      include: { user: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -270,9 +275,9 @@ export class OperationsCasesService {
         return { ...toIncidentQueueItemDto(report, kase, userMap), events: eventDtos };
       }
       case OperationsCaseType.SUPPORT: {
-        const ticket = await this.prisma.driverSupportTicket.findUnique({
+        const ticket = await this.prisma.supportTicket.findUnique({
           where: { id: kase.sourceId },
-          include: { driver: true },
+          include: { user: true },
         });
         if (!ticket) throw new NotFoundDomainException('Support ticket not found for this case');
         return { ...toSupportQueueItemDto(ticket, kase, userMap), events: eventDtos };
@@ -488,9 +493,9 @@ export class OperationsCasesService {
         this.prisma.incidentReport.count({
           where: { status: { in: [IncidentReportStatus.OPEN, IncidentReportStatus.ACKNOWLEDGED] } },
         }),
-        this.prisma.driverSupportTicket.count({
+        this.prisma.supportTicket.count({
           where: {
-            status: { in: [DriverSupportTicketStatus.OPEN, DriverSupportTicketStatus.IN_PROGRESS] },
+            status: { in: [SupportTicketStatus.OPEN, SupportTicketStatus.IN_PROGRESS] },
           },
         }),
         this.prisma.operationsCase.count({ where: { status: OperationsLifecycleStatus.WAITING } }),
@@ -743,13 +748,13 @@ export class OperationsCasesService {
         return;
       }
       case OperationsCaseType.SUPPORT: {
-        const ticket = await this.prisma.driverSupportTicket.findUnique({
+        const ticket = await this.prisma.supportTicket.findUnique({
           where: { id: kase.sourceId },
         });
         if (!ticket) return;
         const target = this.mapLifecycleToSupportStatus(kase.status);
         if (target !== null && ticket.status !== target) {
-          await this.driverSupportService.updateTicket(
+          await this.supportService.updateTicket(
             kase.sourceId,
             actorUserId,
             { status: target },
@@ -763,18 +768,18 @@ export class OperationsCasesService {
 
   private mapLifecycleToSupportStatus(
     status: OperationsLifecycleStatus,
-  ): DriverSupportTicketStatus | null {
+  ): SupportTicketStatus | null {
     switch (status) {
       case OperationsLifecycleStatus.NEW:
         return null;
       case OperationsLifecycleStatus.ASSIGNED:
       case OperationsLifecycleStatus.IN_PROGRESS:
       case OperationsLifecycleStatus.WAITING:
-        return DriverSupportTicketStatus.IN_PROGRESS;
+        return SupportTicketStatus.IN_PROGRESS;
       case OperationsLifecycleStatus.RESOLVED:
-        return DriverSupportTicketStatus.RESOLVED;
+        return SupportTicketStatus.RESOLVED;
       case OperationsLifecycleStatus.CLOSED:
-        return DriverSupportTicketStatus.CLOSED;
+        return SupportTicketStatus.CLOSED;
     }
   }
 }

@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { DriversModule } from '../drivers/drivers.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ReferralsModule } from '../referrals/referrals.module';
+import { SupportModule } from '../support/support.module';
 
 import { OperationsAnalyticsController } from './controllers/operations-analytics.controller';
 import { OperationsCasesController } from './controllers/operations-cases.controller';
@@ -38,9 +39,15 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
  * Slice 2 tables via the new `OperationsCase`/`OperationsCaseEvent` wrapper
  * models. `DriversModule` is imported (not modified) so
  * `OperationsCasesService` can compose `SosAlertService`/
- * `IncidentReportService`/`DriverSupportService`'s existing public update
- * methods — the source tables' own driver-facing status and notifications
- * stay exactly as Driver Slice 2 built them.
+ * `IncidentReportService`'s existing public update methods — the source
+ * tables' own driver-facing status and notifications stay exactly as Driver
+ * Slice 2 built them.
+ *
+ * DPX-SUPPORT-001 moved the Support queue off `DriverSupportTicket` and onto
+ * the persona-neutral `SupportTicket`, so `SupportModule` is imported for the
+ * same reason and `SupportService.updateTicket` plays the role
+ * `DriverSupportService.updateTicket` used to. The queue is still one queue —
+ * that was the constraint, not an accident of which table it read.
  *
  * Slice 3 (Dispatch Management, founder-approved 2026-08-05,
  * reality-audited first — see docs/DPX-OPS-001-SLICE-3-REALITY-AUDIT.md):
@@ -74,7 +81,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
 @Module({
   // DPX-REFERRAL-003 — the referral review queue reads the programmes that
   // set each hold, so it needs the lifecycle service that owns them.
-  imports: [PrismaModule, AuditModule, DriversModule, ReferralsModule],
+  imports: [PrismaModule, AuditModule, DriversModule, ReferralsModule, SupportModule],
   controllers: [
     OperationsFinanceController,
     OperationsFleetController,

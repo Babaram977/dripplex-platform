@@ -15,6 +15,17 @@ export type {
 export { CALL_EVENT_NAMES, isCallOver, LIVE_CALL_STATUSES } from './call/index.js';
 
 export type {
+  CreateSupportTicketRequest,
+  ListSupportTicketsQuery,
+  SupportCategory,
+  SupportPersona,
+  SupportTicketDto,
+  SupportTicketListDto,
+  SupportTicketStatus,
+  UpdateSupportTicketRequest,
+} from './support/index.js';
+
+export type {
   SignUploadRequest,
   SignUploadResponse,
   UploadContentType,

@@ -51,7 +51,7 @@ export class DriverSupportController {
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<DriverSupportTicketDto>> {
     const data = await this.supportService.createTicket(
-      user.id,
+      user,
       dto,
       this.auditContext(request, user.id),
     );

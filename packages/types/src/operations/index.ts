@@ -1,7 +1,5 @@
 import type { DeliveryStatus } from '../delivery/index.js';
 import type {
-  DriverSupportCategory,
-  DriverSupportTicketStatus,
   IncidentCategory,
   IncidentReportStatus,
   IncidentSeverity,
@@ -23,6 +21,7 @@ import type {
   RideTrackingPointDto,
   RideType,
 } from '../ride/index.js';
+import type { SupportCategory, SupportPersona, SupportTicketStatus } from '../support/index.js';
 import type {
   UtilityPaymentMethod,
   UtilityPurchaseStatus,
@@ -421,13 +420,34 @@ export interface IncidentQueueItemDto extends OperationsCaseBaseDto {
   adminNotes: string | null;
 }
 
+/**
+ * DPX-SUPPORT-001 — support cases are no longer driver-only.
+ *
+ * The inherited `driverId`/`driverName`/`driverPhone` now carry whoever filed
+ * the ticket, whatever persona they are, because the shared case list renders
+ * them for every case type. `userId`/`userName`/`userPhone` are the same three
+ * values under names that do not claim the filer drives: read those, and read
+ * `persona` for who they actually are.
+ */
 export interface SupportQueueItemDto extends OperationsCaseBaseDto {
   caseType: 'SUPPORT';
-  sourceStatus: DriverSupportTicketStatus;
-  category: DriverSupportCategory;
+  sourceStatus: SupportTicketStatus;
+  category: SupportCategory;
   subject: string;
   description: string;
   adminResponse: string | null;
+  userId: string;
+  userName: string;
+  userPhone: string | null;
+  persona: SupportPersona;
+  /** PAYMENT, WALLET and SAFETY. Decided server-side at submission — never
+   *  answer one of these with automation. */
+  requiresHumanHandling: boolean;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  appVersion: string | null;
+  orderId: string | null;
+  rideId: string | null;
 }
 
 export interface OperationsQueueCountersByStatus {

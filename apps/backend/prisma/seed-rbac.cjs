@@ -251,6 +251,18 @@ const PERMISSION_SEEDS = [
     code: 'admin:drivers:support-ticket:manage',
     description: 'View and resolve the driver support ticket queue',
   },
+  // DPX-SUPPORT-001 — the persona-neutral pair that supersedes the two
+  // `driver:`-prefixed permissions above. The old two stay: deployed driver
+  // apps still call /driver/support-tickets, and revoking a permission those
+  // builds depend on would 403 every driver still on them.
+  {
+    code: 'support:tickets:use',
+    description: 'File and view your own support tickets, whichever persona you are',
+  },
+  {
+    code: 'admin:support:tickets:manage',
+    description: 'View and answer the support ticket queue across every persona',
+  },
   {
     code: 'driver:incident-report:manage',
     description: 'Submit and view own driver incident reports',
@@ -446,6 +458,7 @@ const ROLE_PERMISSION_GRANTS = {
     'customer:promotions:use',
     'customer:referrals:use',
     'customer:cms:read',
+    'support:tickets:use',
   ],
   merchant: [
     'profile:read',
@@ -471,6 +484,7 @@ const ROLE_PERMISSION_GRANTS = {
     'merchant:bookings:manage',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   rider: [
     'profile:read',
@@ -488,6 +502,7 @@ const ROLE_PERMISSION_GRANTS = {
     'rider:referrals:use',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   driver: [
     'profile:read',
@@ -519,6 +534,7 @@ const ROLE_PERMISSION_GRANTS = {
     'driver:referrals:use',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   operations_staff: [
     'admin:customer-kyc:review',
@@ -582,6 +598,7 @@ const ROLE_PERMISSION_GRANTS = {
     'admin:commission-campaign:read',
     'users:read',
     'audit:read',
+    'admin:support:tickets:manage',
   ],
   administrator: [
     'admin:customer-kyc:review',
@@ -661,6 +678,7 @@ const ROLE_PERMISSION_GRANTS = {
     'roles:read',
     'permissions:read',
     'audit:read',
+    'admin:support:tickets:manage',
   ],
   super_administrator: [
     'admin:customer-kyc:review',
@@ -791,6 +809,7 @@ const ROLE_PERMISSION_GRANTS = {
     'permissions:read',
     'audit:read',
     'platform:settings:write',
+    'admin:support:tickets:manage',
   ],
   inspection_officer: ['profile:read', 'profile:write', 'inspection:checklist:manage'],
   fleet_owner: [
@@ -799,6 +818,7 @@ const ROLE_PERMISSION_GRANTS = {
     'fleet:own:read',
     'fleet:own:manage',
     'fleet:referrals:use',
+    'support:tickets:use',
   ],
   inspection_supervisor: [
     'profile:read',

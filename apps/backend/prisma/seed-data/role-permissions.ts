@@ -32,6 +32,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'customer:utilities:purchase',
     'customer:bookings:read',
     'customer:bookings:book',
+    'support:tickets:use',
   ],
   merchant: [
     // MKT-INT-001 — a merchant manages their own POS integrations.
@@ -58,6 +59,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'merchant:bookings:manage',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   rider: [
     'profile:read',
@@ -75,6 +77,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'calls:use',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   driver: [
     'profile:read',
@@ -112,6 +115,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'driver:referrals:use',
     'customer:notifications:read',
     'customer:notifications:manage',
+    'support:tickets:use',
   ],
   operations_staff: [
     'profile:read',
@@ -175,6 +179,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'admin:commission-campaign:read',
     'users:read',
     'audit:read',
+    'admin:support:tickets:manage',
   ],
   administrator: [
     'profile:read',
@@ -254,6 +259,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'roles:read',
     'permissions:read',
     'audit:read',
+    'admin:support:tickets:manage',
   ],
   super_administrator: [
     'profile:read',
@@ -383,6 +389,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'permissions:read',
     'audit:read',
     'platform:settings:write',
+    'admin:support:tickets:manage',
   ],
   inspection_officer: ['profile:read', 'profile:write', 'inspection:checklist:manage'],
   fleet_owner: [
@@ -391,6 +398,7 @@ export const ROLE_PERMISSION_GRANTS: Record<string, string[]> = {
     'fleet:own:read',
     'fleet:own:manage',
     'fleet:referrals:use',
+    'support:tickets:use',
   ],
   inspection_supervisor: [
     'profile:read',
