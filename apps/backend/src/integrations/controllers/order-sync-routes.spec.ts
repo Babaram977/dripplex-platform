@@ -29,15 +29,33 @@ describe('order sync controller routes', () => {
     expect(path).not.toMatch(/(^|\/)api\/v1(\/|$)/);
   });
 
-  it('resolves the status route to /api/v1/integrations/orders/:orderNumber/status', () => {
+  it('resolves the status route to /api/v1/integrations/orders/status/:orderNumber', () => {
     const controller = Reflect.getMetadata(PATH_METADATA, OrderSyncController) as string;
     const handler = Reflect.getMetadata(
       PATH_METADATA,
       OrderSyncController.prototype.updateStatus,
     ) as string;
     expect(`api/v1/${controller}/${handler}`).toBe(
-      'api/v1/integrations/orders/:orderNumber/status',
+      'api/v1/integrations/orders/status/:orderNumber',
     );
+  });
+
+  /**
+   * `GET /integrations/orders` was swallowed by BOTH
+   * `GET /integrations/:integrationId` (IntegrationsCController) and
+   * `GET /integrations/:id` (the legacy controller) — the same defect class
+   * that made the stock push unreachable. Every route here now leads with a
+   * literal, so no one-segment parameter can claim any of them.
+   */
+  it.each([
+    ['updateStatus', OrderSyncController.prototype.updateStatus as object],
+    ['getOrder', OrderSyncController.prototype.getOrder as object],
+    ['listOrders', OrderSyncController.prototype.listOrders as object],
+  ])('%s leads with a literal segment, not a parameter', (_name, handler) => {
+    const path = Reflect.getMetadata(PATH_METADATA, handler) as string;
+    const firstSegment = path.replace(/^\//, '').split('/')[0];
+    expect(firstSegment).toBeDefined();
+    expect(firstSegment?.startsWith(':')).toBe(false);
   });
 
   /**

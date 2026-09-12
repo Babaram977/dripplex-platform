@@ -63,7 +63,17 @@ export class OrderSyncController {
    * two systems share today. Only `PREPARING` and `READY` are accepted; every
    * other transition is DrippleX's, and `CANCELLED` refunds a customer.
    */
-  @Put(':orderNumber/status')
+  // Every route on this controller is `verb/noun` with at least two literal
+  // segments after `integrations`, and that is not decoration.
+  // `IntegrationsCController` registers `GET|PUT /integrations/:integrationId`
+  // and the legacy controller registers `GET /integrations/:id`, both before
+  // this controller, so ANY one-segment path here is swallowed by them —
+  // `GET /integrations/orders` was, and answered 401 from the CRUD route while
+  // looking alive. Two literal segments cannot be claimed by a one-segment
+  // parameter, and giving all three routes the same shape means none of them
+  // can shadow another either, whatever order anything is declared in.
+  // See pos-route-reachability.spec.ts.
+  @Put('status/:orderNumber')
   // JwtAuthGuard is a global APP_GUARD (app.module.ts). A POS holds an
   // integration credential, never a JWT, so without this the global guard
   // refuses every push before IntegrationCredentialGuard is ever consulted.
@@ -94,7 +104,7 @@ export class OrderSyncController {
     return { success: true, data };
   }
 
-  @Get(':orderNumber')
+  @Get('detail/:orderNumber')
   @Public()
   @UseGuards(IntegrationCredentialGuard)
   @RequireIntegrationScope(ORDERS_READ_SCOPE)
@@ -110,7 +120,7 @@ export class OrderSyncController {
     return { success: true, data };
   }
 
-  @Get()
+  @Get('list')
   @Public()
   @UseGuards(IntegrationCredentialGuard)
   @RequireIntegrationScope(ORDERS_READ_SCOPE)
