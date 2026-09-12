@@ -76,6 +76,10 @@ export const DEFAULT_PROMOTER_REWARD_NGN: Partial<Record<CampaignParticipantType
   [CampaignParticipantType.PIONEER_DRIVER]: 350,
 };
 
+export const CAMPAIGN_ATTRIBUTION_AUDIT_ACTIONS = {
+  ATTRIBUTED: 'campaign.attribution.recorded',
+} as const;
+
 export const CAMPAIGN_PROMOTER_AUDIT_ACTIONS = {
   ADDED: 'campaign.promoter.added',
   REMOVED: 'campaign.promoter.removed',
