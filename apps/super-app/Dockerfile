@@ -51,15 +51,21 @@ RUN pnpm --filter @dripplex/super-app build
 
 FROM base AS runner
 WORKDIR /app
-RUN pnpm add -g serve@14
+# serve-handler, not the `serve` CLI. server.mjs calls the same library `serve`
+# wraps, at the version serve@14.2.6 pins, so routing and the SPA fallback are
+# unchanged — but it can answer /.well-known/apple-app-site-association, which
+# the CLI cannot. See the header of server.mjs for the measurements.
+RUN printf '{"name":"super-app-runtime","private":true,"dependencies":{"serve-handler":"6.1.6"}}\n' > package.json \
+  && pnpm install --prod --no-frozen-lockfile
 COPY --from=build /app/apps/super-app/dist ./dist
-# Cache policy. Without it `serve` sends index.html with an ETag and no
-# Cache-Control at all, so a browser may hold it heuristically and stay pinned
-# to the hashed bundle that copy references — the device keeps running an old
-# build after a deploy has landed. The config must be COPYed and named on the
-# command line; serve does not pick it up from the repo on its own.
+# Cache policy. Without it index.html goes out with an ETag and no Cache-Control
+# at all, so a browser may hold it heuristically and stay pinned to the hashed
+# bundle that copy references — the device keeps running an old build after a
+# deploy has landed. server.mjs reads this file from the working directory.
 COPY apps/super-app/serve.json ./serve.json
+COPY apps/super-app/server.mjs ./server.mjs
 ENV PORT=3000
 EXPOSE 3000
-# SPA fallback (-s) so client-side routing resolves; listen on Railway's $PORT.
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000} --config /app/serve.json"]
+# The SPA fallback that `-s` used to provide is the `rewrites` rule in
+# serve.json, which server.mjs passes straight through to serve-handler.
+CMD ["node", "server.mjs"]
