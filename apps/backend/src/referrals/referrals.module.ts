@@ -7,6 +7,7 @@ import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminDriverCampaignController } from './admin-driver-campaign.controller';
 import { AdminReferralsController } from './admin-referrals.controller';
+import { CampaignPromoterService } from './campaign-promoter.service';
 import { CustomerReferralsController } from './customer-referrals.controller';
 import { DriverCampaignSweepService } from './driver-campaign-sweep.service';
 import { DriverCampaignTripSubscriber } from './driver-campaign-trip.subscriber';
@@ -45,7 +46,13 @@ import { RiderReferralsController } from './rider-referrals.controller';
     DriverCampaignService,
     DriverCampaignTripSubscriber,
     DriverCampaignSweepService,
+    CampaignPromoterService,
   ],
-  exports: [ReferralsService, ReferralLifecycleService, DriverCampaignService],
+  exports: [
+    ReferralsService,
+    ReferralLifecycleService,
+    DriverCampaignService,
+    CampaignPromoterService,
+  ],
 })
 export class ReferralsModule {}
