@@ -32,6 +32,23 @@ const PRODUCT_INCLUDE = {
   inventory: true,
 } satisfies Prisma.ProductInclude;
 
+/**
+ * Creation details a caller may set that the user-scoped endpoint does not.
+ * Both are optional so `createProduct` keeps its existing behaviour exactly.
+ */
+export interface CreateProductForMerchantOptions {
+  /**
+   * Whether the new product tracks unit counts. Defaults to `false`, matching
+   * the merchant endpoint. POS ingestion passes `true`.
+   */
+  trackInventory?: boolean;
+  /**
+   * Initial status. Omitted means the schema default (`DRAFT`) — a merchant's
+   * catalogue must not publish itself to customers on first sync.
+   */
+  status?: ProductStatus;
+}
+
 @Injectable()
 export class MerchantProductsService {
   constructor(
@@ -48,7 +65,30 @@ export class MerchantProductsService {
     context: AuditContext,
   ): Promise<ProductDto> {
     const merchantId = await this.requireMerchantId(userId);
+    return await this.createProductForMerchant(merchantId, dto, { ...context, userId });
+  }
 
+  /**
+   * Create a product for a merchant that has already been resolved.
+   *
+   * `createProduct` above resolves the merchant from a signed-in user. A POS
+   * integration has no user — it authenticates as an integration credential —
+   * so it cannot use that path, and duplicating this logic would leave two
+   * write paths that must agree for ever. In particular `productSearchSync`
+   * runs here: a second creation path that forgot it would leave POS-ingested
+   * products silently missing from search.
+   *
+   * Decision #2 of the Phase 1 Catalogue Ingestion Contract.
+   *
+   * @param merchantId A `MerchantProfile.id` — NOT a `User.id`. Callers holding
+   *   a user id must resolve the profile first (see `requireMerchantId`).
+   */
+  public async createProductForMerchant(
+    merchantId: string,
+    dto: CreateProductDto,
+    context: AuditContext,
+    options: CreateProductForMerchantOptions = {},
+  ): Promise<ProductDto> {
     if (dto.categoryId) {
       await this.requireCategory(dto.categoryId);
     }
@@ -69,24 +109,25 @@ export class MerchantProductsService {
         basePrice: new Prisma.Decimal(dto.basePrice),
         currency: (dto.currency ?? PRODUCT_CURRENCY_DEFAULT).toUpperCase(),
         sku: dto.sku?.trim() ?? null,
+        ...(options.status !== undefined ? { status: options.status } : {}),
         // Minimal merchants don't manage unit counts, so a new product is NOT
         // inventory-tracked by default — it is sellable/in-stock unless the
         // merchant explicitly flips "out of stock" (inventory.manuallyDisabled).
         // Merchants who want unit tracking enable it via the inventory endpoint.
-        inventory: { create: { quantity: 0, trackInventory: false } },
+        //
+        // A POS-ingested product IS unit-tracked, because the till is counting
+        // units, so ingestion passes trackInventory explicitly rather than
+        // inheriting this default.
+        inventory: { create: { quantity: 0, trackInventory: options.trackInventory ?? false } },
       },
       include: PRODUCT_INCLUDE,
     });
 
-    await this.auditService.record(
-      PRODUCT_AUDIT_ACTIONS.CREATED,
-      { ...context, userId },
-      {
-        resource: 'product',
-        resourceId: product.id,
-        metadata: { name: product.name },
-      },
-    );
+    await this.auditService.record(PRODUCT_AUDIT_ACTIONS.CREATED, context, {
+      resource: 'product',
+      resourceId: product.id,
+      metadata: { name: product.name },
+    });
     await this.productSearchSync.syncProduct(product);
 
     return toProductDto(product);

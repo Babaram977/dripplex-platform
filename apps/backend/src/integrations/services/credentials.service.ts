@@ -11,7 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 import { EncryptionService } from './encryption.service';
 
-import type { IntegrationCredential } from '@prisma/client';
+import type { IntegrationCredential, MerchantIntegration } from '@prisma/client';
 
 export interface CreateCredentialInput {
   integrationId: string;
@@ -361,6 +361,61 @@ export class CredentialsService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Authenticate an inbound request from an external POS.
+   *
+   * `verifyIncomingCredential` above answers "is this secret correct" but needs
+   * a merchantId the caller already trusts, and returns only a boolean — so it
+   * cannot, on its own, authenticate a request that arrives carrying nothing
+   * but an integration id and a key. This resolves the integration first, uses
+   * that integration's own merchantId, and then checks scope, which is the
+   * part that decides whether the key may write a catalogue at all.
+   *
+   * Returns null for every failure — unknown integration, archived, inactive,
+   * wrong key, missing scope — so a caller cannot distinguish "no such
+   * integration" from "wrong key" and use the endpoint to enumerate ids.
+   */
+  public async authenticateIncoming(
+    integrationId: string,
+    presentedSecret: string,
+    requiredScope: string,
+  ): Promise<MerchantIntegration | null> {
+    const integration = await this.prisma.merchantIntegration.findFirst({
+      where: { id: integrationId, archivedAt: null, status: 'ACTIVE' },
+    });
+    if (!integration) {
+      return null;
+    }
+
+    const verified = await this.verifyIncomingCredential(
+      integration.merchantId,
+      integration.id,
+      'INCOMING_API_KEY',
+      presentedSecret,
+    );
+    if (!verified) {
+      return null;
+    }
+
+    // Scope is checked separately from the secret: a valid key that was never
+    // granted catalogue write must not be able to rewrite a catalogue.
+    const credential = await this.prisma.integrationCredential.findFirst({
+      where: {
+        integrationId: integration.id,
+        credentialType: 'INCOMING_API_KEY',
+        archivedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      select: { scopes: true },
+    });
+
+    if (!credential?.scopes.includes(requiredScope)) {
+      return null;
+    }
+
+    return integration;
   }
 
   /**
