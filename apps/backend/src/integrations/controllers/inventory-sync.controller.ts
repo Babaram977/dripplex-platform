@@ -68,7 +68,15 @@ export class InventorySyncController {
    * it — and 202 would promise a later result that never arrives. Recorded as
    * a divergence in docs/DPX-MKT-INT-001-P1-INVENTORY-CONTRACT.md.
    */
-  @Put()
+  // `sync`, not the bare controller path. `IntegrationsCController` registers
+  // `PUT /integrations/:integrationId` first, and Express matches in
+  // registration order, so a bare `PUT /integrations/inventory` was swallowed
+  // by it — the CRUD route read "inventory" as an integration id and answered
+  // 401, which looked exactly like this route refusing an unauthenticated
+  // caller. Mirrors `catalogue/sync`, and a two-segment literal path cannot
+  // collide with a one-segment parameter no matter what order anything is
+  // registered in.
+  @Put('sync')
   // JwtAuthGuard is a global APP_GUARD (app.module.ts). A POS holds an
   // integration credential, never a JWT, so without this the global guard
   // refuses every push before IntegrationCredentialGuard is ever consulted.
@@ -125,7 +133,9 @@ export class InventorySyncController {
    * Merchant-facing, so it authenticates as a user and reuses the
    * `integrations:read` permission the rest of the module already uses.
    */
-  @Get(':integrationId')
+  // `levels/:integrationId` for the same reason, and for symmetry with
+  // `catalogue/jobs/:integrationId`.
+  @Get('levels/:integrationId')
   @UseGuards(JwtAuthGuard, PermissionsGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: 'List current stock levels for an integration' })

@@ -33,9 +33,28 @@ describe('inventory sync controller route prefix', () => {
     expect(path).not.toMatch(/(^|\/)api\/v1(\/|$)/);
   });
 
-  it('resolves the push endpoint to /api/v1/integrations/inventory once prefixed', () => {
-    const path = Reflect.getMetadata(PATH_METADATA, InventorySyncController) as string;
-    expect(`api/v1/${path}`).toBe('api/v1/integrations/inventory');
+  it('resolves the push endpoint to /api/v1/integrations/inventory/sync once prefixed', () => {
+    const controller = Reflect.getMetadata(PATH_METADATA, InventorySyncController) as string;
+    const handler = Reflect.getMetadata(
+      PATH_METADATA,
+      InventorySyncController.prototype.push,
+    ) as string;
+    expect(`api/v1/${controller}/${handler}`).toBe('api/v1/integrations/inventory/sync');
+  });
+
+  /**
+   * Not cosmetic. A bare `PUT /integrations/inventory` was swallowed by
+   * `PUT /integrations/:integrationId`, which registers first — see
+   * `pos-route-reachability.spec.ts`.
+   */
+  it('does not sit at a path a one-segment parameter route can claim', () => {
+    const controller = Reflect.getMetadata(PATH_METADATA, InventorySyncController) as string;
+    const handler = Reflect.getMetadata(
+      PATH_METADATA,
+      InventorySyncController.prototype.push,
+    ) as string;
+    expect(handler).not.toBe('/');
+    expect(`${controller}/${handler}`.split('/').length).toBeGreaterThan(2);
   });
 
   /**

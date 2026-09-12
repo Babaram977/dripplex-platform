@@ -62,10 +62,13 @@ touching the same SKUs take their row locks in the same order rather than deadlo
 
 ## 2. Routes
 
-| Method | Path                                            | Auth                                      | Scope / permission  |
-| ------ | ----------------------------------------------- | ----------------------------------------- | ------------------- |
-| `PUT`  | `/api/v1/integrations/inventory`                | integration credential (`@Public` to JWT) | `inventory:write`   |
-| `GET`  | `/api/v1/integrations/inventory/:integrationId` | JWT + `PermissionsGuard`                  | `integrations:read` |
+| Method | Path                                                   | Auth                                      | Scope / permission  |
+| ------ | ------------------------------------------------------ | ----------------------------------------- | ------------------- |
+| `PUT`  | `/api/v1/integrations/inventory/sync`                  | integration credential (`@Public` to JWT) | `inventory:write`   |
+| `GET`  | `/api/v1/integrations/inventory/levels/:integrationId` | JWT + `PermissionsGuard`                  | `integrations:read` |
+
+**Why `inventory/sync` and not a bare `inventory`.** See §2.1 — a bare path was
+unreachable.
 
 `inventory:write` is already in the documented set on `IntegrationCredential.scopes` and is
 already granted by default when an integration is created, so **no existing credential has to
@@ -74,6 +77,37 @@ be reissued**.
 `IntegrationCredentialGuard` previously hard-coded `catalog:write`. It now reads the scope the
 route declares via `@RequireIntegrationScope`, and **refuses a route that declares none**. Left
 hard-coded, a stock-only key would have been able to reprice a merchant's shelf.
+
+### 2.1 The route that was mapped but unreachable
+
+The push first shipped at `PUT /api/v1/integrations/inventory`. It never ran.
+
+`IntegrationsCController` registers `PUT /api/v1/integrations/:integrationId`, and Express
+matches in registration order, so the CRUD update route swallowed every stock push — reading
+the literal string `"inventory"` as an integration id and answering **401**, which is
+indistinguishable from this route refusing an unauthenticated caller. Nest's own startup log
+listed both paths as `Mapped`, because _mapped_ and _reachable_ are different things.
+
+Nothing in the test suite could have caught it. The path was declared correctly, so the
+route-metadata spec passed; the controller, guard and service unit tests all passed; the
+17 real-database service tests passed, because they call the service directly. It was found by
+driving the running API over HTTP and reading the **body** of the 401 rather than its status
+code: `"Authentication required"` (the global JWT guard, on the CRUD route) versus
+`"Integration credentials required"` (this route's own guard).
+
+Two things changed as a result:
+
+1. The routes moved to `inventory/sync` and `inventory/levels/:integrationId`, mirroring
+   `catalogue/sync` and `catalogue/jobs/:integrationId`. A two-segment literal path cannot
+   collide with a one-segment parameter however anything is ordered — the fix does not depend
+   on controller registration order staying as it is today.
+2. `pos-route-reachability.spec.ts` now reads the module's real controller order, expands every
+   route, and fails if any earlier pattern swallows a POS route. Restoring the bare path turns
+   the suite red.
+
+The known mutual shadowing between `IntegrationsController` (legacy) and `IntegrationsCController`
+on `GET`/`POST /integrations` is deliberately out of that check's scope: it is documented and the
+catalogue contract explicitly leaves the legacy routes alone.
 
 ---
 
@@ -105,16 +139,16 @@ approved contract names.
 The backlog entry predates the implementation and describes machinery the platform does not
 have. Each divergence below is deliberate; none is a silent reinterpretation.
 
-| #   | Backlog said                                              | Built                                     | Why                                                                                                                                                                        |
-| --- | --------------------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `PUT /api/integrations/{integrationId}/inventory`         | `PUT /api/v1/integrations/inventory`      | The credential already identifies the integration. A path id would be a second authorization surface to cross-check, and the catalogue push has no path id either.         |
-| 2   | `202 ACCEPTED`, async processing                          | `200 OK` with the per-item outcome        | There is no queue behind it. The work is finished when the response is written, and 202 would promise a later result that never arrives.                                   |
-| 3   | Single-product route `…/inventory/{externalProductId}`    | not built                                 | A one-item batch is the same call. A second route would be a second copy of the authorization and idempotency logic for no new capability. **Say if you want it anyway.**  |
-| 4   | `GET …/inventory` audience unstated                       | merchant-facing (JWT), not POS-facing     | Matches the existing `jobs/:integrationId` and `mappings/:integrationId` convention. A POS-readable variant is a small addition if wanted.                                 |
-| 5   | availability status `in_stock / low_stock / out_of_stock` | not accepted                              | No such enum exists in DrippleX. `ProductInventory` has `quantity`, `manuallyDisabled` and `lowStockAlert`. Inventing an enum for an inbound payload would be speculative. |
-| 6   | "Reject negative stock unless backorder allowed"          | clamp to 0 + `NEGATIVE_QUANTITY` conflict | Catalogue contract §6 already ruled this, and it is the later, approved document. There is no backorder concept anywhere in the platform.                                  |
-| 7   | "Check merchant quota/limits"                             | not built                                 | No quota model exists. Recorded as a gap rather than invented.                                                                                                             |
-| 8   | Idempotency-Key header                                    | **kept** — required, max 100 chars        | Honoured as specified. Each row's key is `sha256(len:batchKey:sku)`, because `InventoryUpdate.idempotencyKey` is unique per **row** and is `VarChar(100)`.                 |
+| #   | Backlog said                                              | Built                                                      | Why                                                                                                                                                                                                           |
+| --- | --------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `PUT /api/integrations/{integrationId}/inventory`         | `PUT /api/v1/integrations/inventory/sync`                  | The credential already identifies the integration. A path id would be a second authorization surface to cross-check, and the catalogue push has no path id either. `/sync` rather than a bare path: see §2.1. |
+| 2   | `202 ACCEPTED`, async processing                          | `200 OK` with the per-item outcome                         | There is no queue behind it. The work is finished when the response is written, and 202 would promise a later result that never arrives.                                                                      |
+| 3   | Single-product route `…/inventory/{externalProductId}`    | not built                                                  | A one-item batch is the same call. A second route would be a second copy of the authorization and idempotency logic for no new capability. **Say if you want it anyway.**                                     |
+| 4   | `GET …/inventory` audience unstated                       | merchant-facing (JWT) at `inventory/levels/:integrationId` | Matches the existing `jobs/:integrationId` and `mappings/:integrationId` convention. A POS-readable variant is a small addition if wanted.                                                                    |
+| 5   | availability status `in_stock / low_stock / out_of_stock` | not accepted                                               | No such enum exists in DrippleX. `ProductInventory` has `quantity`, `manuallyDisabled` and `lowStockAlert`. Inventing an enum for an inbound payload would be speculative.                                    |
+| 6   | "Reject negative stock unless backorder allowed"          | clamp to 0 + `NEGATIVE_QUANTITY` conflict                  | Catalogue contract §6 already ruled this, and it is the later, approved document. There is no backorder concept anywhere in the platform.                                                                     |
+| 7   | "Check merchant quota/limits"                             | not built                                                  | No quota model exists. Recorded as a gap rather than invented.                                                                                                                                                |
+| 8   | Idempotency-Key header                                    | **kept** — required, max 100 chars                         | Honoured as specified. Each row's key is `sha256(len:batchKey:sku)`, because `InventoryUpdate.idempotencyKey` is unique per **row** and is `VarChar(100)`.                                                    |
 
 ---
 
@@ -199,6 +233,27 @@ evidence.
 | Unlinked-mapping check removed                     | 🔴 1 failed                                     |
 | Movement records the delta instead of the snapshot | 🔴 1 failed — §5.1's ruling, enforced           |
 | `@RequireIntegrationScope` removed from the route  | 🔴 2 failed                                     |
+
+### End-to-end, over real HTTP
+
+Unit and service tests cannot prove a route is reachable, so the whole path was driven against a
+locally running API — credential headers, guard, scope check, service, database, response:
+
+| Check                                                      | Result                                           |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| An authenticated push is accepted                          | 200, `appliedCount: 1`                           |
+| Quantity is the absolute value the POS sent                | 10 → 3                                           |
+| `reserved` was not touched                                 | stayed 4                                         |
+| `previousQuantity` is the value before the write           | 10 → 3 recorded                                  |
+| The movement records the resulting quantity, not the delta | `quantity = 3`                                   |
+| Replaying the key applies nothing                          | `replayedCount: 1`, quantity still 3             |
+| A `catalog:write`-only credential cannot push stock        | 401                                              |
+| A push without `Idempotency-Key`                           | 400                                              |
+| Another merchant's SKU                                     | rejected `SKU_NOT_MAPPED`, their stock untouched |
+
+12 assertions, 12 passed. The harness seeds through Prisma and speaks only the documented POS
+surface; folding it into the JWT-based `tools/pos-simulator` is the remaining tidy-up, not a gap
+in what was proven.
 
 **Stated honestly:** the two merchant-ownership checks — the one in `ensureInventoryRow` and the
 one inside the locking query — are _redundant by design_. Removing **either alone** leaves the
