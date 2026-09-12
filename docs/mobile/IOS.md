@@ -127,6 +127,70 @@ it.
 
 Nothing here blocks Android, which is what the launch runs on.
 
+## Universal Links are dead at the hosting layer — proven 2026-09-12
+
+Separate from entitlements, and not fixed by them. Apple fetches
+`https://app.dripplex.com/.well-known/apple-app-site-association` to authorise
+the associated domain. Today:
+
+```
+$ curl -sSI https://app.dripplex.com/.well-known/apple-app-site-association
+HTTP 200 | content-type: text/html; charset=utf-8 | 3120 bytes   <- the SPA
+$ curl -sS  https://app.dripplex.com/.well-known/assetlinks.json
+HTTP 200 | application/json                                       <- Android works
+```
+
+**There is no AASA file anywhere in the repository.** Android's `assetlinks.json`
+lives at `apps/super-app/public/.well-known/` and is served correctly, so the
+mechanism looks like it exists. It does not, for Apple.
+
+### The obvious fix does not work, and looks like it does
+
+Dropping the file next to `assetlinks.json` is the natural move. It fails.
+Measured against `serve@14` — the exact server the super-app runs in production
+(`serve -s dist --config serve.json`, see `apps/super-app/Dockerfile`) — with
+the file physically present in `dist/.well-known/`:
+
+| Server invocation                                                  | Result for the AASA path    |
+| ------------------------------------------------------------------ | --------------------------- |
+| `serve -s dist --config serve.json` (production)                   | 200 `text/html` — SPA index |
+| `serve dist --config serve.json` (no `-s`)                         | 200 `text/html` — SPA index |
+| `serve -s dist` (no config)                                        | 200 `text/html` — SPA index |
+| `serve dist` (no flags, no config)                                 | 200 `text/html` — SPA index |
+| plus `cleanUrls: false` and an explicit `Content-Type` header rule | 200 `text/html` — SPA index |
+
+`assetlinks.json` returned `200 application/json` throughout, and deep SPA routes
+kept working. **The variable is the missing file extension**, which Apple
+mandates: the path must be exactly `apple-app-site-association`, no `.json`.
+
+So the file would have been committed, deployed, and returned HTTP 200 to every
+check — while Apple silently rejected it. That is the third instance of this
+shape in this app: the orphan entitlements file, `GEOCODER` at `undefined`, and
+now this. A 200 is not a pass.
+
+**Redirecting is not a workaround** — Apple does not follow redirects for this
+file — and renaming it to `.json` is not permitted.
+
+### What it needs — a hosting decision, not a code tweak
+
+`app.dripplex.com` answers `server: railway-hikari`: it is served straight from
+the Railway container, with no Cloudflare Worker in front to intercept the path.
+The fix therefore has to change how a **live production service** serves static
+files, which is why nothing is changed here:
+
+| Option                                                                                                         | Blast radius                                                                         |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| **A — small Node shim in front of `serve`** that answers this one path with `application/json`, then delegates | Smallest; testable locally exactly as the table above was produced. **Recommended.** |
+| B — replace `serve` with nginx in the runner stage                                                             | Swaps the web server for a live app                                                  |
+| C — front `app.dripplex.com` with a Cloudflare Worker                                                          | Changes routing for the live app                                                     |
+
+**Blocked on one value either way:** the AASA content needs the real Apple Team
+ID (`TEAMID.com.dripplex.customer` is still a placeholder in
+`resources/deep-linking/README.md`). The Team ID is not a secret — it is
+published in the AASA of every app using Universal Links — unlike the Apple
+account password, 2FA codes, or an App Store Connect API key, none of which are
+needed here.
+
 ## Audit findings left unchanged — settle these on the Mac
 
 Found 2026-09-11 by reading the project on Linux. Each is a real observation; none
