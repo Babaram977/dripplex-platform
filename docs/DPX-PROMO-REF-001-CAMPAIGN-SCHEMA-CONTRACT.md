@@ -736,3 +736,87 @@ columns and two back-relations.
 
 No service, controller, UI, test or seed. The migration has not been applied to
 any database, including a scratch one.
+
+---
+
+# Shadow-DB evidence
+
+Run against throwaway databases, dropped afterwards. **Production untouched.**
+
+| #   | Check                                           | Result                                                                     |
+| --- | ----------------------------------------------- | -------------------------------------------------------------------------- |
+| 1   | Applies cleanly from the full migration history | Fresh DB, every migration, "All migrations have been successfully applied" |
+| 2   | Failed-migration behaviour                      | Characterised below — atomic, fails closed                                 |
+| 3   | `prisma migrate diff` after apply               | Empty. No drift                                                            |
+| 4   | Fresh DB reproduces the complete schema         | Yes, from zero                                                             |
+| 5   | New constraints and indexes present             | All present; the two defects' fixes confirmed                              |
+| 6   | Reward CHECK rejects both/neither               | Both rejected, each single accepted                                        |
+| 7   | `referee_user_id` uniqueness intact             | Enforced (`indisunique = t`) and proven behaviourally                      |
+| 8   | RESTRICT FKs behave                             | All three refuse the delete                                                |
+| 9   | No existing referral/promotion records altered  | Proven on a DB holding legacy rows                                         |
+| 10  | Idempotent through Prisma                       | Re-running deploy: "No pending migrations to apply"                        |
+
+## Constraint behaviour, tested rather than asserted
+
+```
+A  both reward columns set          -> REJECTED (campaign_promoters_reward_exactly_one)
+B  neither reward column set        -> REJECTED (same)
+C  cash only                        -> ACCEPTED
+D  points only                      -> ACCEPTED
+E  same user twice in one campaign  -> REJECTED (promotion_id, user_id)
+F  duplicate token                  -> REJECTED (token)
+G  second acquisition, same referee -> REJECTED (referee_user_id)  <- no campaign stacking
+H  DELETE promoter with attribution -> REJECTED (RESTRICT)
+I  DELETE promotion with promoters  -> REJECTED (RESTRICT)
+J  DELETE promoter's user           -> REJECTED (RESTRICT)
+K  UPDATE status -> REMOVED         -> ACCEPTED
+L  after K: row + attribution kept  -> status REMOVED, token kept,
+                                       referrer_reward_amount 350.00 kept,
+                                       points_per_naira_at_grant 100 kept
+```
+
+K and L together are the founder's removal rule proven end to end: removing a
+promoter stops future participation and destroys nothing — not the promoter row,
+not the attribution, not the snapshotted economics.
+
+## [9] — the test that was wrong before it was right
+
+First attempt hashed `row::text` for every referral, redemption and promotion
+before and after applying the migration. The hashes differed, which looked like
+the migration had touched existing data. It had not: `row::text` gained three
+empty fields because the migration **adds** three columns, so the representation
+changed while every value did not.
+
+Re-tested against the pre-existing columns only, on a database seeded with a
+legacy referral, redemption and promotion before the migration ran:
+
+- redemption `PAID / CUSTOMER / 200.00 / 150.00` — unchanged
+- referral `DRIVER / LEGACY01` — unchanged
+- promotion `ACTIVE / 1234.56 / 7` — unchanged
+- row counts 1 / 1 / 1 — unchanged
+- the three new columns on the legacy row — all NULL
+
+Recorded because a checksum over `row::text` is a tempting and wrong way to
+test an additive migration, and it would have produced a false alarm.
+
+## [2] — failed-migration behaviour, measured
+
+A conflicting `campaign_promoters` table was planted so the migration had to
+fail. What happened:
+
+- `_prisma_migrations`: `started = true, finished = false, logs = true`.
+- **No partial DDL survived.** The enum did not exist and none of the three new
+  columns existed. Postgres ran the migration in one transaction and rolled the
+  whole thing back.
+- The next `migrate deploy` refused with **P3009** — "migrate found failed
+  migrations in the target database, new migrations will not be applied".
+
+So the failure mode is atomic and fails closed: a broken deploy leaves the
+database exactly as it was and blocks the next one, rather than leaving a
+half-applied schema that later migrations build on. Recovery is
+`prisma migrate resolve`, which is a deliberate human action.
+
+## Not done
+
+No service, controller, DTO, UI, test or seed. The migration has been applied
+only to throwaway databases, all dropped. Nothing merged, nothing deployed.
