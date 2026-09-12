@@ -375,6 +375,75 @@ describe('campaign reward through the referral lifecycle', () => {
     expect(pointsReversals).toHaveLength(0);
   });
 
+  /**
+   * DPX-PROMO-REF-001 audit, F2 — repricing the programme must not touch
+   * anything already earned.
+   *
+   * The CUSTOMER programme is about to be corrected from its seeded rate to
+   * the founder-locked ₦150/₦150 by migration. That migration changes a
+   * configuration row, and configuration is read once, at qualification, and
+   * snapshotted. This asserts the property the migration depends on: qualify
+   * at one rate, reprice, and every captured figure stays exactly where it
+   * was — for QUALIFIED, APPROVED and PAID alike.
+   */
+  it('repricing the programme leaves already-captured rewards untouched', async () => {
+    if (!databaseAvailable) return;
+    await prisma.referralProgramme.update({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+      data: { referrerRewardAmount: 500, refereeRewardAmount: 500, holdDays: 0 },
+    });
+    // A plain self-serve acquisition: no campaign, so the programme decides.
+    const { redemption } = await anAcquisition({ rewardAmount: 350 });
+    await prisma.referralRedemption.update({
+      where: { id: redemption.id },
+      data: { campaignPromoterId: null },
+    });
+
+    await lifecycle.advance(redemption.id);
+    const captured = await prisma.referralRedemption.findUniqueOrThrow({
+      where: { id: redemption.id },
+    });
+    expect(Number(captured.referrerRewardAmount)).toBe(500);
+    expect(Number(captured.refereeRewardAmount)).toBe(500);
+    expect(captured.status).toBe(ReferralRedemptionStatus.PAID);
+
+    // The correction the migration will make.
+    await prisma.referralProgramme.update({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+      data: { referrerRewardAmount: 150, refereeRewardAmount: 150 },
+    });
+
+    const after = await prisma.referralRedemption.findUniqueOrThrow({
+      where: { id: redemption.id },
+    });
+    expect(Number(after.referrerRewardAmount)).toBe(500);
+    expect(Number(after.refereeRewardAmount)).toBe(500);
+    expect(after.status).toBe(ReferralRedemptionStatus.PAID);
+    expect(after.paidAt).toEqual(captured.paidAt);
+  });
+
+  it('a referral qualifying after the reprice earns the new rate', async () => {
+    if (!databaseAvailable) return;
+    await prisma.referralProgramme.update({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+      data: { referrerRewardAmount: 150, refereeRewardAmount: 150, holdDays: 0 },
+    });
+    const { redemption } = await anAcquisition({ rewardAmount: 350 });
+    await prisma.referralRedemption.update({
+      where: { id: redemption.id },
+      data: { campaignPromoterId: null },
+    });
+
+    await lifecycle.advance(redemption.id);
+
+    // Future qualification only. That is the whole scope of the change.
+    const row = await prisma.referralRedemption.findUniqueOrThrow({
+      where: { id: redemption.id },
+    });
+    expect(Number(row.referrerRewardAmount)).toBe(150);
+    expect(Number(row.refereeRewardAmount)).toBe(150);
+  });
+
   it('cannot qualify twice, however many times it is advanced concurrently', async () => {
     if (!databaseAvailable) return;
     // The snapshot is written by a conditional update on PENDING, so a replay
