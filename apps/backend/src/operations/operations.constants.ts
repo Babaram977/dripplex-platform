@@ -41,6 +41,18 @@ export const OPERATIONS_PERMISSIONS = {
    * lets an operator see the queue without letting them pay anybody.
    */
   FINANCE_READ: 'operations:finance:read',
+
+  /**
+   * DPX-PROMO-REF-001 — the Promotions tab.
+   *
+   * Split read from manage deliberately. Reading a campaign's performance is
+   * something a growth analyst does all day; adding a promoter issues a private
+   * token that earns real money, and removing one ends somebody's participation.
+   * One permission covering both would mean anybody who can look at the numbers
+   * can also enrol themselves.
+   */
+  PROMOTIONS_READ: 'operations:promotions:read',
+  PROMOTIONS_MANAGE: 'operations:promotions:manage',
 } as const;
 
 /** DPX-OPS-001 Slice 2 — audit trail actions for `OperationsCasesService`
