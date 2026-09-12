@@ -51,6 +51,19 @@ extending, or building on prior work:
 - Backend/SDK/UI tests are the acceptance gate. When claiming "done", verify against real
   Postgres/Redis where behavior touches the DB, and note any pre-existing/unrelated failures
   explicitly rather than folding them into a pass/fail headline.
+- **Never bundle verification and publication in one command.** The order is
+  `test → inspect the result → fix → retest → then push`. Chaining a test run and a
+  `git push` together means the push lands before anyone has read the result; that happened
+  on 2026-09-12 during the order-sync increment and put a known-failing commit on the remote
+  for one cycle. It was corrected immediately and the final branch was sound, which is exactly
+  why the rule is worth writing down rather than trusting to care.
+- **A green run is not proof for anything concurrent, and mapped is not reachable.** Two
+  defect classes have now shipped past a full green suite: a route that Nest reported as
+  `Mapped` but that an earlier parameterised route swallowed, and a race that failed 5 runs
+  in 10. Prove a route by driving the running API over HTTP and reading the response _body_
+  (which handler answered), and prove a concurrency guard by running it repeatedly and
+  reporting the ratio — never by one green run. Report a non-deterministic mutation as the
+  ratio it is, not as a clean red.
 
 ## Founder decisions already locked
 
