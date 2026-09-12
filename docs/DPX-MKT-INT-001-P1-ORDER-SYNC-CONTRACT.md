@@ -90,20 +90,20 @@ would mean inventing one. The POS's own reference travels in the body, is record
 
 ## 4. Behaviour
 
-| Case                                          | Behaviour                                                                              |
-| --------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `PREPARING` on a `CONFIRMED` order            | `MerchantOrdersService.acceptOrder` — notifications and domain events included         |
-| `READY` on a `PREPARING` order                | `MerchantOrdersService.markReady`                                                      |
-| Status the order already has                  | nothing moves, `alreadyInStatus: true`, **not** a conflict                             |
-| Precondition not met                          | **409**, `reconciliationStatus = CONFLICT`, one `ORDER_STATE_MISMATCH` conflict raised |
-| Any other status                              | **422** before anything is written — no claimed key, no conflict row                   |
-| Order belongs to another merchant             | **404**, identical to "no such order"                                                  |
-| Unknown order number                          | **404**, recorded in `IntegrationLog` only                                             |
-| `Idempotency-Key` missing or > 100 chars      | **400**                                                                                |
-| Replay of an `ACCEPTED` key                   | the recorded outcome, `replayed: true`; nothing re-runs                                |
-| Replay of a `CONFLICT` key                    | the same 409 — one key, one outcome                                                    |
-| Replay of a `PENDING` key                     | **409 "did not complete"** — never a guessed success                                   |
-| Integration whose user has no MerchantProfile | 500 and a logged error — a DrippleX defect, not a bad payload                          |
+| Case                                          | Behaviour                                                                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PREPARING` on a `CONFIRMED` order            | `MerchantOrdersService.acceptOrder` — notifications and domain events included                                                                |
+| `READY` on a `PREPARING` order                | `MerchantOrdersService.markReady`                                                                                                             |
+| Status the order already has                  | nothing moves, `alreadyInStatus: true`, **not** a conflict                                                                                    |
+| Precondition not met                          | **409**, `reconciliationStatus = CONFLICT`, one `ORDER_STATE_MISMATCH` conflict raised                                                        |
+| Any other status                              | **422** before anything is written — no claimed key, no conflict row                                                                          |
+| Order belongs to another merchant             | **404**, identical to "no such order"                                                                                                         |
+| Unknown order number                          | **404**, recorded in `IntegrationLog` only                                                                                                    |
+| `Idempotency-Key` missing or > 100 chars      | **400**                                                                                                                                       |
+| Replay of an `ACCEPTED` key                   | the recorded outcome, `replayed: true`; nothing re-runs                                                                                       |
+| Replay of a `CONFLICT` key                    | the same 409 — one key, one outcome                                                                                                           |
+| Replay of a `PENDING` key                     | waits up to 1s for the claim to settle, then the settled outcome — or **409 "did not complete"** if it never settles. Never a guessed success |
+| Integration whose user has no MerchantProfile | 500 and a logged error — a DrippleX defect, not a bad payload                                                                                 |
 
 **Why a missing order is 404 and not 403.** Distinguishing "not yours" from "does not exist"
 would let anyone holding one integration key enumerate which order numbers exist across the
@@ -116,9 +116,22 @@ the reconciliation table at will.
 **Idempotency and recovery.** The insert of the `OrderStatusUpdate` row _is_ the claim; the
 unique index on `(integrationId, idempotencyKey)` is the guarantee. A process that dies between
 claiming and transitioning leaves the row `PENDING` — visibly unresolved rather than falsely
-complete. A replay of that key answers 409; a retry under a **new** key is safe, because the
-order's own preconditions stop anything being applied twice, and because a POS reporting a
-status the order already holds is treated as already-applied rather than as a conflict.
+complete. A retry under a **new** key is safe, because the order's own preconditions stop
+anything being applied twice, and because a POS reporting a status the order already holds is
+treated as already-applied rather than as a conflict.
+
+**A racing duplicate is not an abandoned claim, and the first draft could not tell them apart.**
+Claiming the key and finishing the transition are two steps, so two identical pushes in flight
+at once meant the loser read the winner's row while it was still `PENDING` and answered
+"a previous attempt with this idempotency key did not complete" — about an attempt that was
+completing as it read. An error handed to a POS that had done nothing but retry.
+
+The concurrency test caught it, but only sometimes: measured over ten runs it was **5 green,
+5 red — a coin flip**, and the very first run of that test happened to land green, which is
+exactly how a race hides. A replay of a `PENDING` row now waits up to one second (ten checks at
+100ms) for the claim to settle and returns the settled outcome. Past that budget the claim
+really is abandoned, and the message finally means what it says. Re-measured with the wait in
+place: **10 green out of 10**.
 
 ---
 
@@ -243,32 +256,38 @@ event envelope, HMAC-SHA256 signature, retries with backoff, delivery log, and t
 Every guard was removed one at a time and the suite confirmed to go red. A green suite is not
 evidence.
 
-| Mutation                                                | Result      |
-| ------------------------------------------------------- | ----------- |
-| `CANCELLED` added to the POS-drivable set               | 🔴 4 failed |
-| Order lookup drops the merchant-ownership predicate     | 🔴 3 failed |
-| P2002 replay recovery on the claim removed              | 🔴 4 failed |
-| A replayed `CONFLICT` reported as success               | 🔴 1 failed |
-| A replayed `PENDING` reported as success                | 🔴 1 failed |
-| Precondition failure settled as `ACCEPTED`              | 🔴 1 failed |
-| Precondition failure swallowed                          | 🔴 1 failed |
-| `ORDER_STATE_MISMATCH` no longer raised                 | 🔴 2 failed |
-| POS view leaks `customerId`                             | 🔴 1 failed |
-| **Customer `notes` put back in the POS view**           | 🔴 2 failed |
-| **`deliveryFee` put back in the POS view**              | 🔴 2 failed |
-| **`paymentStatus` widened to carry the payment method** | 🔴 1 failed |
-| SKU lookup ignores the integration                      | 🔴 1 failed |
-| Already-in-status short circuit removed                 | 🔴 1 failed |
-| Page size no longer capped                              | 🔴 2 failed |
-| Unknown order no longer logged                          | 🔴 1 failed |
-| `READY` routed to `acceptOrder`                         | 🔴 3 failed |
-| Service-level drivable-status check removed             | 🔴 1 failed |
-| Status route asks for the read scope instead of write   | 🔴 1 failed |
-| List route restored to the shadowed bare path           | 🔴 1 failed |
-| Detail route given a leading parameter                  | 🔴 2 failed |
+| Mutation                                                | Result                         |
+| ------------------------------------------------------- | ------------------------------ |
+| `CANCELLED` added to the POS-drivable set               | 🔴 4 failed                    |
+| Order lookup drops the merchant-ownership predicate     | 🔴 3 failed                    |
+| P2002 replay recovery on the claim removed              | 🔴 4 failed                    |
+| A replayed `CONFLICT` reported as success               | 🔴 1 failed                    |
+| A replayed `PENDING` reported as success                | 🔴 1 failed                    |
+| Precondition failure settled as `ACCEPTED`              | 🔴 1 failed                    |
+| Precondition failure swallowed                          | 🔴 1 failed                    |
+| `ORDER_STATE_MISMATCH` no longer raised                 | 🔴 2 failed                    |
+| POS view leaks `customerId`                             | 🔴 1 failed                    |
+| **Customer `notes` put back in the POS view**           | 🔴 2 failed                    |
+| **`deliveryFee` put back in the POS view**              | 🔴 2 failed                    |
+| **`paymentStatus` widened to carry the payment method** | 🔴 1 failed                    |
+| SKU lookup ignores the integration                      | 🔴 1 failed                    |
+| Already-in-status short circuit removed                 | 🔴 1 failed                    |
+| Page size no longer capped                              | 🔴 2 failed                    |
+| Unknown order no longer logged                          | 🔴 1 failed                    |
+| `READY` routed to `acceptOrder`                         | 🔴 3 failed                    |
+| Service-level drivable-status check removed             | 🔴 1 failed                    |
+| Status route asks for the read scope instead of write   | 🔴 1 failed                    |
+| List route restored to the shadowed bare path           | 🔴 1 failed                    |
+| Detail route given a leading parameter                  | 🔴 2 failed                    |
+| Replay settle-wait removed (`attempt < 0`)              | 🔴 **5 of 10 runs** — see note |
 
-Twenty-one mutations, twenty-one red. The three in bold are the §5 rulings, so those decisions
-are enforced rather than merely recorded.
+Twenty-two mutations. Twenty-one are deterministic and every one of them is red; the three in
+bold are the §5 rulings, so those decisions are enforced rather than merely recorded.
+
+**The twenty-second is reported honestly as non-deterministic.** Removing the replay
+settle-wait fails 5 runs in 10, because the defect it guards is a race and a race does not fail
+on command. That is the measurement, not a clean red: `5/10 red` without the guard against
+`10/10 green` with it. Quoting it as "red" alongside the others would overstate it.
 
 The compiler-enforced exhaustiveness check (the `never` assignment in the transition switch) is
 not in this table on purpose: it is a build-time guarantee, not a test, and reporting it as a

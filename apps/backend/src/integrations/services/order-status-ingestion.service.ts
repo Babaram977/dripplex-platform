@@ -25,6 +25,23 @@ import type { UpdateOrderStatusDto } from '../dtos/update-order-status.dto';
 import type { MerchantIntegration, OrderStatusUpdate } from '@prisma/client';
 
 /**
+ * How long a racing duplicate waits for the winner to settle its claim before
+ * concluding the claim was abandoned. Ten checks at 100ms is a full second —
+ * generous for a handful of writes, and short enough that a genuinely
+ * abandoned claim still answers promptly.
+ */
+const REPLAY_SETTLE_ATTEMPTS = 10;
+const REPLAY_SETTLE_INTERVAL_MS = 100;
+
+const sleep = async (ms: number): Promise<void> => {
+  await new Promise<void>((resolve) => {
+    setTimeout(() => {
+      resolve();
+    }, ms);
+  });
+};
+
+/**
  * What a POS is allowed to see about an order.
  *
  * An allow-list, not an omit-list. The order row and its relations carry the
@@ -139,7 +156,7 @@ export class OrderStatusIngestionService {
 
     const claim = await this.claim(integration, order, dto, idempotencyKey);
     if (claim.replayed) {
-      return this.fromRecord(claim.record, orderNumber);
+      return await this.fromRecord(integration.id, idempotencyKey, claim.record, orderNumber);
     }
 
     // Already there. A POS retrying after a timeout, or a merchant who tapped
@@ -332,7 +349,34 @@ export class OrderStatusIngestionService {
    * one idempotency key means one outcome; a POS that wants another attempt
    * sends another key, and the order's own preconditions make that safe.
    */
-  private fromRecord(record: OrderStatusUpdate, orderNumber: string): OrderStatusSyncResult {
+  private async fromRecord(
+    integrationId: string,
+    idempotencyKey: string,
+    claimed: OrderStatusUpdate,
+    orderNumber: string,
+  ): Promise<OrderStatusSyncResult> {
+    let record = claimed;
+    // A genuinely racing duplicate finds the winner's row inserted but not yet
+    // settled, because claiming the key and finishing the transition are two
+    // steps. Answering straight away would tell that caller "a previous attempt
+    // did not complete" about an attempt completing as it reads — wrong, and an
+    // error handed to a POS that did nothing but retry.
+    for (
+      let attempt = 0;
+      record.reconciliationStatus === ORDER_RECONCILIATION_STATUS.PENDING &&
+      attempt < REPLAY_SETTLE_ATTEMPTS;
+      attempt += 1
+    ) {
+      await sleep(REPLAY_SETTLE_INTERVAL_MS);
+      const reread = await this.prisma.orderStatusUpdate.findUnique({
+        where: { integrationId_idempotencyKey: { integrationId, idempotencyKey } },
+      });
+      if (!reread) {
+        break;
+      }
+      record = reread;
+    }
+
     if (record.reconciliationStatus === ORDER_RECONCILIATION_STATUS.CONFLICT) {
       throw new ConflictDomainException(
         `Order ${orderNumber} could not move to ${record.newStatus}`,
@@ -345,7 +389,8 @@ export class OrderStatusIngestionService {
       );
     }
     if (record.reconciliationStatus === ORDER_RECONCILIATION_STATUS.PENDING) {
-      // Claimed and never settled — the process died between the two. Saying
+      // Still unsettled after the wait, so this is an abandoned claim and not
+      // a race: the process died between claiming and transitioning. Saying
       // "done" would be a guess. The POS retries under a new key, and the
       // order's preconditions stop that re-applying anything.
       throw new ConflictDomainException(
