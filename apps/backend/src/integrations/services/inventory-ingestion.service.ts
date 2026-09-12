@@ -283,6 +283,13 @@ export class InventoryIngestionService {
             // existing fit; referenceType is what makes it identifiable as a
             // POS adjustment rather than a merchant one.
             type: StockMovementType.ADJUSTMENT,
+            // The **absolute resulting quantity**, not the delta. Founder
+            // ruling, 2026-09-12: a movement row is a snapshot, so a reader
+            // sees what the stock became without needing the row before it. A
+            // delta is derivable from two consecutive snapshots
+            // (`newQuantity - previousQuantity`); a snapshot is not derivable
+            // from deltas once one row is missing. Pinned by
+            // `a movement records the resulting quantity, not the delta`.
             quantity: newQuantity,
             balanceAfter: newQuantity,
             reason: 'POS inventory sync',

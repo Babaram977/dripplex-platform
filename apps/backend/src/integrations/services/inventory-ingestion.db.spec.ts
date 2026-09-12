@@ -202,6 +202,46 @@ describe('inventory ingestion — real database', () => {
   });
 
   /**
+   * Founder ruling, 2026-09-12, taken while nothing yet reads `StockMovement`.
+   *
+   * `quantity` carries the **absolute resulting quantity**, not the delta. A
+   * movement row is a snapshot: a reader sees what the stock became without
+   * needing the row before it, and a delta is still derivable as
+   * `newQuantity - previousQuantity` from two consecutive rows. The reverse is
+   * not true — once one delta row is lost, every later balance is wrong.
+   *
+   * Asserted rather than left to the contract, because "10 → 7 records 7, not
+   * -3" is a decision a future refactor would otherwise be free to flip.
+   */
+  maybe('a movement records the resulting quantity, not the delta', async () => {
+    const mapped = await makeMapped(alpha, 10);
+
+    await service.applyBatch(
+      alpha.integration,
+      [{ externalSku: mapped.externalSku, quantity: 7 }],
+      randomUUID(),
+      {},
+    );
+
+    const inventory = await inventoryOf(mapped.productId);
+    const movements = await prisma.stockMovement.findMany({
+      where: { inventoryId: inventory.id },
+    });
+
+    expect(movements).toHaveLength(1);
+    expect(movements[0]?.quantity).toBe(7);
+    expect(movements[0]?.balanceAfter).toBe(7);
+    // Explicitly not the delta, which for this write would be -3.
+    expect(movements[0]?.quantity).not.toBe(-3);
+
+    const update = await prisma.inventoryUpdate.findFirst({
+      where: { productSyncId: mapped.productSyncId },
+    });
+    expect(update?.previousQuantity).toBe(10);
+    expect(update?.newQuantity).toBe(7);
+  });
+
+  /**
    * The regression this file exists for.
    *
    * The catalogue path recorded `previousQuantity` from the row the upsert had

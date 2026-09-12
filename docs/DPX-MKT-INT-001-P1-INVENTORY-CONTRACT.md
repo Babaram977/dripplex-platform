@@ -118,22 +118,49 @@ have. Each divergence below is deliberate; none is a silent reinterpretation.
 
 ---
 
-## 5. Open questions — **decisions required**
+## 5. Decisions
 
-1. **`StockMovement.quantity` semantics.** For an absolute set, this records the _new absolute
-   quantity_, not the delta. That is the behaviour the catalogue path already had and the
-   catalogue contract does not specify it. Nothing in the codebase reads `StockMovement` yet, so
-   changing it to `newQuantity − previousQuantity` is cheap **now** and expensive later.
-   _Recommendation: change it to the delta before anything reads the table._
-2. **Unmapped SKU on a stock push.** Currently reported per item and logged, with no
-   `IntegrationConflict` row. If merchants should see these in the conflicts queue, that needs a
-   new `conflictType` — which needs approval, per catalogue contract Amendment 1.
-3. **`trackInventory`.** Every write forces it to `true`, carried over from the catalogue path.
-   A POS therefore cannot express "not stock-tracked at source", which catalogue contract §5
-   maps to `trackInventory = false`. Left as-is rather than changed silently.
-4. **Rate limiting.** The stock push has none. The catalogue push has none either. Support
-   ticket creation is throttled at 10/hour; a POS pushing stock is a different shape of caller
-   and needs its own number.
+### 5.1 `StockMovement.quantity` — **RULED, 2026-09-12. Closed.**
+
+> **`quantity` carries the absolute resulting quantity, not the delta.**
+>
+> Stock going 10 → 7 records `previousQuantity = 10`, `newQuantity = 7`,
+> `StockMovement.quantity = 7`. **Not −3.**
+
+A movement row is a **snapshot**: a reader sees what the stock became without needing the row
+before it. A delta stays derivable from two consecutive snapshots as
+`newQuantity − previousQuantity`; the reverse does not hold, because one missing delta row makes
+every later balance wrong. This also matches the behaviour the catalogue path already had, so
+nothing that has already been written is reinterpreted.
+
+The ruling was taken deliberately **before** any consumer of `StockMovement` exists — there is
+still no reader anywhere in the codebase — so it costs nothing now and would have cost a
+migration later.
+
+Implemented as ruled (no code change was required; the behaviour already matched) and now
+**pinned by a test**, `a movement records the resulting quantity, not the delta`, plus the
+mutation below. A decision recorded only in a document is a decision a refactor is free to
+flip.
+
+_Superseded: the earlier draft of this section recommended switching to the delta. That
+recommendation was not accepted and is not the standing position._
+
+### 5.2 Still open — **deliberately not decided, and not implemented either way**
+
+Ruled 2026-09-12: none of these is to be settled implicitly by writing code. They stay as
+recorded gaps until a decision is taken explicitly.
+
+1. **Unmapped SKU on a stock push.** Reported per item and logged, with no `IntegrationConflict`
+   row. Whether merchants should see these in the conflicts queue needs a new `conflictType`,
+   which needs approval per catalogue contract Amendment 1. **Left exactly as specified above
+   until that decision is resolved.**
+2. **`trackInventory = false` from a POS.** Every write forces `true`, carried over from the
+   catalogue path, so a POS cannot express "not stock-tracked at source" (catalogue contract §5).
+   **Not introduced** — that would be adding a POS capability implicitly.
+3. **Rate limiting on the stock push.** None, and the catalogue push has none either. This is an
+   **outstanding operational control**, not a number for an engineer to pick: a permanent
+   business limit chosen silently in code is a business decision made by accident. To be
+   implemented once the appropriate limit is determined.
 
 ---
 
@@ -158,25 +185,26 @@ Named here because the writer's behaviour is shaped around them, not because the
 Every guard was removed one at a time and the suite confirmed to go red. A green suite is not
 evidence.
 
-| Mutation                                          | Result                                          |
-| ------------------------------------------------- | ----------------------------------------------- |
-| Row lock (`FOR UPDATE`) removed                   | 🔴 1 failed — concurrent writes no longer chain |
-| `previousQuantity` recorded as `newQuantity`      | 🔴 1 failed — the original defect               |
-| `reserved` written                                | 🔴 3 failed                                     |
-| P2002 replay recovery removed                     | 🔴 2 failed                                     |
-| Both merchant-ownership checks removed            | 🔴 2 failed                                     |
-| Duplicate-in-batch guard removed                  | 🔴 1 failed                                     |
-| Negative clamp removed                            | 🔴 2 failed                                     |
-| Conflict re-raised on replay                      | 🔴 1 failed                                     |
-| `mappingStatus` check removed                     | 🔴 1 failed                                     |
-| Unlinked-mapping check removed                    | 🔴 1 failed                                     |
-| `@RequireIntegrationScope` removed from the route | 🔴 2 failed                                     |
+| Mutation                                           | Result                                          |
+| -------------------------------------------------- | ----------------------------------------------- |
+| Row lock (`FOR UPDATE`) removed                    | 🔴 1 failed — concurrent writes no longer chain |
+| `previousQuantity` recorded as `newQuantity`       | 🔴 2 failed — the original defect               |
+| `reserved` written                                 | 🔴 3 failed                                     |
+| P2002 replay recovery removed                      | 🔴 2 failed                                     |
+| Both merchant-ownership checks removed             | 🔴 2 failed                                     |
+| Duplicate-in-batch guard removed                   | 🔴 1 failed                                     |
+| Negative clamp removed                             | 🔴 2 failed                                     |
+| Conflict re-raised on replay                       | 🔴 1 failed                                     |
+| `mappingStatus` check removed                      | 🔴 1 failed                                     |
+| Unlinked-mapping check removed                     | 🔴 1 failed                                     |
+| Movement records the delta instead of the snapshot | 🔴 1 failed — §5.1's ruling, enforced           |
+| `@RequireIntegrationScope` removed from the route  | 🔴 2 failed                                     |
 
 **Stated honestly:** the two merchant-ownership checks — the one in `ensureInventoryRow` and the
 one inside the locking query — are _redundant by design_. Removing **either alone** leaves the
 suite green, because the other catches it; removing **both** goes red. That is defence in
 depth working as intended, not two independently proven guards, and it is recorded as such
-rather than reported as eleven independent proofs.
+rather than reported as twelve independent proofs.
 
 ---
 
