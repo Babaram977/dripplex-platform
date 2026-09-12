@@ -15,9 +15,16 @@ export type {
 export { CALL_EVENT_NAMES, isCallOver, LIVE_CALL_STATUSES } from './call/index.js';
 
 export type {
+  AppendOperatorSupportMessageRequest,
+  AppendSupportMessageRequest,
   CreateSupportTicketRequest,
   ListSupportTicketsQuery,
   SupportCategory,
+  SupportConversationDto,
+  SupportHandlingState,
+  SupportMessageAuthorType,
+  SupportMessageDto,
+  SupportMessageVisibility,
   SupportPersona,
   SupportTicketDto,
   SupportTicketListDto,
