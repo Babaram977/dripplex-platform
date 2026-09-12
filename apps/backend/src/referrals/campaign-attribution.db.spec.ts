@@ -35,6 +35,7 @@ describe('CampaignAttributionService', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let attribution: CampaignAttributionService;
+  const audited: { action: string; metadata: Record<string, unknown> }[] = [];
   let promoters: CampaignPromoterService;
   const createdUserIds: string[] = [];
   const createdPromotionIds: string[] = [];
@@ -52,7 +53,12 @@ describe('CampaignAttributionService', () => {
       databaseAvailable = false;
       return;
     }
-    const audit = { record: () => Promise.resolve(undefined) } as unknown as AuditService;
+    const audit = {
+      record: (action: string, _ctx: unknown, detail?: { metadata?: Record<string, unknown> }) => {
+        audited.push({ action, metadata: detail?.metadata ?? {} });
+        return Promise.resolve(undefined);
+      },
+    } as unknown as AuditService;
     const bus = { emit: () => Promise.resolve(undefined) } as unknown as DomainEventBus;
     const lifecycle = new ReferralLifecycleService(
       prisma,
@@ -284,5 +290,36 @@ describe('CampaignAttributionService', () => {
 
     expect(attributed).toBe(RUNS);
     expect(alreadyAcquired).toBe(RUNS);
+  });
+
+  /**
+   * DPX-PROMO-REF-001 audit, F6 — the acquisition is recorded, and the token
+   * is not.
+   *
+   * A campaign token is a bearer credential: whoever holds it has acquisitions
+   * attributed to that promoter, which is why the Ops UI masks it. It used to
+   * be written into this audit record in plaintext, once per acquisition,
+   * putting it somewhere with a far broader audience than the one screen that
+   * shows it. The promoter id resolves to the token in a single lookup for
+   * anyone who legitimately needs it.
+   */
+  it('records the attribution without writing the token into the audit trail', async () => {
+    if (!databaseAvailable) return;
+    audited.length = 0;
+    const { promoter } = await aPromoter();
+    const referee = await aUser();
+
+    const result = await attribution.attribute(referee, promoter.token, ctx);
+    expect(result.outcome).toBe(ATTRIBUTION_OUTCOME.ATTRIBUTED);
+
+    const record = audited.find((a) => a.action === 'campaign.attribution.recorded');
+    expect(record).toBeDefined();
+    expect(record?.metadata).toMatchObject({
+      campaignPromoterId: promoter.id,
+      promoterUserId: promoter.userId,
+    });
+    // The assertion that matters: no field of this record carries the token,
+    // whatever it is called.
+    expect(Object.values(record?.metadata ?? {})).not.toContain(promoter.token);
   });
 });
