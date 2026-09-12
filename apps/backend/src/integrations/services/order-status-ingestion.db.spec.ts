@@ -461,6 +461,60 @@ describe('order status ingestion — real database', () => {
     expect(after?.status).toBe(OrderStatus.CONFIRMED);
   });
 
+  /**
+   * The false terminal failure, reproduced exactly.
+   *
+   * The claim, the transition and the settle are three statements. A process
+   * that dies after the transition but before the settle leaves a PENDING row
+   * above a business change that already happened. The first implementation
+   * answered a same-key retry with "a previous attempt did not complete" —
+   * about an order that was, at that moment, PREPARING.
+   *
+   * That is the retry a POS actually makes: an idempotency key is what a client
+   * reuses when a request times out. So the wrong answer sat on the likely
+   * path, and a POS retrying that key would have kept getting it while the
+   * kitchen cooked.
+   */
+  maybe('an interrupted settle over a transition that DID happen reports success', async () => {
+    // The order is already where the claim was asking it to go — the state a
+    // completed transition leaves behind.
+    const order = await makeOrder(alpha, OrderStatus.PREPARING);
+    const key = randomUUID();
+
+    const stranded = await prisma.orderStatusUpdate.create({
+      data: {
+        integrationId: alpha.integration.id,
+        externalOrderId: 'POS-SETTLE-DIED',
+        internalOrderId: order.orderId,
+        previousStatus: OrderStatus.CONFIRMED,
+        newStatus: OrderStatus.PREPARING,
+        sourceTimestamp: new Date(),
+        // Never settled: the process died between the transition and the update.
+        reconciliationStatus: ORDER_RECONCILIATION_STATUS.PENDING,
+        idempotencyKey: key,
+      },
+    });
+
+    const result = await service.applyStatus(
+      alpha.integration,
+      order.orderNumber,
+      { externalOrderId: 'POS-SETTLE-DIED', status: POS_DRIVABLE_ORDER_STATUS.PREPARING },
+      key,
+    );
+
+    expect(result.replayed).toBe(true);
+    expect(result.newStatus).toBe(OrderStatus.PREPARING);
+
+    // The stranded row is reconciled rather than left to strand again.
+    const settled = await prisma.orderStatusUpdate.findUnique({ where: { id: stranded.id } });
+    expect(settled?.reconciliationStatus).toBe(ORDER_RECONCILIATION_STATUS.ACCEPTED);
+    expect(settled?.processedAt).not.toBeNull();
+
+    // And nothing was re-applied on top of an order that had already moved.
+    const after = await prisma.order.findUnique({ where: { id: order.orderId } });
+    expect(after?.status).toBe(OrderStatus.PREPARING);
+  });
+
   // ------------------------------------------------------------ conflicts
 
   maybe('a transition the order does not allow is a recorded conflict', async () => {

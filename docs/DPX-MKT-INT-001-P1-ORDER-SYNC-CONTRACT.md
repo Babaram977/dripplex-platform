@@ -90,20 +90,20 @@ would mean inventing one. The POS's own reference travels in the body, is record
 
 ## 4. Behaviour
 
-| Case                                          | Behaviour                                                                                                                                     |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PREPARING` on a `CONFIRMED` order            | `MerchantOrdersService.acceptOrder` — notifications and domain events included                                                                |
-| `READY` on a `PREPARING` order                | `MerchantOrdersService.markReady`                                                                                                             |
-| Status the order already has                  | nothing moves, `alreadyInStatus: true`, **not** a conflict                                                                                    |
-| Precondition not met                          | **409**, `reconciliationStatus = CONFLICT`, one `ORDER_STATE_MISMATCH` conflict raised                                                        |
-| Any other status                              | **422** before anything is written — no claimed key, no conflict row                                                                          |
-| Order belongs to another merchant             | **404**, identical to "no such order"                                                                                                         |
-| Unknown order number                          | **404**, recorded in `IntegrationLog` only                                                                                                    |
-| `Idempotency-Key` missing or > 100 chars      | **400**                                                                                                                                       |
-| Replay of an `ACCEPTED` key                   | the recorded outcome, `replayed: true`; nothing re-runs                                                                                       |
-| Replay of a `CONFLICT` key                    | the same 409 — one key, one outcome                                                                                                           |
-| Replay of a `PENDING` key                     | waits up to 1s for the claim to settle, then the settled outcome — or **409 "did not complete"** if it never settles. Never a guessed success |
-| Integration whose user has no MerchantProfile | 500 and a logged error — a DrippleX defect, not a bad payload                                                                                 |
+| Case                                          | Behaviour                                                                                                                                                                                                                                                                                            |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PREPARING` on a `CONFIRMED` order            | `MerchantOrdersService.acceptOrder` — notifications and domain events included                                                                                                                                                                                                                       |
+| `READY` on a `PREPARING` order                | `MerchantOrdersService.markReady`                                                                                                                                                                                                                                                                    |
+| Status the order already has                  | nothing moves, `alreadyInStatus: true`, **not** a conflict                                                                                                                                                                                                                                           |
+| Precondition not met                          | **409**, `reconciliationStatus = CONFLICT`, one `ORDER_STATE_MISMATCH` conflict raised                                                                                                                                                                                                               |
+| Any other status                              | **422** before anything is written — no claimed key, no conflict row                                                                                                                                                                                                                                 |
+| Order belongs to another merchant             | **404**, identical to "no such order"                                                                                                                                                                                                                                                                |
+| Unknown order number                          | **404**, recorded in `IntegrationLog` only                                                                                                                                                                                                                                                           |
+| `Idempotency-Key` missing or > 100 chars      | **400**                                                                                                                                                                                                                                                                                              |
+| Replay of an `ACCEPTED` key                   | the recorded outcome, `replayed: true`; nothing re-runs                                                                                                                                                                                                                                              |
+| Replay of a `CONFLICT` key                    | the same 409 — one key, one outcome                                                                                                                                                                                                                                                                  |
+| Replay of a `PENDING` key                     | waits up to 1s for the claim to settle; then **asks the order**. Order already at the requested status ⇒ the transition committed, so the row settles ACCEPTED and the caller is told it succeeded. Order not there ⇒ **409 "did not complete"**. Never a guessed success, and never a false failure |
+| Integration whose user has no MerchantProfile | 500 and a logged error — a DrippleX defect, not a bad payload                                                                                                                                                                                                                                        |
 
 **Why a missing order is 404 and not 403.** Distinguishing "not yours" from "does not exist"
 would let anyone holding one integration key enumerate which order numbers exist across the
@@ -119,6 +119,29 @@ claiming and transitioning leaves the row `PENDING` — visibly unresolved rathe
 complete. A retry under a **new** key is safe, because the order's own preconditions stop
 anything being applied twice, and because a POS reporting a status the order already holds is
 treated as already-applied rather than as a conflict.
+
+**An unsettled claim is not a failed transition either, and that one was a correctness
+blocker.** The claim, the transition and the settle are three statements. A process that dies
+after the transition but before the settle leaves a `PENDING` row above a business change that
+already happened — and the first implementation answered a same-key retry with
+"a previous attempt with this idempotency key did not complete", about an order that was at
+that moment `PREPARING`.
+
+That is a **false terminal failure**, and it sat on the likely path rather than the unlikely
+one: an idempotency key is exactly what a client reuses when a request times out, so the
+retrying POS would have kept receiving it while the kitchen cooked. A fresh key self-healed via
+`alreadyInStatus`; the same key never did.
+
+`fromRecord` now performs the fresh evaluation the state deserves. When the row is still
+`PENDING` after the wait, it re-reads the **order** — not the copy `applyStatus` took before
+the transition, which is precisely the read that cannot answer the question. If the order
+already holds the status the claim asked for, the transition demonstrably committed: the row
+is settled `ACCEPTED` and the caller is told the truth. Only when the order does not hold it is
+"outcome unknown" honest, and only then is the 409 raised.
+
+Both branches are pinned by deterministic tests — `an interrupted settle over a transition that
+DID happen reports success` and `an interrupted claim replays as unresolved, never as success` —
+and by a mutation that removes the reconciliation.
 
 **A racing duplicate is not an abandoned claim, and the first draft could not tell them apart.**
 Claiming the key and finishing the transition are two steps, so two identical pushes in flight
@@ -279,9 +302,10 @@ evidence.
 | Status route asks for the read scope instead of write   | 🔴 1 failed                    |
 | List route restored to the shadowed bare path           | 🔴 1 failed                    |
 | Detail route given a leading parameter                  | 🔴 2 failed                    |
+| Order-state reconciliation removed from the replay path | 🔴 1 failed                    |
 | Replay settle-wait removed (`attempt < 0`)              | 🔴 **5 of 10 runs** — see note |
 
-Twenty-two mutations. Twenty-one are deterministic and every one of them is red; the three in
+Twenty-three mutations. Twenty-two are deterministic and every one of them is red; the three in
 bold are the §5 rulings, so those decisions are enforced rather than merely recorded.
 
 **The twenty-second is reported honestly as non-deterministic.** Removing the replay

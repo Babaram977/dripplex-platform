@@ -389,10 +389,26 @@ export class OrderStatusIngestionService {
       );
     }
     if (record.reconciliationStatus === ORDER_RECONCILIATION_STATUS.PENDING) {
-      // Still unsettled after the wait, so this is an abandoned claim and not
-      // a race: the process died between claiming and transitioning. Saying
-      // "done" would be a guess. The POS retries under a new key, and the
-      // order's preconditions stop that re-applying anything.
+      // Still unsettled after the wait. Before calling that a failure, ask the
+      // order itself — because "the claim was never settled" and "the
+      // transition never happened" are not the same thing.
+      //
+      // The claim, the transition and the settle are three statements. A
+      // process that dies after the transition but before the settle leaves a
+      // PENDING row above a business change that DID happen. Answering "did not
+      // complete" there is a false terminal failure: the kitchen is already
+      // cooking, and the POS is being told to think otherwise. Worse, an
+      // idempotency key is precisely what a client reuses when it retries a
+      // timed-out request, so that same-key retry is the likely path rather
+      // than the unlikely one, and it would keep getting the same wrong answer.
+      const reconciled = await this.reconcileAgainstOrder(record);
+      if (reconciled) {
+        return reconciled;
+      }
+
+      // The order does not hold the requested status, so the outcome really is
+      // unknown. The POS retries under a new key, and the order's own
+      // preconditions stop that re-applying anything.
       throw new ConflictDomainException(
         `A previous attempt with this idempotency key did not complete`,
         { orderNumber, requestedStatus: record.newStatus, replayed: true },
@@ -403,6 +419,47 @@ export class OrderStatusIngestionService {
       externalOrderId: record.externalOrderId,
       previousStatus: record.previousStatus ?? '',
       newStatus: record.newStatus,
+      replayed: true,
+      alreadyInStatus: false,
+    };
+  }
+
+  /**
+   * Decide whether an unsettled claim actually did its work.
+   *
+   * Reads the order fresh — not the copy `applyStatus` took before the
+   * transition, which is exactly the read that cannot answer this question.
+   * The order holding the status this claim asked for is proof the transition
+   * committed, so the row is settled to ACCEPTED and the caller is told the
+   * truth: it happened, and this is a replay of it.
+   *
+   * Returns null when the order does not hold that status, which is the only
+   * case where "outcome unknown" is an honest answer.
+   */
+  private async reconcileAgainstOrder(
+    record: OrderStatusUpdate,
+  ): Promise<OrderStatusSyncResult | null> {
+    if (!record.internalOrderId) {
+      return null;
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: record.internalOrderId },
+      select: { orderNumber: true, status: true },
+    });
+    if (order?.status !== record.newStatus) {
+      return null;
+    }
+
+    await this.settle(record.id, ORDER_RECONCILIATION_STATUS.ACCEPTED);
+
+    return {
+      orderNumber: order.orderNumber,
+      externalOrderId: record.externalOrderId,
+      previousStatus: record.previousStatus ?? '',
+      newStatus: record.newStatus,
+      // A replay of a transition that committed — not `alreadyInStatus`, which
+      // means nothing moved because the order was already there.
       replayed: true,
       alreadyInStatus: false,
     };
