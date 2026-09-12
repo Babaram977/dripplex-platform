@@ -4,6 +4,7 @@ import {
   ReferralOwnerType,
   ReferralRedemptionStatus,
   ReferralRefereeType,
+  LoyaltyLedgerEntryType,
   ReferralRejectionReason,
   WalletOwnerType,
 } from '@prisma/client';
@@ -15,9 +16,12 @@ import {
 } from '../common/exceptions/domain.exception';
 import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
+import { LOYALTY_POINTS_PER_NAIRA, LOYALTY_SETTING_ID } from '../loyalty/loyalty.constants';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { WalletService } from '../wallet/wallet.service';
 
+import { resolvePromoterReward } from './campaign-reward';
 import { ReferralAntiAbuseService } from './referral-anti-abuse.service';
 import { ReferralQualificationService } from './referral-qualification.service';
 import {
@@ -101,6 +105,7 @@ export class ReferralLifecycleService {
     private readonly walletService: WalletService,
     private readonly qualification: ReferralQualificationService,
     private readonly antiAbuse: ReferralAntiAbuseService,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   // ── Programmes ────────────────────────────────────────────────────────────
@@ -277,13 +282,24 @@ export class ReferralLifecycleService {
       return null;
     }
 
+    // DPX-PROMO-REF-001 — a campaign participation overrides the programme's
+    // referrer rate, because the campaign is what the promoter was recruited
+    // under. The referee's side never varies: the founder fixed it
+    // platform-wide so no campaign can outbid another for the same acquisition.
+    const reward = await this.resolveReferrerReward(
+      redemption.campaignPromoterId,
+      Number(programme.referrerRewardAmount),
+    );
+
     const updated = await this.prisma.referralRedemption.updateMany({
       where: { id: redemption.id, status: ReferralRedemptionStatus.PENDING },
       data: {
         status: ReferralRedemptionStatus.QUALIFIED,
         qualifiedAt: now,
         programmeId: programme.id,
-        referrerRewardAmount: programme.referrerRewardAmount,
+        referrerRewardAmount: reward.referrerRewardAmount,
+        referrerRewardPoints: reward.referrerRewardPoints,
+        pointsPerNairaAtGrant: reward.pointsPerNairaAtGrant,
         refereeRewardAmount: programme.refereeRewardAmount,
         flaggedReason: screening.flag,
       },
@@ -311,7 +327,12 @@ export class ReferralLifecycleService {
       status: ReferralRedemptionStatus.QUALIFIED,
       qualifiedAt: now,
       programmeId: programme.id,
-      referrerRewardAmount: programme.referrerRewardAmount,
+      referrerRewardAmount:
+        reward.referrerRewardAmount === null
+          ? null
+          : new Prisma.Decimal(reward.referrerRewardAmount),
+      referrerRewardPoints: reward.referrerRewardPoints,
+      pointsPerNairaAtGrant: reward.pointsPerNairaAtGrant,
       refereeRewardAmount: programme.refereeRewardAmount,
       flaggedReason: screening.flag,
     };
@@ -365,11 +386,80 @@ export class ReferralLifecycleService {
    * status written first and a credit that then failed would be a referral the
    * platform believes it has paid and has not.
    */
+  /**
+   * What the referrer earns, resolved once and then frozen onto the row.
+   *
+   * Read at qualification rather than at payment, which is the founder's rule
+   * and the same discipline every settled figure on this platform follows: an
+   * operator re-pricing a campaign next week must not change what somebody
+   * earned last week. `pay()` therefore reads only the snapshot and never this
+   * method.
+   *
+   * The DX Points rate comes from `loyalty_settings`, live, because increment 1
+   * exists so that number has exactly one home. A points reward keeps the rate
+   * beside it so its naira cost stays reconstructible after the next repricing.
+   */
+  private async resolveReferrerReward(
+    campaignPromoterId: string | null,
+    programmeReferrerRewardNgn: number,
+  ): Promise<{
+    referrerRewardAmount: number | null;
+    referrerRewardPoints: number | null;
+    pointsPerNairaAtGrant: number | null;
+  }> {
+    if (campaignPromoterId === null) {
+      return resolvePromoterReward(null, programmeReferrerRewardNgn, 1);
+    }
+    const promoter = await this.prisma.campaignPromoter.findUnique({
+      where: { id: campaignPromoterId },
+      select: { rewardAmount: true, rewardPoints: true },
+    });
+    if (promoter === null) {
+      // RESTRICT makes this unreachable while the attribution exists. Falling
+      // back to the programme rather than throwing keeps a referral payable
+      // rather than stranding it, and the figure used is recorded on the row.
+      this.logger.error(
+        `Campaign promoter ${campaignPromoterId} missing at qualification; using the programme rate`,
+      );
+      return resolvePromoterReward(null, programmeReferrerRewardNgn, 1);
+    }
+    const setting = await this.prisma.loyaltySetting.findUnique({
+      where: { id: LOYALTY_SETTING_ID },
+      select: { pointsPerNaira: true },
+    });
+    return resolvePromoterReward(
+      promoter,
+      programmeReferrerRewardNgn,
+      setting?.pointsPerNaira ?? LOYALTY_POINTS_PER_NAIRA,
+    );
+  }
+
   private async pay(redemption: RedemptionWithReferral): Promise<ReferralRedemptionStatus> {
     const referrerAmount = Number(redemption.referrerRewardAmount ?? 0);
     const refereeAmount = Number(redemption.refereeRewardAmount ?? 0);
 
-    if (referrerAmount > 0) {
+    // DPX-PROMO-REF-001 — a points reward is paid in points, through the DX
+    // Points ledger, and never converted to wallet cash here. Converting it
+    // would make this a second settlement path for money that the loyalty
+    // ledger is supposed to be the record of; the holder can still cash out
+    // through the redemption path Operations already controls, at whatever rate
+    // is in force when they choose to.
+    //
+    // BONUS rather than EARNED, per the ledger's own vocabulary: these are
+    // "given rather than earned — a campaign sweetener", and separating them is
+    // what lets Operations count the cost of promoting the programme apart from
+    // the cost of it working.
+    const referrerPoints = redemption.referrerRewardPoints ?? 0;
+    if (referrerPoints > 0) {
+      await this.loyaltyService.awardPoints({
+        userId: redemption.referral.userId,
+        points: referrerPoints,
+        reason: 'Referral reward — someone you referred reached their first milestone',
+        referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,
+        referenceId: redemption.id,
+        type: LoyaltyLedgerEntryType.BONUS,
+      });
+    } else if (referrerAmount > 0) {
       await this.walletService.credit({
         ownerType: REFERRER_WALLETS[redemption.referral.ownerType],
         ownerId: redemption.referral.userId,

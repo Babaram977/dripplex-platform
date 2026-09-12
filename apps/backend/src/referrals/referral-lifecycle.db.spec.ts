@@ -69,6 +69,7 @@ describe('ReferralLifecycleService', () => {
       walletService,
       new ReferralQualificationService(prisma),
       new ReferralAntiAbuseService(prisma),
+      { awardPoints: () => Promise.resolve(undefined) } as never,
     );
   });
 

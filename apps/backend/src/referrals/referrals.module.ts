@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { EventsModule } from '../events/events.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
@@ -26,7 +27,7 @@ import { ReferralsService } from './referrals.service';
 import { RiderReferralsController } from './rider-referrals.controller';
 
 @Module({
-  imports: [PrismaModule, AuditModule, EventsModule, WalletModule],
+  imports: [PrismaModule, AuditModule, EventsModule, WalletModule, LoyaltyModule],
   controllers: [
     CustomerReferralsController,
     DriverReferralsController,

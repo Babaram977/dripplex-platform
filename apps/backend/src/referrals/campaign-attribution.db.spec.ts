@@ -61,6 +61,7 @@ describe('CampaignAttributionService', () => {
       { credit: () => Promise.resolve(undefined) } as never,
       { evaluate: () => Promise.resolve({ qualified: true }) } as never,
       { screen: () => Promise.resolve({ cleared: true }) } as never,
+      { awardPoints: () => Promise.resolve(undefined) } as never,
     );
     const referrals = new ReferralsService(prisma, audit, bus, lifecycle);
     promoters = new CampaignPromoterService(prisma, referrals, audit);
