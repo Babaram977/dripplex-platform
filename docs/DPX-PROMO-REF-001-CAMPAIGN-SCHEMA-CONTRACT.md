@@ -613,3 +613,126 @@ FLEET_OWNER outcome, reached by the existing map.
 Every newly supported participant class has a real, withdrawable destination
 through machinery that already exists. Nothing is papered over and no new wallet
 type is required.
+
+---
+
+# Checkpoint inspection — schema + migration
+
+Written and **not applied to any database**. `prisma validate` and
+`prisma format` pass; shadow-DB verification is the gated next step.
+
+The migration SQL was produced by `prisma migrate diff` between the committed
+schema and the new one, so it is Prisma's own output rather than hand-written
+DDL, with one hand-added CHECK constraint Prisma cannot express.
+
+**Comparing that generated SQL against the plan caught two defects before review:**
+
+- **A redundant index.** Prisma emitted both `campaign_promoters_token_key`
+  (from `token @unique`) and `campaign_promoters_token_idx` (from an
+  `@@index([token])` I had declared). A unique constraint already builds the
+  btree that resolution reads; the second index would be paid for on every write
+  and never used. The `@@index` is removed.
+- **A missing index — the one trace 2 existed to find.** I specified
+  `@@index([campaignPromoterId])` and `[campaignPromoterId, status]` in the plan
+  and then did not put them in the schema. The generated SQL had no such index,
+  which is how it surfaced. Both are now declared.
+
+## 1. Prisma relation correctness
+
+`prisma validate` passes. Back-relations exist on all three sides:
+`Promotion.campaignPromoters`, `User.campaignPromoters`,
+`CampaignPromoter.redemptions` ↔ `ReferralRedemption.campaignPromoter`.
+
+## 2. Migration ordering
+
+`20260913120000_promo_ref_campaign_promoters` follows
+`20260913110000_dx_points_100_per_naira` (increment 1) and
+`20260913100000_p1_catalogue_ingestion`. It depends on `promotions`, `users` and
+`referral_redemptions`, all of which exist far earlier. Within the file: enums,
+then the `ALTER TABLE` adding nullable columns, then the table, then indexes,
+then foreign keys — the order Prisma emits and the order Postgres requires.
+
+## 3. FK / delete behaviour
+
+Three FKs, all `ON DELETE RESTRICT`:
+`campaign_promoters.promotion_id`, `campaign_promoters.user_id`,
+`referral_redemptions.campaign_promoter_id`.
+
+Diverges from `driver_referrals`, which cascades. Justified because both parents
+are **soft-deleted in practice** — `promotions.deleted_at` (no
+`promotion.delete(` exists in application code) and `users.deleted_at` via
+`AccountDeletionService` — so RESTRICT changes no current behaviour and makes a
+future hard delete fail loudly instead of erasing who was paid for what.
+
+## 4. Idempotency and concurrency
+
+The schema gives the service three database-level guarantees rather than
+application checks:
+
+- `token @unique` — two promoters cannot be issued the same token, and a racing
+  generator loses on the constraint rather than on a pre-check.
+- `@@unique([promotionId, userId])` — adding the same person to one campaign
+  twice is refused by the database.
+- `refereeUserId @unique` — two simultaneous redemptions of two different tokens
+  by the same new customer cannot both create an acquisition.
+
+Each is a constraint the service recovers from on P2002, not a read-then-write.
+The service work still to do: token generation must retry on collision, and
+attribution must treat P2002 on `refereeUserId` as "already acquired, first
+attribution wins" rather than as an error.
+
+## 5. Reward snapshot semantics
+
+`referrerRewardAmount` / `refereeRewardAmount` already snapshot at qualification.
+Added: `referrerRewardPoints` and `pointsPerNairaAtGrant`. The rate snapshot is
+required, not decorative — DX Points moved from 200 to 100 per naira on
+2026-09-12, and without it a paid points reward would later report a naira cost
+it never had.
+
+The CHECK constraint `(reward_amount IS NOT NULL) <> (reward_points IS NOT NULL)`
+makes "naira or points, never both, never neither" a database rule. Without it a
+row with both is a reward with two prices and no rule for which pays.
+
+## 6. Wallet destination correctness
+
+No change. `REFERRER_WALLETS` still keys on `Referral.ownerType`;
+`CampaignPromoter.participantType` carries only the rate. An influencer routes to
+`WalletOwnerType.CUSTOMER` — their personal withdrawable wallet — by the same
+reasoning already committed for `FLEET_OWNER`. `ReferralOwnerType` is untouched
+and the migration says so in its header.
+
+## 7. Universal three-ride discount enforcement
+
+**No schema.** One platform-wide `promotions` row plus a predicate in the existing
+JSON `rules` column, gated on `count(COMPLETED rides) < 3`. Not `perUserLimit`,
+which counts claims. Prerequisite: the ride path must populate the eligibility
+context, which today it does not — finding (d).
+
+## 8. Cross-campaign acquisition uniqueness
+
+`referral_redemptions.referee_user_id UNIQUE` is **untouched**, and the migration
+header records why widening it would be the campaign-stacking bug.
+
+## 9. Ops authorization and promoter isolation
+
+Not schema. Follows the existing pattern: keys in a `*_PERMISSIONS` constant plus
+rows in `prisma/seed-rbac.cjs`, which Railway runs as `preDeploy` on every
+backend deploy. New keys are needed for campaign management and promoter
+management, and the permission spec that asserts the catalog count must move with
+them.
+
+Promoter isolation is a service rule with no schema support yet: a promoter may
+read only their own participation rows. Recorded as a test requirement.
+
+## 10. No unintended changes
+
+`git diff -w` on `schema.prisma` reports **150 insertions and 0 deletions**:
+every deletion in the raw diff is whitespace realignment from `prisma format`,
+and no existing line's content changed. No existing model, enum, constraint or
+index was modified. The only edits to existing models are three added nullable
+columns and two back-relations.
+
+## Not done
+
+No service, controller, UI, test or seed. The migration has not been applied to
+any database, including a scratch one.
