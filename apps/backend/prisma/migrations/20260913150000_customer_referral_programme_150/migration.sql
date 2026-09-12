@@ -11,9 +11,9 @@
 -- configuration, and the referred customer's ₦150 is the programme's for every
 -- line — `refereeRewardAmount` is read from here whoever referred them.
 --
--- This row was seeded 350/350 by 20260912040000 and never corrected, so every
--- qualified referral has been pricing the referee at more than twice the ruled
--- amount, and a self-serve customer referrer likewise.
+-- This row was seeded 350/350 by 20260912040000 and no migration since has
+-- corrected it. What production actually holds has not been read, and this
+-- migration is written not to assume: see the guard below.
 --
 -- WHAT THIS DOES NOT TOUCH
 --
