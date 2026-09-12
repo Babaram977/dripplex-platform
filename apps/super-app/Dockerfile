@@ -55,7 +55,7 @@ WORKDIR /app
 # wraps, at the version serve@14.2.6 pins, so routing and the SPA fallback are
 # unchanged — but it can answer /.well-known/apple-app-site-association, which
 # the CLI cannot. See the header of server.mjs for the measurements.
-RUN printf '{"name":"super-app-runtime","private":true,"dependencies":{"serve-handler":"6.1.6"}}\n' > package.json \
+RUN printf '{"name":"super-app-runtime","private":true,"dependencies":{"serve-handler":"6.1.7"}}\n' > package.json \
   && pnpm install --prod --no-frozen-lockfile
 COPY --from=build /app/apps/super-app/dist ./dist
 # Cache policy. Without it index.html goes out with an ETag and no Cache-Control

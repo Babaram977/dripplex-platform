@@ -4,7 +4,7 @@
  *
  * This exists for exactly one path. Everything else is delegated, unchanged, to
  * `serve-handler` — the same library `serve` itself is a CLI wrapper around, at
- * the same version `serve@14` pins (6.1.6) — reading the same `serve.json`. So
+ * the same version `serve@14.2.6` resolves (6.1.7) — reading the same `serve.json`. So
  * routing, SPA fallback and the cache policy behave as they did before.
  *
  * WHY THIS FILE EXISTS

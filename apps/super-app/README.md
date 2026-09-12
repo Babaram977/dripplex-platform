@@ -12,7 +12,7 @@ Run `npm run dev` to start the development server.
 
 The Docker runner stage runs `node server.mjs`. It calls `serve-handler`
 directly — the same library the `serve` CLI wraps, pinned to the same version
-(`6.1.6`) — reading the same `serve.json`, so routing, the SPA fallback and the
+(`6.1.7`) — reading the same `serve.json`, so routing, the SPA fallback and the
 cache policy are unchanged.
 
 It exists for one path: `/.well-known/apple-app-site-association`, which Apple
