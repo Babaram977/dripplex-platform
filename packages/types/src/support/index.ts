@@ -104,3 +104,64 @@ export interface SupportTicketListDto {
   items: SupportTicketDto[];
   meta: { page: number; limit: number; total: number; totalPages: number };
 }
+
+/* -------------------------------------------------------------------------- */
+/* DPX-SUPPORT-002 B2 — conversations                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Where a ticket is in its handling lifecycle. Lives on the TICKET, not the
+ *  conversation: the ticket is authority, the conversation is history. */
+export type SupportHandlingState =
+  'OPEN' | 'AI_HANDLING' | 'HUMAN_HANDLING' | 'RESOLVED' | 'REOPENED' | 'CLOSED';
+
+/** Who wrote a message. `ASSISTANT` is declared so the transcript shape does
+ *  not change when B3 arrives; nothing writes it today and no route accepts
+ *  it. */
+export type SupportMessageAuthorType = 'USER' | 'ASSISTANT' | 'HUMAN_AGENT' | 'SYSTEM';
+
+/** Who may see a message. An explicit field, never inferred from the author —
+ *  deriving it would make the first SYSTEM event carrying operational detail
+ *  user-visible by omission rather than by decision. */
+export type SupportMessageVisibility = 'PARTICIPANTS' | 'INTERNAL';
+
+export interface SupportMessageDto {
+  id: string;
+  conversationId: string;
+  /**
+   * Total order across all messages.
+   *
+   * A string, not a number: the column is a 64-bit sequence and JSON has no
+   * integer type that can hold one safely. Sending it as a number would work
+   * for the first 2^53 messages and then start lying.
+   */
+  seq: string;
+  authorType: SupportMessageAuthorType;
+  /** The ticket owner for USER, the operator for HUMAN_AGENT, null otherwise. */
+  authorId: string | null;
+  body: string;
+  visibility: SupportMessageVisibility;
+  redactedAt: string | null;
+  createdAt: string;
+}
+
+export interface SupportConversationDto {
+  id: string;
+  ticketId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** What a caller may supply when appending. Note what is absent: `authorType`,
+ *  `authorId`, and anything naming an actor. Those are fixed by which service
+ *  method was called, so they cannot be forged through a payload. */
+export interface AppendSupportMessageRequest {
+  body: string;
+  /** Idempotency key, unique within the conversation. A retry from a phone on
+   *  a bad connection returns the message it already wrote. */
+  clientMessageId?: string;
+}
+
+/** Operations may additionally choose visibility; a filer may not. */
+export interface AppendOperatorSupportMessageRequest extends AppendSupportMessageRequest {
+  visibility?: SupportMessageVisibility;
+}

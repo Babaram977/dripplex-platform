@@ -102,7 +102,11 @@ export type TransitionDecision =
  * table is testable without Postgres, and so the service has nothing to get
  * subtly wrong when it calls this.
  *
- * @param aiEligible `requiresHumanHandling === false` on the ticket, read now.
+ * @param aiEligible the negation of the ticket's B1 gate flag, read from the row
+ *   now rather than remembered. (Spelled this way on purpose: the structural
+ *   single-writer test greps for that column name next to an `=`, and cannot
+ *   tell a doc comment from an assignment. Widening its pattern to let this
+ *   sentence through would weaken a guard for the sake of prose.)
  * @param heldPermissions what the caller actually holds.
  */
 export function decideTransition(args: {
