@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["X9MCF93WB7.com.dripplex.customer"],
+        "components": [{ "/": "/*" }]
+      }
+    ]
+  }
+}

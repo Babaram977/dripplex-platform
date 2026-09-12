@@ -151,3 +151,101 @@ jobs:
       # freezes the app on every phone without failing anything visible.
       - name: Build the super-app image the way Railway does
         run: docker build -f apps/super-app/Dockerfile -t dripplex-super-app:ci .
+
+      # `docker build` never runs CMD. It proves the image assembles and that
+      # `pnpm install --prod` resolved the runtime deps — and nothing about
+      # whether the thing it is told to start actually starts. A server.mjs that
+      # throws on boot passes the step above, green.
+      #
+      # So: run the container and ask it for the paths that matter.
+      - name: Smoke-test the super-app container
+        run: |
+          set -euo pipefail
+          docker run -d --name dpx-super-app -p 3000:3000 dripplex-super-app:ci
+
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:3000/; then break; fi
+            if [ "$i" = 30 ]; then
+              echo "::error::super-app container never answered on :3000"
+              docker logs dpx-super-app || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          # Deliberately plain. A clever condition here fails open, and failing
+          # open is the whole category of bug this job exists to catch.
+          check() { # path expected_status expected_content_type_prefix
+            path=$1; want_code=$2; want_type=$3
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' "http://localhost:3000$path")
+            ctype=$(curl -sSI "http://localhost:3000$path" | tr -d '\r' | awk 'tolower($1)=="content-type:"{print $2}')
+            echo "  $path -> $code $ctype"
+            bad=0
+            [ "$code" = "$want_code" ] || bad=1
+            case "$ctype" in "$want_type"*) ;; *) bad=1;; esac
+            if [ "$bad" = 1 ]; then
+              echo "::error::$path expected $want_code $want_type, got $code $ctype"
+              head -c 300 /tmp/body; echo
+              docker logs dpx-super-app || true
+              exit 1
+            fi
+          }
+
+          echo "SPA still serves (serve-handler delegation intact):"
+          check / 200 text/html
+
+          echo "Android assetlinks.json unaffected:"
+          check /.well-known/assetlinks.json 200 application/json
+
+          # The path `serve` could not serve. Apple requires exactly this
+          # extensionless name, as application/json, with no redirect.
+          echo "AASA served as JSON, not the SPA:"
+          check /.well-known/apple-app-site-association 200 application/json
+
+          # Content, not just status. A 200 carrying the wrong Team ID is a
+          # Universal Link that silently never opens the app.
+          cat /tmp/body; echo
+          if grep -q '<html' /tmp/body; then
+            echo "::error::AASA returned HTML — the SPA swallowed the route"; exit 1
+          fi
+          if ! grep -q 'X9MCF93WB7.com.dripplex.customer' /tmp/body; then
+            echo "::error::AASA does not name X9MCF93WB7.com.dripplex.customer"; exit 1
+          fi
+
+          docker rm -f dpx-super-app
+
+      # The 200 above proves the file is served. It cannot prove the absent-file
+      # branch still 404s rather than falling through to the SPA — and that
+      # branch is what keeps a future missing file visible instead of silent.
+      - name: Smoke-test the absent-AASA branch
+        run: |
+          set -euo pipefail
+          cat > /tmp/no-aasa.Dockerfile <<'DOCKERFILE'
+          FROM dripplex-super-app:ci
+          RUN rm -f dist/.well-known/apple-app-site-association
+          DOCKERFILE
+          docker build -f /tmp/no-aasa.Dockerfile -t dripplex-super-app:ci-no-aasa /tmp
+          docker run -d --name dpx-no-aasa -p 3001:3000 dripplex-super-app:ci-no-aasa
+
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null http://localhost:3001/; then break; fi
+            if [ "$i" = 30 ]; then
+              echo "::error::container never answered on :3001"
+              docker logs dpx-no-aasa || true
+              exit 1
+            fi
+            sleep 1
+          done
+
+          code=$(curl -sS -o /tmp/no.body -w '%{http_code}' http://localhost:3001/.well-known/apple-app-site-association)
+          ctype=$(curl -sSI http://localhost:3001/.well-known/apple-app-site-association | tr -d '\r' | awk 'tolower($1)=="content-type:"{print $2}')
+          echo "  AASA removed -> $code $ctype"
+          head -c 200 /tmp/no.body; echo
+
+          # An honest 404 is debuggable. `serve` returned the SPA under a 200
+          # here, which is the failure this whole change exists to remove.
+          if [ "$code" != 404 ]; then echo "::error::absent AASA gave $code, expected 404"; exit 1; fi
+          case "$ctype" in application/json*) ;; *) echo "::error::absent-AASA content-type is $ctype, expected application/json"; exit 1;; esac
+          if grep -q '<html' /tmp/no.body; then echo "::error::absent AASA fell through to the SPA"; exit 1; fi
+
+          docker rm -f dpx-no-aasa
