@@ -137,7 +137,12 @@ describe('Promotions overview — the four states', () => {
     campaigns.mockResolvedValue([
       {
         ...campaignSummary,
-        performance: { ...campaignSummary.performance, rewardsEarnedPoints: 30_000 },
+        performance: {
+          ...campaignSummary.performance,
+          rewardsEarnedPoints: 30_000,
+          // What those grants actually cost, per their own snapshotted rates.
+          rewardsEarnedPointsValueNgn: 225,
+        },
       },
     ]);
     renderOverview();
@@ -145,36 +150,50 @@ describe('Promotions overview — the four states', () => {
     const row = (await screen.findByText('Lagos Pioneer Drive')).closest('tr');
     expect(within(row as HTMLElement).getByText('₦3,500')).toBeInTheDocument();
     expect(within(row as HTMLElement).getByText('30,000')).toBeInTheDocument();
-    // 30,000 points is ₦300, shown as an aside — never added to the ₦3,500.
-    expect(within(row as HTMLElement).getByText('≈ ₦300')).toBeInTheDocument();
+    // Shown as an aside, never added to the ₦3,500 — and it is the server's
+    // ₦225, not the ₦300 that dividing by today's rate would give.
+    expect(within(row as HTMLElement).getByText('≈ ₦225')).toBeInTheDocument();
+    expect(within(row as HTMLElement).queryByText('≈ ₦300')).not.toBeInTheDocument();
   });
 });
 
-describe('the DX Points valuation is never assumed', () => {
-  it('omits the naira equivalent when the rate cannot be loaded', async () => {
-    loyaltySettings.mockRejectedValue(new Error('down'));
+describe('the client performs no financial valuation', () => {
+  it('shows no naira figure when the server states no value', async () => {
     campaigns.mockResolvedValue([
       {
         ...campaignSummary,
-        performance: { ...campaignSummary.performance, rewardsEarnedPoints: 30_000 },
+        performance: {
+          ...campaignSummary.performance,
+          rewardsEarnedPoints: 30_000,
+          // A grant with no snapshotted rate makes the total unknowable.
+          rewardsEarnedPointsValueNgn: null,
+        },
       },
     ]);
     renderOverview();
 
-    expect(
-      await screen.findByText(/The DX Points valuation could not be loaded/),
-    ).toBeInTheDocument();
-    const row = screen.getByText('Lagos Pioneer Drive').closest('tr');
+    const row = (await screen.findByText('Lagos Pioneer Drive')).closest('tr');
     expect(within(row as HTMLElement).getByText('30,000')).toBeInTheDocument();
+    // Nothing derived locally. The points stand alone.
     expect(within(row as HTMLElement).queryByText(/≈ ₦/)).not.toBeInTheDocument();
   });
 
-  it('uses the rate the server states, not a remembered 100', async () => {
-    loyaltySettings.mockResolvedValue({ pointsPerNaira: 200 });
+  it('labels the equivalence with the rate the campaign payload carries', async () => {
+    campaign.mockResolvedValue({ ...campaignDetail, pointsPerNaira: 200 });
     renderDetail();
 
-    // 30,000 points at 200:₦1 is ₦150, not ₦300.
-    expect(await screen.findByText(/≈ ₦150 at 200:₦1/)).toBeInTheDocument();
+    // The label follows the server's rate; the figure is the server's figure.
+    // The screen never multiplies or divides to get either.
+    // One row per points promoter; the fixture has one.
+    expect((await screen.findAllByText(/at 200:₦1/)).length).toBeGreaterThan(0);
+  });
+
+  it('does not fetch the loyalty settings to do arithmetic with', async () => {
+    renderDetail();
+    await screen.findByText('Amaka Pioneer');
+    // The rate arrives on the campaign payload. A second query existed only to
+    // divide by, and dividing is what produced the wrong historical values.
+    expect(loyaltySettings).not.toHaveBeenCalled();
   });
 });
 

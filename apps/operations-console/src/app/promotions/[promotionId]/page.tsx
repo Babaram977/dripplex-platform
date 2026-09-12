@@ -14,12 +14,7 @@ import {
   PromoterTable,
 } from '@/components/promotions-panels';
 import { CampaignStatusBadge } from '@/components/promotions-primitives';
-import {
-  useAddPromoter,
-  useCampaign,
-  useLoyaltySettings,
-  useRemovePromoter,
-} from '@/hooks/use-operations-promotions';
+import { useAddPromoter, useCampaign, useRemovePromoter } from '@/hooks/use-operations-promotions';
 
 /**
  * One campaign: its rollup, its promoters, and the two management actions.
@@ -32,10 +27,12 @@ import {
 export function CampaignDetail({ promotionId }: { promotionId: string }): React.JSX.Element {
   const canManage = usePermission('operations:promotions:manage');
   const campaign = useCampaign(promotionId);
-  const settings = useLoyaltySettings();
   const addPromoter = useAddPromoter(promotionId);
   const removePromoter = useRemovePromoter(promotionId);
-  const pointsPerNaira = settings.data?.pointsPerNaira ?? null;
+  // From the campaign payload itself. The screen no longer fetches the rate to
+  // do arithmetic with — every naira figure here was computed server-side, and
+  // this is only used to label an equivalence the server already stated.
+  const pointsPerNaira = campaign.data?.pointsPerNaira ?? null;
 
   return (
     <div className="space-y-6">

@@ -153,11 +153,16 @@ export class CampaignAttributionService {
         {
           resource: 'referral_redemption',
           resourceId: created.id,
+          // The token is deliberately absent. It is a bearer credential —
+          // anyone holding it has acquisitions attributed to this promoter —
+          // and the Ops UI masks it for that reason. Writing it here in
+          // plaintext, once per acquisition, put it somewhere with a much
+          // broader audience than the one screen that shows it. The promoter
+          // id resolves to the token in one lookup for anyone who needs it.
           metadata: {
             campaignPromoterId: promoter.id,
             promotionId: promoter.promotionId,
             promoterUserId: promoter.userId,
-            token: promoter.token,
           },
         },
       );

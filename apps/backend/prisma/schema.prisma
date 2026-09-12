@@ -4023,7 +4023,8 @@ model PromotionRedemption {
 /// DPX-LOYALTY-005 — what DX Points convert to, and whether they may.
 ///
 /// Founder decision 2026-09-11: "let it be as shipped but can be controlled."
-/// Redeeming points for wallet cash at 200:1 stays exactly as it shipped; what
+/// Redeeming points for wallet cash stays exactly as it shipped (at 200:1 then,
+/// 100:1 since the 2026-09-12 ruling); what
 /// changes is that every number behind it becomes a row an operator edits
 /// rather than a constant that needs a deployment. Nora's §7 concern — that
 /// points must not become a cash instrument — is answered by the switch rather
@@ -4204,6 +4205,21 @@ model LoyaltyLedgerEntry {
   createdAt     DateTime       @default(now()) @map("created_at")
   account       LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  /// DPX-PROMO-REF-001 — one entry per account, per reference, per kind.
+  ///
+  /// The wallet has had `@@unique([walletId, referenceType, referenceId])`
+  /// since it shipped; the points ledger had only an index, so a referral
+  /// payout that crashed between awarding points and marking the redemption
+  /// PAID was awarded again in full by the next sweep. The wallet refused the
+  /// second credit. Points did not.
+  ///
+  /// `type` is in the key rather than left out because a reversal is written
+  /// against the same reference as the award it undoes — REVERSED beside
+  /// BONUS — and a three-column key would forbid ever taking a reward back.
+  /// Rows with a null `referenceId` (an Operations adjustment, a redemption)
+  /// are unconstrained: Postgres treats nulls in a unique tuple as distinct,
+  /// which is the behaviour those rows need.
+  @@unique([accountId, referenceType, referenceId, type], map: "loyalty_ledger_entries_account_reference_kind_key")
   @@index([accountId])
   @@index([accountId, createdAt])
   @@index([referenceType, referenceId])

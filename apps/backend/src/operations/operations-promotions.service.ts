@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 
 import { NotFoundDomainException } from '../common/exceptions/domain.exception';
+import { LOYALTY_SETTING_ID } from '../loyalty/loyalty.constants';
 import { PrismaService } from '../prisma/prisma.service';
 import { CampaignPromoterService } from '../referrals/campaign-promoter.service';
 import {
@@ -28,6 +29,16 @@ export interface CampaignPerformance {
   rewardsPendingNgn: number;
   rewardsPaidNgn: number;
   rewardsEarnedPoints: number;
+  /**
+   * What those points were worth when they were granted, in naira.
+   *
+   * Summed per redemption at that redemption's own `pointsPerNairaAtGrant`,
+   * never at today's rate. The rate moved 200 -> 100 on 2026-09-12: valuing a
+   * historical grant at the current rate reports double what it cost, and the
+   * snapshot column exists precisely so that cannot happen. Null when a
+   * points reward carries no rate, which no row written by this feature does.
+   */
+  rewardsEarnedPointsValueNgn: number | null;
 }
 
 export interface PromoterRow {
@@ -41,6 +52,16 @@ export interface PromoterRow {
   removedAt: Date | null;
   rewardAmountNgn: number | null;
   rewardPoints: number | null;
+  /**
+   * What this promoter's points reward is worth today, in naira.
+   *
+   * Today's rate is the right one here and the wrong one in
+   * `rewardsEarnedPointsValueNgn`: this is what the *next* acquisition will
+   * pay, not what a past one did. Computed on the server so no client ever
+   * performs a financial conversion. Null for a cash reward, and null if the
+   * canonical rate cannot be read — never a fallback constant.
+   */
+  rewardPointsValueNgn: number | null;
   performance: CampaignPerformance;
 }
 
@@ -93,6 +114,10 @@ export class OperationsPromotionsService {
     status: PromotionStatus;
     startsAt: Date | null;
     endsAt: Date | null;
+    /** The canonical DX Points rate, stated so a client never has to know it.
+     *  Null when it cannot be read — the caller shows points without a value
+     *  rather than assuming one. */
+    pointsPerNaira: number | null;
     performance: CampaignPerformance;
     promoters: PromoterRow[];
   }> {
@@ -108,6 +133,7 @@ export class OperationsPromotionsService {
       include: { user: { select: { firstName: true, lastName: true } } },
       orderBy: { addedAt: 'desc' },
     });
+    const pointsPerNaira = await this.currentPointsPerNaira();
     const promoters = await Promise.all(
       rows.map(async (r) => ({
         id: r.id,
@@ -123,10 +149,19 @@ export class OperationsPromotionsService {
         removedAt: r.removedAt,
         rewardAmountNgn: r.rewardAmount === null ? null : Number(r.rewardAmount),
         rewardPoints: r.rewardPoints,
+        rewardPointsValueNgn:
+          r.rewardPoints === null || pointsPerNaira === null || pointsPerNaira <= 0
+            ? null
+            : r.rewardPoints / pointsPerNaira,
         performance: await this.performanceFor({ campaignPromoterId: r.id }),
       })),
     );
-    return { ...campaign, performance: await this.performanceFor({ promotionId }), promoters };
+    return {
+      ...campaign,
+      pointsPerNaira,
+      performance: await this.performanceFor({ promotionId }),
+      promoters,
+    };
   }
 
   public async addPromoter(
@@ -216,6 +251,17 @@ export class OperationsPromotionsService {
     };
   }
 
+  /** The canonical rate, or null. Never a constant: increment 1 exists so this
+   *  number lives in exactly one place, and a fallback here would quietly
+   *  reintroduce a second one. */
+  private async currentPointsPerNaira(): Promise<number | null> {
+    const setting = await this.prisma.loyaltySetting.findUnique({
+      where: { id: LOYALTY_SETTING_ID },
+      select: { pointsPerNaira: true },
+    });
+    return setting?.pointsPerNaira ?? null;
+  }
+
   /**
    * One rollup, for a whole campaign or for one promoter.
    *
@@ -239,6 +285,7 @@ export class OperationsPromotionsService {
         status: true,
         referrerRewardAmount: true,
         referrerRewardPoints: true,
+        pointsPerNairaAtGrant: true,
       },
     });
     const qualifiedStates: ReferralRedemptionStatus[] = [
@@ -261,6 +308,29 @@ export class OperationsPromotionsService {
     const ngn = (rows: typeof redemptions): number =>
       rows.reduce((sum, r) => sum + Number(r.referrerRewardAmount ?? 0), 0);
 
+    /**
+     * Each grant valued at its own rate, then added up.
+     *
+     * Converting the aggregate would be the bug: 15,000 points granted at
+     * 200:1 (₦75) and 15,000 granted at 100:1 (₦150) total ₦225, not the ₦300
+     * that dividing 30,000 by today's rate gives. A row with points but no
+     * rate is skipped rather than guessed at, and makes the whole figure null
+     * so a caller cannot mistake a partial total for a complete one.
+     */
+    const pointsValueNgn = (rows: typeof redemptions): number | null => {
+      const withPoints = rows.filter((r) => (r.referrerRewardPoints ?? 0) > 0);
+      if (withPoints.length === 0) {
+        return 0;
+      }
+      if (withPoints.some((r) => r.pointsPerNairaAtGrant === null)) {
+        return null;
+      }
+      return withPoints.reduce((sum, r) => {
+        const rate = r.pointsPerNairaAtGrant ?? 0;
+        return rate <= 0 ? sum : sum + (r.referrerRewardPoints ?? 0) / rate;
+      }, 0);
+    };
+
     return {
       totalReferrals: redemptions.length,
       qualifiedReferrals: qualified.length,
@@ -276,6 +346,7 @@ export class OperationsPromotionsService {
       ),
       rewardsPaidNgn: ngn(redemptions.filter((r) => r.status === ReferralRedemptionStatus.PAID)),
       rewardsEarnedPoints: qualified.reduce((sum, r) => sum + (r.referrerRewardPoints ?? 0), 0),
+      rewardsEarnedPointsValueNgn: pointsValueNgn(qualified),
     };
   }
 }

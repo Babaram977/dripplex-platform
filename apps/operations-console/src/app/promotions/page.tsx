@@ -12,11 +12,7 @@ import {
   RewardModelPanel,
 } from '@/components/promotions-panels';
 import { CampaignStatusBadge, conversion, count, naira } from '@/components/promotions-primitives';
-import {
-  useAcquisitionIncentive,
-  useCampaigns,
-  useLoyaltySettings,
-} from '@/hooks/use-operations-promotions';
+import { useAcquisitionIncentive, useCampaigns } from '@/hooks/use-operations-promotions';
 
 /**
  * DPX-PROMO-REF-001 — the Promotions tab.
@@ -34,8 +30,6 @@ export function PromotionsOverview(): React.JSX.Element {
   const canRead = usePermission('operations:promotions:read');
   const campaigns = useCampaigns();
   const incentive = useAcquisitionIncentive();
-  const settings = useLoyaltySettings();
-  const pointsPerNaira = settings.data?.pointsPerNaira ?? null;
 
   return (
     <div className="space-y-6">
@@ -67,13 +61,6 @@ export function PromotionsOverview(): React.JSX.Element {
           <RewardModelPanel incentive={incentive.data} />
           <AcquisitionIncentivePanel incentive={incentive.data} />
         </>
-      ) : null}
-
-      {settings.isError ? (
-        <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
-          The DX Points valuation could not be loaded, so points are shown without a naira value.
-          Points are not naira and no rate is assumed here.
-        </p>
       ) : null}
 
       <Card>
@@ -148,11 +135,14 @@ export function PromotionsOverview(): React.JSX.Element {
                             cash total beside it. */}
                       <td className="py-3 text-right tabular-nums">
                         {count(campaign.performance.rewardsEarnedPoints)}
-                        {pointsPerNaira !== null && pointsPerNaira > 0 ? (
+                        {campaign.performance.rewardsEarnedPointsValueNgn === null ? null : (
                           <div className="text-xs text-gray-500">
-                            ≈ {naira(campaign.performance.rewardsEarnedPoints / pointsPerNaira)}
+                            {/* The server's figure, each grant valued at the
+                                rate that made it — not this total divided by
+                                today's rate. */}
+                            ≈ {naira(campaign.performance.rewardsEarnedPointsValueNgn)}
                           </div>
-                        ) : null}
+                        )}
                       </td>
                     </tr>
                   ))}

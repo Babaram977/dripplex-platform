@@ -985,13 +985,7 @@ export interface UtilityPurchaseHistoryDto {
  * pioneer driver ₦350) and what decides which wallet a reward can reach.
  */
 export type CampaignParticipantType =
-  | 'CUSTOMER'
-  | 'RIDER'
-  | 'DRIVER'
-  | 'PIONEER_DRIVER'
-  | 'INFLUENCER'
-  | 'CREATOR'
-  | 'AMBASSADOR';
+  'CUSTOMER' | 'RIDER' | 'DRIVER' | 'PIONEER_DRIVER' | 'INFLUENCER' | 'CREATOR' | 'AMBASSADOR';
 
 /** A promoter is deactivated, never deleted — their attributions must survive. */
 export type CampaignPromoterStatus = 'ACTIVE' | 'REMOVED';
@@ -1014,6 +1008,17 @@ export interface CampaignPerformanceDto {
   rewardsPaidNgn: number;
   /** DX Points, kept apart from every naira field above. */
   rewardsEarnedPoints: number;
+  /**
+   * What those points were worth when each was granted, in naira.
+   *
+   * Summed per redemption at that redemption's own snapshotted rate, on the
+   * server. Clients must display this rather than dividing
+   * `rewardsEarnedPoints` by the current rate: the rate moved 200 -> 100 on
+   * 2026-09-12, so converting the aggregate reports double what a historical
+   * grant cost. Null when any grant in the set carries no rate — a partial
+   * total would read as a complete one.
+   */
+  rewardsEarnedPointsValueNgn: number | null;
 }
 
 export interface CampaignPromoterDto {
@@ -1034,6 +1039,14 @@ export interface CampaignPromoterDto {
   /** Exactly one of these is non-null — enforced by a database CHECK. */
   rewardAmountNgn: number | null;
   rewardPoints: number | null;
+  /**
+   * What this promoter's points reward is worth today, in naira, computed on
+   * the server. Today's rate is correct here and wrong for
+   * `rewardsEarnedPointsValueNgn`: this is what the next acquisition will pay,
+   * not what a past one did. Null for a cash reward, and null when the rate
+   * cannot be read — never a fallback constant.
+   */
+  rewardPointsValueNgn: number | null;
   performance: CampaignPerformanceDto;
 }
 
@@ -1053,6 +1066,9 @@ export interface CampaignDetailDto {
   status: PromotionStatus;
   startsAt: string | null;
   endsAt: string | null;
+  /** The canonical DX Points rate, stated by the server so no client needs to
+   *  know it. Null when it cannot be read — show points without a value. */
+  pointsPerNaira: number | null;
   performance: CampaignPerformanceDto;
   promoters: CampaignPromoterDto[];
 }

@@ -15,6 +15,8 @@ import {
   NOTIFICATION_SERVICE,
   type NotificationService,
 } from '../../notifications/notification.service';
+import { CampaignAttributionService } from '../../referrals/campaign-attribution.service';
+import { looksLikeCampaignToken } from '../../referrals/campaign-promoter-token.util';
 import { DriverCampaignService } from '../../referrals/driver-campaign.service';
 import { ReferralsService } from '../../referrals/referrals.service';
 import { UsersService } from '../../users/users.service';
@@ -106,6 +108,10 @@ export class RegistrationService {
     private readonly referralsService?: ReferralsService,
     @Optional()
     private readonly driverCampaignService?: DriverCampaignService,
+    // Last, and optional like its siblings: adding a constructor parameter
+    // anywhere but the end reorders every positional injection in the specs.
+    @Optional()
+    private readonly campaignAttributionService?: CampaignAttributionService,
   ) {}
 
   public async registerCustomer(
@@ -310,23 +316,47 @@ export class RegistrationService {
     const refereeType = REFERRAL_REFEREE_TYPES[portal];
     if (refereeType !== null && dto.referralCode) {
       const redemptionContext = { ...context, userId: result.userId };
-      // The driver campaign owns its own codes and its own money. Only a code
-      // it does not claim falls through to the standing programme.
-      const claimedByDriverCampaign =
-        portal === 'customer'
-          ? await this.driverCampaignService?.tryRedeemDriverCode(
-              result.userId,
-              dto.referralCode,
-              redemptionContext,
-            )
-          : false;
-      if (!claimedByDriverCampaign) {
-        await this.referralsService?.tryRedeemAtRegistration(
+
+      // DPX-PROMO-REF-001 — one field, three mechanisms, founder-ruled
+      // precedence: campaign promoter token, then driver campaign code, then
+      // the standing programme.
+      //
+      // A campaign token is an explicitly issued private acquisition
+      // credential, so if it resolves it owns the acquisition. If it does not
+      // resolve it still owns the outcome: an input that is structurally a
+      // campaign token never falls through to the other two. Letting it would
+      // mean a revoked or mistyped token quietly becoming a different
+      // mechanism's acquisition, crediting the wrong person.
+      //
+      // Whichever branch runs, the acquisition converges on the single
+      // `ReferralRedemption.refereeUserId` unique constraint — this ordering
+      // decides who is credited, never how many times.
+      if (looksLikeCampaignToken(dto.referralCode)) {
+        await this.campaignAttributionService?.attribute(
           result.userId,
           dto.referralCode,
           redemptionContext,
           refereeType,
         );
+      } else {
+        // The driver campaign owns its own codes and its own money. Only a code
+        // it does not claim falls through to the standing programme.
+        const claimedByDriverCampaign =
+          portal === 'customer'
+            ? await this.driverCampaignService?.tryRedeemDriverCode(
+                result.userId,
+                dto.referralCode,
+                redemptionContext,
+              )
+            : false;
+        if (!claimedByDriverCampaign) {
+          await this.referralsService?.tryRedeemAtRegistration(
+            result.userId,
+            dto.referralCode,
+            redemptionContext,
+            refereeType,
+          );
+        }
       }
     }
 

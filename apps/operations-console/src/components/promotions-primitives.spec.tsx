@@ -15,52 +15,73 @@ import {
 import { required } from '@/test/promotions-fixtures';
 
 describe('DX Points are never presented as naira', () => {
-  it('states the valuation alongside the points, never instead of them', () => {
-    render(<PointsValue points={30_000} pointsPerNaira={100} />);
+  it('shows the value the server computed, labelled with the rate', () => {
+    render(<PointsValue points={30_000} valueNgn={300} pointsPerNaira={100} />);
     expect(screen.getByText('30,000')).toBeInTheDocument();
     expect(screen.getByText('DX Points')).toBeInTheDocument();
-    // The naira figure is qualified by the rate that produced it.
     expect(screen.getByText(/≈ ₦300 at 100:₦1/)).toBeInTheDocument();
   });
 
   it('never quotes 30,000 points as ₦30,000', () => {
-    render(<PointsValue points={30_000} pointsPerNaira={100} />);
+    render(<PointsValue points={30_000} valueNgn={300} pointsPerNaira={100} />);
     expect(screen.queryByText(/₦30,000/)).not.toBeInTheDocument();
   });
 
-  it('shows points with no naira value when the rate is unknown', () => {
-    render(<PointsValue points={30_000} pointsPerNaira={null} />);
+  /**
+   * The defect this component used to have.
+   *
+   * It divided the points by the current rate. Points granted at 200:1 were
+   * then reported at today's 100:1 — double what they actually cost. The
+   * server now values each grant at its own snapshotted rate, and this must
+   * display that figure even when it disagrees with what dividing would give.
+   */
+  it('displays the server value even when it differs from the naive conversion', () => {
+    // 30,000 points whose grants were worth ₦225, not the ₦300 that
+    // 30,000 / 100 produces.
+    render(<PointsValue points={30_000} valueNgn={225} pointsPerNaira={100} />);
+    expect(screen.getByText(/≈ ₦225/)).toBeInTheDocument();
+    expect(screen.queryByText(/₦300/)).not.toBeInTheDocument();
+  });
+
+  it('shows points with no naira value when the server stated none', () => {
+    render(<PointsValue points={30_000} valueNgn={null} pointsPerNaira={100} />);
     expect(screen.getByText('30,000')).toBeInTheDocument();
     expect(screen.getByText('(value unavailable)')).toBeInTheDocument();
-    // No naira figure at all — not a guess, and specifically not a hardcoded
-    // 100 that would survive a founder repricing.
+    // Nothing is derived locally from the rate that is present.
     expect(screen.queryByText(/₦/)).not.toBeInTheDocument();
   });
 
-  it('refuses to divide by a nonsense rate', () => {
-    render(<PointsValue points={500} pointsPerNaira={0} />);
-    expect(screen.getByText('(value unavailable)')).toBeInTheDocument();
-    expect(screen.queryByText(/Infinity|₦/)).not.toBeInTheDocument();
-  });
-
-  it('follows a repriced rate rather than a remembered one', () => {
-    const { rerender } = render(<PointsValue points={1000} pointsPerNaira={200} />);
-    expect(screen.getByText(/≈ ₦5 at 200:₦1/)).toBeInTheDocument();
-    rerender(<PointsValue points={1000} pointsPerNaira={100} />);
-    expect(screen.getByText(/≈ ₦10 at 100:₦1/)).toBeInTheDocument();
+  it('omits the rate label when the rate is unknown but the value is not', () => {
+    render(<PointsValue points={1_000} valueNgn={10} pointsPerNaira={null} />);
+    expect(screen.getByText(/≈ ₦10/)).toBeInTheDocument();
+    expect(screen.queryByText(/:₦1/)).not.toBeInTheDocument();
   });
 });
 
 describe('a promoter reward is cash or points, never both and never merged', () => {
   it('shows a cash reward as cash', () => {
-    render(<RewardValue rewardAmountNgn={350} rewardPoints={null} pointsPerNaira={100} />);
+    render(
+      <RewardValue
+        rewardAmountNgn={350}
+        rewardPoints={null}
+        rewardPointsValueNgn={null}
+        pointsPerNaira={100}
+      />,
+    );
     expect(screen.getByText('₦350')).toBeInTheDocument();
     expect(screen.getByText('cash')).toBeInTheDocument();
     expect(screen.queryByText(/DX Points/)).not.toBeInTheDocument();
   });
 
-  it('shows a points reward as points, with the valuation attached', () => {
-    render(<RewardValue rewardAmountNgn={null} rewardPoints={35_000} pointsPerNaira={100} />);
+  it('shows a points reward as points, with the server valuation attached', () => {
+    render(
+      <RewardValue
+        rewardAmountNgn={null}
+        rewardPoints={35_000}
+        rewardPointsValueNgn={350}
+        pointsPerNaira={100}
+      />,
+    );
     expect(screen.getByText('35,000')).toBeInTheDocument();
     expect(screen.getByText('DX Points')).toBeInTheDocument();
     expect(screen.getByText(/≈ ₦350 at 100:₦1/)).toBeInTheDocument();
@@ -68,7 +89,14 @@ describe('a promoter reward is cash or points, never both and never merged', () 
   });
 
   it('says so loudly when a row carries neither', () => {
-    render(<RewardValue rewardAmountNgn={null} rewardPoints={null} pointsPerNaira={100} />);
+    render(
+      <RewardValue
+        rewardAmountNgn={null}
+        rewardPoints={null}
+        rewardPointsValueNgn={null}
+        pointsPerNaira={100}
+      />,
+    );
     expect(screen.getByText('No reward set')).toBeInTheDocument();
   });
 });

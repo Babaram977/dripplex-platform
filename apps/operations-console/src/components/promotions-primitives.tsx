@@ -39,35 +39,42 @@ export function conversion(rate: number | null): string {
 }
 
 /**
- * DX Points, and their naira value only when the canonical rate is known.
+ * DX Points, and the naira value the server put on them.
  *
- * The rate is `loyalty_settings.points_per_naira` — 100 since 2026-09-12, read
- * from the server. When it has not loaded, or the request failed, this renders
- * the points alone and says the valuation is unavailable. It does NOT fall back
- * to a hardcoded 100: a wrong equivalence shown confidently is worse than no
- * equivalence, and the rate is a founder decision that has already changed once.
+ * This component performs no financial arithmetic at all — it used to divide
+ * by the current rate, which silently re-valued historical grants: points
+ * earned at 200:1 were reported at today's 100:1, double what they cost. The
+ * server now values each grant at the rate snapshotted when it was made and
+ * sends the total. When it sends none, the points are shown alone rather than
+ * converted here.
  */
 export function PointsValue({
   points,
+  valueNgn,
   pointsPerNaira,
 }: {
   points: number;
+  /** The naira equivalent, as the server computed it. Null means it could not
+   *  be established — show the points alone rather than deriving one here. */
+  valueNgn: number | null;
+  /** Only to label the equivalence. Never used to compute it. */
   pointsPerNaira: number | null;
 }): React.JSX.Element {
   return (
     <span className="whitespace-nowrap">
       <span className="font-medium tabular-nums">{count(points)}</span>{' '}
       <span className="text-xs text-gray-500">DX Points</span>
-      {pointsPerNaira === null || pointsPerNaira <= 0 ? (
+      {valueNgn === null ? (
         <span
           className="ml-1 text-xs text-gray-400"
-          title="The DX Points valuation could not be loaded, so no naira value is shown."
+          title="The server did not state a naira value for these points, so none is shown."
         >
           (value unavailable)
         </span>
       ) : (
         <span className="ml-1 text-xs text-gray-500">
-          ≈ {naira(points / pointsPerNaira)} at {count(pointsPerNaira)}:₦1
+          ≈ {naira(valueNgn)}
+          {pointsPerNaira === null ? '' : ` at ${count(pointsPerNaira)}:₦1`}
         </span>
       )}
     </span>
@@ -85,10 +92,12 @@ export function PointsValue({
 export function RewardValue({
   rewardAmountNgn,
   rewardPoints,
+  rewardPointsValueNgn,
   pointsPerNaira,
 }: {
   rewardAmountNgn: number | null;
   rewardPoints: number | null;
+  rewardPointsValueNgn: number | null;
   pointsPerNaira: number | null;
 }): React.JSX.Element {
   if (rewardAmountNgn !== null) {
@@ -100,7 +109,13 @@ export function RewardValue({
     );
   }
   if (rewardPoints !== null) {
-    return <PointsValue points={rewardPoints} pointsPerNaira={pointsPerNaira} />;
+    return (
+      <PointsValue
+        points={rewardPoints}
+        valueNgn={rewardPointsValueNgn}
+        pointsPerNaira={pointsPerNaira}
+      />
+    );
   }
   // Unreachable while the CHECK constraint holds. Shown rather than crashed,
   // because an Ops screen that blanks out is harder to report than one that

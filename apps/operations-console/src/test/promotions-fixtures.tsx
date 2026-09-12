@@ -64,6 +64,7 @@ export const emptyPerformance: CampaignPerformanceDto = {
   rewardsPendingNgn: 0,
   rewardsPaidNgn: 0,
   rewardsEarnedPoints: 0,
+  rewardsEarnedPointsValueNgn: 0,
 };
 
 export const cashPerformance: CampaignPerformanceDto = {
@@ -75,6 +76,7 @@ export const cashPerformance: CampaignPerformanceDto = {
   rewardsPendingNgn: 1400,
   rewardsPaidNgn: 2100,
   rewardsEarnedPoints: 0,
+  rewardsEarnedPointsValueNgn: 0,
 };
 
 export const pointsPerformance: CampaignPerformanceDto = {
@@ -83,6 +85,9 @@ export const pointsPerformance: CampaignPerformanceDto = {
   qualifiedReferrals: 2,
   conversionRate: 0.5,
   rewardsEarnedPoints: 30_000,
+  // 15,000 granted at 200:1 (₦75) plus 15,000 at 100:1 (₦150). Deliberately
+  // NOT 30,000 / 100 = ₦300 — the whole point of the server computing it.
+  rewardsEarnedPointsValueNgn: 225,
 };
 
 export const cashPromoter: CampaignPromoterDto = {
@@ -96,6 +101,7 @@ export const cashPromoter: CampaignPromoterDto = {
   removedAt: null,
   rewardAmountNgn: 350,
   rewardPoints: null,
+  rewardPointsValueNgn: null,
   performance: cashPerformance,
 };
 
@@ -110,6 +116,7 @@ export const pointsPromoter: CampaignPromoterDto = {
   removedAt: null,
   rewardAmountNgn: null,
   rewardPoints: 30_000,
+  rewardPointsValueNgn: 300,
   performance: pointsPerformance,
 };
 
@@ -124,6 +131,7 @@ export const removedPromoter: CampaignPromoterDto = {
   removedAt: '2026-09-05T09:00:00.000Z',
   rewardAmountNgn: 200,
   rewardPoints: null,
+  rewardPointsValueNgn: null,
   performance: cashPerformance,
 };
 
@@ -143,6 +151,7 @@ export const campaignDetail: CampaignDetailDto = {
   status: 'ACTIVE',
   startsAt: '2026-09-01T00:00:00.000Z',
   endsAt: null,
+  pointsPerNaira: 100,
   performance: cashPerformance,
   promoters: [cashPromoter, pointsPromoter, removedPromoter],
 };

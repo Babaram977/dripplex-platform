@@ -15,6 +15,7 @@ import {
 import { LOYALTY_SETTING_ID } from '../loyalty/loyalty.constants';
 
 import { ReferralLifecycleService } from './referral-lifecycle.service';
+import { REFERRAL_WALLET_REFERENCE_TYPES } from './referral.constants';
 
 import type { AuditService } from '../audit/audit.service';
 import type { DomainEventBus } from '../events/domain-event-bus';
@@ -36,6 +37,8 @@ describe('campaign reward through the referral lifecycle', () => {
   let lifecycle: ReferralLifecycleService;
   const awarded: { userId: string; points: number; type?: LoyaltyLedgerEntryType }[] = [];
   const credited: { ownerType: WalletOwnerType; ownerId: string; amount: number }[] = [];
+  const debited: { ownerType: WalletOwnerType; ownerId: string; amount: number }[] = [];
+  const pointsReversals: { userId: string; referenceType: string; referenceId: string }[] = [];
   const users: string[] = [];
   let originalProgramme: ReferralProgramme | null = null;
   const promos: string[] = [];
@@ -62,6 +65,10 @@ describe('campaign reward through the referral lifecycle', () => {
           credited.push(i);
           return Promise.resolve(undefined);
         },
+        debit: (i: { ownerType: WalletOwnerType; ownerId: string; amount: number }) => {
+          debited.push(i);
+          return Promise.resolve(undefined);
+        },
       } as never,
       { evaluate: () => Promise.resolve({ qualified: true, reason: null }) } as never,
       { screen: () => Promise.resolve({ reject: null, flag: null }) } as never,
@@ -69,6 +76,10 @@ describe('campaign reward through the referral lifecycle', () => {
         awardPoints: (i: { userId: string; points: number; type?: LoyaltyLedgerEntryType }) => {
           awarded.push(i);
           return Promise.resolve(undefined);
+        },
+        reversePointsFor: (i: { userId: string; referenceType: string; referenceId: string }) => {
+          pointsReversals.push(i);
+          return Promise.resolve({ reversed: 0, shortfall: 0 });
         },
       } as never,
     );
@@ -95,6 +106,8 @@ describe('campaign reward through the referral lifecycle', () => {
   afterEach(() => {
     awarded.length = 0;
     credited.length = 0;
+    debited.length = 0;
+    pointsReversals.length = 0;
   });
 
   afterAll(async () => {
@@ -315,6 +328,51 @@ describe('campaign reward through the referral lifecycle', () => {
       where: { id: LOYALTY_SETTING_ID },
       data: { pointsPerNaira: 100, minRedemptionPoints: 100 },
     });
+  });
+
+  /**
+   * DPX-PROMO-REF-001 audit, F5 — reversal is symmetric with payment.
+   *
+   * A points reward was never wallet cash. Reversing it through the wallet
+   * would invent a debt in a currency the promoter was never credited in, and
+   * before this the points path was simply skipped: the row read REVERSED and
+   * nothing at all came back.
+   */
+  it('reverses a points reward through the points ledger, not the wallet', async () => {
+    if (!databaseAvailable) return;
+    const { redemption, promoterUserId } = await anAcquisition({ rewardPoints: 35_000 });
+
+    await lifecycle.advance(redemption.id);
+    expect(awarded).toHaveLength(1);
+
+    await lifecycle.reverse(redemption.id, 'Fraudulent acquisition', await aUser());
+
+    // Keyed identically to the award. That is what makes a replayed reversal
+    // take nothing more, and what lets `reversePointsFor` find the grant it is
+    // undoing at all.
+    expect(pointsReversals).toHaveLength(1);
+    expect(pointsReversals[0]).toMatchObject({
+      userId: promoterUserId,
+      referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,
+      referenceId: redemption.id,
+    });
+    // Never a wallet debit for the promoter: they hold points, not naira.
+    expect(debited.some((d) => d.ownerId === promoterUserId)).toBe(false);
+    const row = await prisma.referralRedemption.findUniqueOrThrow({
+      where: { id: redemption.id },
+    });
+    expect(row.status).toBe(ReferralRedemptionStatus.REVERSED);
+  });
+
+  it('reverses a cash reward through the wallet, not the points ledger', async () => {
+    if (!databaseAvailable) return;
+    const { redemption, promoterUserId } = await anAcquisition({ rewardAmount: 350 });
+
+    await lifecycle.advance(redemption.id);
+    await lifecycle.reverse(redemption.id, 'Fraudulent acquisition', await aUser());
+
+    expect(debited.some((d) => d.ownerId === promoterUserId && d.amount === 350)).toBe(true);
+    expect(pointsReversals).toHaveLength(0);
   });
 
   it('cannot qualify twice, however many times it is advanced concurrently', async () => {

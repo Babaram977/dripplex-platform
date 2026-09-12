@@ -32,3 +32,19 @@ export function generateCampaignToken(): string {
 export function normalizeCampaignToken(raw: string): string {
   return raw.trim().toUpperCase();
 }
+
+/**
+ * Is this input structurally a campaign token, whether or not one exists?
+ *
+ * Length alone, and deliberately so. Founder ruling: an input that is
+ * recognisably a campaign token must never fall through to another referral
+ * mechanism when it fails to resolve. A mistyped or revoked token has to end as
+ * "no referral", not get quietly retried as a legacy code — otherwise a
+ * promoter's failed attribution becomes somebody else's acquisition.
+ *
+ * Campaign tokens are 32 characters; the standing referral code is 8 and a
+ * driver campaign code is at most 16, so the classes cannot overlap.
+ */
+export function looksLikeCampaignToken(raw: string): boolean {
+  return normalizeCampaignToken(raw).length === CAMPAIGN_TOKEN_LENGTH;
+}

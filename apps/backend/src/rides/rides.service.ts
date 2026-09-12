@@ -369,21 +369,34 @@ export class RidesService {
       return promotionId !== null;
     }
 
-    const locked = await tx.$queryRaw<{ id: string }[]>`
+    // Both acquisition records, locked in a fixed order.
+    //
+    // The lock is the serialisation point: every concurrent request for this
+    // customer queues behind it, so the count below and the ride created in the
+    // same transaction cannot interleave. Two statements rather than one
+    // because `FOR UPDATE` cannot be applied to a UNION, and always in this
+    // order so two requests can never take them in opposite orders and
+    // deadlock.
+    const lockedRedemptions = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM referral_redemptions
       WHERE referee_user_id = ${customerId}::uuid
       FOR UPDATE
     `;
-    if (locked.length === 0) {
-      // No acquisition, no incentive.
+    const lockedPassengerReferrals = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM passenger_referrals
+      WHERE referee_user_id = ${customerId}::uuid
+      FOR UPDATE
+    `;
+    if (lockedRedemptions.length === 0 && lockedPassengerReferrals.length === 0) {
+      // No acquisition of either kind, no incentive.
       //
       // Unreachable today and deliberately kept: `referralOnly` means the quote
-      // cannot name this promotion unless the row exists, so nothing can drive
-      // this branch — a mutation removing it survives the whole suite, and that
-      // is stated rather than papered over with a test that fakes a path into
-      // it. It is a fail-closed backstop for the day the rules and this method
-      // stop agreeing, and refusing a discount is the safe side of that
-      // disagreement.
+      // cannot name this promotion unless one of these rows exists, so nothing
+      // can drive this branch — a mutation removing it survives the whole
+      // suite, and that is stated rather than papered over with a test that
+      // fakes a path into it. It is a fail-closed backstop for the day the
+      // rules and this method stop agreeing, and refusing a discount is the
+      // safe side of that disagreement.
       return false;
     }
 
@@ -414,8 +427,23 @@ export class RidesService {
    * a self-serve code or a campaign token alike, because the acquisition
    * incentive is universal and does not care who brought them.
    */
+  /**
+   * Was this customer acquired through a referral, and how far into their first
+   * rides are they?
+   *
+   * Founder ruling 2026-09-13: the universal incentive applies to every
+   * qualifying new customer regardless of *which* mechanism acquired them. The
+   * platform has two that record an acquisition — `referral_redemptions` (the
+   * standing programme and campaign promoters) and `passenger_referrals` (the
+   * Driver Growth Campaign) — and this used to read only the first. A customer
+   * a driver brought in through their growth campaign was told the referral
+   * discount did not apply to them, which is the opposite of the ruling.
+   *
+   * Either source counts. The incentive itself stays one platform-wide
+   * promotion; this widens who qualifies for it, never how many exist.
+   */
   private async acquisitionContext(customerId: string): Promise<AcquisitionContext> {
-    const [completedRides, acquisition] = await Promise.all([
+    const [completedRides, redemption, passengerReferral] = await Promise.all([
       this.prisma.ride.count({
         where: { customerId, status: RideStatus.COMPLETED },
       }),
@@ -423,9 +451,13 @@ export class RidesService {
         where: { refereeUserId: customerId },
         select: { id: true },
       }),
+      this.prisma.passengerReferral.findUnique({
+        where: { refereeUserId: customerId },
+        select: { id: true },
+      }),
     ]);
     return {
-      isReferral: acquisition !== null,
+      isReferral: redemption !== null || passengerReferral !== null,
       isNewUser: completedRides === 0,
       completedRides,
     };

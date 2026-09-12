@@ -58,24 +58,6 @@ export const PARTICIPANT_OWNER_TYPE: Record<CampaignParticipantType, ReferralOwn
   [CampaignParticipantType.AMBASSADOR]: ReferralOwnerType.CUSTOMER,
 };
 
-/**
- * The founder's locked promoter rates, in naira (2026-09-12).
- *
- * A default an operator may override per campaign, not a constant the code
- * enforces: the reward actually paid is whatever sits on the
- * `CampaignPromoter` row, and it is snapshotted onto the redemption at
- * qualification so re-pricing a campaign never rewrites an earned reward.
- *
- * Classes with no locked rate are absent rather than zero. Zero would read as
- * "this promoter earns nothing", which is a configuration somebody chose;
- * absent reads as "Operations must set this", which is the truth.
- */
-export const DEFAULT_PROMOTER_REWARD_NGN: Partial<Record<CampaignParticipantType, number>> = {
-  [CampaignParticipantType.CUSTOMER]: 150,
-  [CampaignParticipantType.DRIVER]: 200,
-  [CampaignParticipantType.PIONEER_DRIVER]: 350,
-};
-
 export const CAMPAIGN_ATTRIBUTION_AUDIT_ACTIONS = {
   ATTRIBUTED: 'campaign.attribution.recorded',
 } as const;
@@ -83,11 +65,4 @@ export const CAMPAIGN_ATTRIBUTION_AUDIT_ACTIONS = {
 export const CAMPAIGN_PROMOTER_AUDIT_ACTIONS = {
   ADDED: 'campaign.promoter.added',
   REMOVED: 'campaign.promoter.removed',
-} as const;
-
-export const CAMPAIGN_PROMOTER_PERMISSIONS = {
-  /** Read the Promotions tab: campaigns, promoters and their performance. */
-  READ: 'ops:promotions:read',
-  /** Add a promoter to a campaign and configure their reward. */
-  MANAGE: 'ops:promotions:manage',
 } as const;

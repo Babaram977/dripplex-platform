@@ -624,8 +624,11 @@ export class ReferralLifecycleService {
   /**
    * Take a paid reward back.
    *
-   * Both debits are keyed on the redemption id the same way the credits were,
-   * so a reversal replays without double-debiting.
+   * Every clawback is keyed on the redemption id the same way its credit was,
+   * so a reversal replays without double-debiting — the wallet through its
+   * unique ledger key, the points through `reversePointsFor`'s own
+   * already-reversed check. Cash is reversed as cash and points as points,
+   * mirroring `pay()`: the two are never substituted for one another.
    *
    * It can fail, and failing is the right outcome: the wallet refuses a debit
    * that would overdraw, so a referrer who has already spent the reward cannot
@@ -651,8 +654,33 @@ export class ReferralLifecycleService {
 
     const referrerAmount = Number(redemption.referrerRewardAmount ?? 0);
     const refereeAmount = Number(redemption.refereeRewardAmount ?? 0);
+    const referrerPoints = redemption.referrerRewardPoints ?? 0;
 
-    if (referrerAmount > 0) {
+    // DPX-PROMO-REF-001 — symmetric with how it was paid. A points reward was
+    // never wallet cash, so taking it back is a points movement; reversing it
+    // through the wallet would invent a debt in a currency the promoter was
+    // never credited in.
+    //
+    // The points removed are the points that were actually awarded, read back
+    // from the ledger under this redemption's id — never recomputed from
+    // today's rate. The rate moved 200 -> 100 on 2026-09-12, so recomputing
+    // would claw back twice what was granted.
+    if (referrerPoints > 0) {
+      const { reversed, shortfall } = await this.loyaltyService.reversePointsFor({
+        userId: redemption.referral.userId,
+        referenceType: REFERRAL_WALLET_REFERENCE_TYPES.REFERRER_REWARD,
+        referenceId: redemption.id,
+        reason: 'Referral reward reversed',
+      });
+      if (shortfall > 0) {
+        // Said out loud rather than swallowed. The row is about to read
+        // REVERSED, and if part of the grant could not be recovered the record
+        // must not imply all of it was.
+        this.logger.warn(
+          `Referral ${redemption.id}: reversed ${String(reversed)} of ${String(referrerPoints)} DX Points, ${String(shortfall)} already spent`,
+        );
+      }
+    } else if (referrerAmount > 0) {
       await this.walletService.debit({
         ownerType: REFERRER_WALLETS[redemption.referral.ownerType],
         ownerId: redemption.referral.userId,

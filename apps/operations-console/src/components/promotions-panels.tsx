@@ -112,7 +112,11 @@ export function PerformanceStats({
           {count(performance.rewardsEarnedPoints)}
         </p>
         <p className="text-xs text-gray-500">
-          <PointsValue points={performance.rewardsEarnedPoints} pointsPerNaira={pointsPerNaira} />
+          <PointsValue
+            points={performance.rewardsEarnedPoints}
+            valueNgn={performance.rewardsEarnedPointsValueNgn}
+            pointsPerNaira={pointsPerNaira}
+          />
         </p>
       </div>
     </div>
@@ -415,6 +419,7 @@ export function PromoterTable({
                 <RewardValue
                   rewardAmountNgn={promoter.rewardAmountNgn}
                   rewardPoints={promoter.rewardPoints}
+                  rewardPointsValueNgn={promoter.rewardPointsValueNgn}
                   pointsPerNaira={pointsPerNaira}
                 />
               </td>

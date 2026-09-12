@@ -25,6 +25,7 @@ interface LoyaltyPrismaMock {
   };
   loyaltyLedgerEntry: {
     create: jest.Mock;
+    findFirst: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
     aggregate: jest.Mock;
@@ -86,6 +87,9 @@ describe('LoyaltyService', () => {
       },
       loyaltyLedgerEntry: {
         create: jest.fn(),
+        // No prior award under this reference, so the replay guard falls
+        // through to the award itself — the case these tests are about.
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { points: null } }),

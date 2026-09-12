@@ -256,6 +256,113 @@ describe('RegistrationService', () => {
       referralsService,
     );
 
+    /* ------------------------------------------------------------------ *
+     * DPX-PROMO-REF-001 — one field, three mechanisms, founder-ruled order.
+     * ------------------------------------------------------------------ */
+
+    const driverCampaignService = {
+      tryRedeemDriverCode: jest.fn().mockResolvedValue(false),
+    };
+    const campaignAttributionService = {
+      attribute: jest.fn().mockResolvedValue({ outcome: 'ATTRIBUTED' }),
+    };
+    const serviceWithAllThree = new RegistrationService(
+      registrationRepository,
+      usersService,
+      otpService,
+      auditService,
+      appConfig,
+      notificationService,
+      undefined,
+      referralsService,
+      driverCampaignService as never,
+      campaignAttributionService as never,
+    );
+
+    const CAMPAIGN_TOKEN = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789A';
+
+    describe('referral resolution precedence', () => {
+      beforeEach(() => {
+        jest.clearAllMocks();
+        driverCampaignService.tryRedeemDriverCode.mockResolvedValue(false);
+        campaignAttributionService.attribute.mockResolvedValue({ outcome: 'ATTRIBUTED' });
+      });
+
+      it('a campaign token is attributed, and never offered to the other two', async () => {
+        expect(CAMPAIGN_TOKEN).toHaveLength(32);
+        await serviceWithAllThree.registerCustomer(
+          { ...baseDto, referralCode: CAMPAIGN_TOKEN },
+          {},
+        );
+
+        expect(campaignAttributionService.attribute).toHaveBeenCalledWith(
+          registrationResult.userId,
+          CAMPAIGN_TOKEN,
+          expect.objectContaining({ userId: registrationResult.userId }),
+          ReferralRefereeType.CUSTOMER,
+        );
+        expect(driverCampaignService.tryRedeemDriverCode).not.toHaveBeenCalled();
+        expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+      });
+
+      /**
+       * The founder ruling this exists for: a structurally recognisable
+       * campaign token that fails to resolve must end as "no referral", never
+       * be retried as another mechanism. Falling through would let a revoked
+       * token quietly become somebody else's acquisition.
+       */
+      it('an unresolved campaign token does not fall through to the legacy paths', async () => {
+        campaignAttributionService.attribute.mockResolvedValue({ outcome: 'TOKEN_UNKNOWN' });
+
+        await serviceWithAllThree.registerCustomer(
+          { ...baseDto, referralCode: CAMPAIGN_TOKEN },
+          {},
+        );
+
+        expect(campaignAttributionService.attribute).toHaveBeenCalled();
+        expect(driverCampaignService.tryRedeemDriverCode).not.toHaveBeenCalled();
+        expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+      });
+
+      it('a removed promoter token is refused without falling through either', async () => {
+        campaignAttributionService.attribute.mockResolvedValue({
+          outcome: 'PROMOTER_INACTIVE',
+        });
+
+        await serviceWithAllThree.registerCustomer(
+          { ...baseDto, referralCode: CAMPAIGN_TOKEN },
+          {},
+        );
+
+        expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+        expect(driverCampaignService.tryRedeemDriverCode).not.toHaveBeenCalled();
+      });
+
+      it('a legacy code still reaches the driver campaign first', async () => {
+        driverCampaignService.tryRedeemDriverCode.mockResolvedValue(true);
+
+        await serviceWithAllThree.registerCustomer({ ...baseDto, referralCode: 'DRIVER01' }, {});
+
+        expect(campaignAttributionService.attribute).not.toHaveBeenCalled();
+        expect(driverCampaignService.tryRedeemDriverCode).toHaveBeenCalled();
+        // Claimed by the driver campaign, so the standing programme is not tried.
+        expect(referralsService.tryRedeemAtRegistration).not.toHaveBeenCalled();
+      });
+
+      it('a legacy code the driver campaign declines falls through to the programme', async () => {
+        await serviceWithAllThree.registerCustomer({ ...baseDto, referralCode: 'FRIEND01' }, {});
+
+        expect(campaignAttributionService.attribute).not.toHaveBeenCalled();
+        expect(driverCampaignService.tryRedeemDriverCode).toHaveBeenCalled();
+        expect(referralsService.tryRedeemAtRegistration).toHaveBeenCalledWith(
+          registrationResult.userId,
+          'FRIEND01',
+          expect.objectContaining({ userId: registrationResult.userId }),
+          ReferralRefereeType.CUSTOMER,
+        );
+      });
+    });
+
     it('redeems a referral code for customer registration when present', async () => {
       await serviceWithReferrals.registerCustomer({ ...baseDto, referralCode: 'FRIEND01' }, {});
 

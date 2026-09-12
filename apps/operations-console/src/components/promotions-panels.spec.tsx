@@ -51,7 +51,9 @@ describe('performance metrics', () => {
     // 30,000 points at 100:1 is ₦300. The cash total stays ₦0 — the two are
     // never summed.
     expect(screen.getByText('₦0')).toBeInTheDocument();
-    expect(screen.getByText(/≈ ₦300 at 100:₦1/)).toBeInTheDocument();
+    // pointsPerformance carries the server's per-grant total: ₦225, not the
+    // ₦300 that 30,000 / 100 would give.
+    expect(screen.getByText(/≈ ₦225 at 100:₦1/)).toBeInTheDocument();
   });
 
   it('shows a dash for conversion when nothing has been referred', () => {

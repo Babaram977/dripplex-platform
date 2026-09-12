@@ -109,6 +109,50 @@ describe('OperationsPromotionsService', () => {
     return p.id;
   }
 
+  /** A campaign with one promoter already enrolled on the given reward. */
+  async function aCampaignWithPromoter(reward: {
+    rewardAmountNgn?: number;
+    rewardPoints?: number;
+  }): Promise<{ promotionId: string; promoterId: string }> {
+    const [promotionId, userId] = [await aCampaign(), await aUser()];
+    const row = await ops.addPromoter(
+      promotionId,
+      { userId, participantType: CampaignParticipantType.INFLUENCER, ...reward },
+      ADMIN,
+      ctx,
+    );
+    return { promotionId, promoterId: row.id };
+  }
+
+  /** A redemption attributed to a promoter, written straight in so the reward
+   *  snapshot can be set to a historical rate this run never produced. */
+  async function seedRedemption(
+    campaignPromoterId: string,
+    fields: {
+      status: ReferralRedemptionStatus;
+      referrerRewardPoints: number;
+      pointsPerNairaAtGrant: number | null;
+    },
+  ): Promise<void> {
+    const promoter = await prisma.campaignPromoter.findUniqueOrThrow({
+      where: { id: campaignPromoterId },
+    });
+    const referral = await prisma.referral.findUniqueOrThrow({
+      where: { userId: promoter.userId },
+    });
+    await prisma.referralRedemption.create({
+      data: {
+        referralId: referral.id,
+        refereeUserId: await aUser(),
+        refereeType: ReferralRefereeType.CUSTOMER,
+        campaignPromoterId,
+        status: fields.status,
+        referrerRewardPoints: fields.referrerRewardPoints,
+        pointsPerNairaAtGrant: fields.pointsPerNairaAtGrant,
+      },
+    });
+  }
+
   it('adds a promoter, ensuring their Referral and issuing a private token', async () => {
     if (!databaseAvailable) return;
     const [promotionId, userId] = [await aCampaign(), await aUser()];
@@ -267,6 +311,63 @@ describe('OperationsPromotionsService', () => {
     expect(p?.performance.rewardsPaidNgn).toBe(200);
     expect(p?.performance.rewardsPendingNgn).toBe(0);
     expect(detail.performance.totalReferrals).toBe(2);
+  });
+
+  /**
+   * DPX-PROMO-REF-001 audit, F4 — points are valued at the rate that granted
+   * them.
+   *
+   * `pointsPerNairaAtGrant` exists so a repricing cannot restate what somebody
+   * earned. Aggregating the points and dividing by today's rate threw that
+   * away: two grants of 15,000, one made at 200:1 and one at 100:1, cost ₦75
+   * and ₦150 — ₦225 together, not the ₦300 that dividing 30,000 by 100 gives.
+   */
+  it('values points rewards at each grant own rate, never at today rate', async () => {
+    if (!databaseAvailable) return;
+    const { promotionId, promoterId } = await aCampaignWithPromoter({ rewardPoints: 15_000 });
+
+    await seedRedemption(promoterId, {
+      status: ReferralRedemptionStatus.PAID,
+      referrerRewardPoints: 15_000,
+      pointsPerNairaAtGrant: 200,
+    });
+    await seedRedemption(promoterId, {
+      status: ReferralRedemptionStatus.PAID,
+      referrerRewardPoints: 15_000,
+      pointsPerNairaAtGrant: 100,
+    });
+
+    const detail = await ops.getCampaign(promotionId);
+    expect(detail.performance.rewardsEarnedPoints).toBe(30_000);
+    expect(detail.performance.rewardsEarnedPointsValueNgn).toBe(225);
+    // Never the naive conversion.
+    expect(detail.performance.rewardsEarnedPointsValueNgn).not.toBe(300);
+  });
+
+  it('refuses to total a points value when a grant carries no rate', async () => {
+    if (!databaseAvailable) return;
+    const { promotionId, promoterId } = await aCampaignWithPromoter({ rewardPoints: 15_000 });
+    await seedRedemption(promoterId, {
+      status: ReferralRedemptionStatus.PAID,
+      referrerRewardPoints: 15_000,
+      pointsPerNairaAtGrant: null,
+    });
+
+    const detail = await ops.getCampaign(promotionId);
+    // Null rather than a partial total a caller would read as complete.
+    expect(detail.performance.rewardsEarnedPointsValueNgn).toBeNull();
+    expect(detail.performance.rewardsEarnedPoints).toBe(15_000);
+  });
+
+  it('states the promoter configured reward value, so no client divides', async () => {
+    if (!databaseAvailable) return;
+    const { promotionId } = await aCampaignWithPromoter({ rewardPoints: 35_000 });
+
+    const detail = await ops.getCampaign(promotionId);
+    expect(detail.pointsPerNaira).toBe(100);
+    // Today's rate is right here — this is what the next acquisition pays,
+    // not what a past one did.
+    expect(detail.promoters[0]?.rewardPointsValueNgn).toBe(350);
   });
 
   it('shows the acquisition incentive read-only, and never per campaign', async () => {

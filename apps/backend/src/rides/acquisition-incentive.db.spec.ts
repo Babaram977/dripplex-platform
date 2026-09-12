@@ -42,6 +42,7 @@ describe('universal acquisition incentive', () => {
   let rides: RidesService;
   let ridesNoRedeemContention: RidesService;
   const users: string[] = [];
+  const campaigns: string[] = [];
 
   beforeAll(async () => {
     prisma = new PrismaClient({
@@ -113,6 +114,12 @@ describe('universal acquisition incentive', () => {
     await prisma.ride.deleteMany({ where: { customerId: { in: users } } });
     await prisma.referralRedemption.deleteMany({ where: { refereeUserId: { in: users } } });
     await prisma.referral.deleteMany({ where: { userId: { in: users } } });
+    // Growth-campaign fixtures, innermost first: passenger referrals hang off
+    // driver referrals, which hang off the campaign. Left behind they would
+    // block the user deletes below and leak acquisitions into other specs.
+    await prisma.passengerReferral.deleteMany({ where: { refereeUserId: { in: users } } });
+    await prisma.driverReferral.deleteMany({ where: { campaignId: { in: campaigns } } });
+    await prisma.referralCampaign.deleteMany({ where: { id: { in: campaigns } } });
     await prisma.user.deleteMany({ where: { id: { in: users } } });
     await prisma.$disconnect();
   });
@@ -180,6 +187,68 @@ describe('universal acquisition incentive', () => {
       dropoffLongitude: 8.1,
     });
   }
+
+  /**
+   * A customer the Driver Growth Campaign brought in.
+   *
+   * A different table from the standing programme's — `passenger_referrals`,
+   * with its own platform-wide unique on the referee — and therefore a
+   * different shape of the same fact: somebody referred this person.
+   */
+  async function aGrowthCampaignCustomer(): Promise<string> {
+    const driver = await aUser();
+    const referee = await aUser();
+    const campaign = await prisma.referralCampaign.create({
+      data: {
+        name: `Growth ${randomUUID()}`,
+        periodStart: new Date(Date.now() - 86_400_000),
+        periodEnd: new Date(Date.now() + 86_400_000),
+      },
+    });
+    campaigns.push(campaign.id);
+    const driverReferral = await prisma.driverReferral.create({
+      data: {
+        campaignId: campaign.id,
+        driverId: driver,
+        code: randomUUID().slice(0, 12).toUpperCase(),
+      },
+    });
+    await prisma.passengerReferral.create({
+      data: { driverReferralId: driverReferral.id, refereeUserId: referee },
+    });
+    return referee;
+  }
+
+  /**
+   * DPX-PROMO-REF-001 audit, F9 — founder ruling 2026-09-13.
+   *
+   * The incentive applies to every qualifying new customer regardless of which
+   * mechanism acquired them. Eligibility used to read `referral_redemptions`
+   * alone, so a customer a driver brought in through their growth campaign was
+   * quoted full price — the opposite of the ruling, and invisible to every
+   * test that only ever built the other kind of acquisition.
+   */
+  it('discounts a customer the driver growth campaign acquired', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await aGrowthCampaignCustomer();
+
+    const quoted = await quote(customerId);
+
+    expect(quoted.promotionId).toBe(INCENTIVE_ID);
+    expect(quoted.promoDiscount).toBeGreaterThan(0);
+  });
+
+  it('gives that customer three discounted rides and no more', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await aGrowthCampaignCustomer();
+
+    await completeRides(customerId, 3);
+    const quoted = await quote(customerId);
+
+    // The cap is platform-wide, not per mechanism: three rides, whoever
+    // acquired them.
+    expect(quoted.promotionId).toBeNull();
+  });
 
   it('is seeded exactly once, as one platform-wide row', async () => {
     if (!databaseAvailable) return;
