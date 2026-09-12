@@ -286,6 +286,39 @@ export class RidesService {
     return await this.dispatchService.dispatchRide(ride.id);
   }
 
+  /**
+   * What the promotions engine needs to know about this customer, gathered
+   * once per pricing call.
+   *
+   * `completedRides` is counted from the rides table rather than from
+   * promotion redemptions, which is the whole point: the founder's rule is the
+   * first three completed rides *ever*, so declining the discount must not
+   * leave a slot unused for later. When ride N is priced the customer has
+   * exactly N-1 completed rides, so ride #1 sees 0 and ride #4 sees 3.
+   *
+   * `isReferral` is true when somebody was acquired through a referral at all —
+   * a self-serve code or a campaign token alike, because the acquisition
+   * incentive is universal and does not care who brought them.
+   */
+  private async acquisitionContext(
+    customerId: string,
+  ): Promise<{ isReferral: boolean; isNewUser: boolean; completedRides: number }> {
+    const [completedRides, acquisition] = await Promise.all([
+      this.prisma.ride.count({
+        where: { customerId, status: RideStatus.COMPLETED },
+      }),
+      this.prisma.referralRedemption.findUnique({
+        where: { refereeUserId: customerId },
+        select: { id: true },
+      }),
+    ]);
+    return {
+      isReferral: acquisition !== null,
+      isNewUser: completedRides === 0,
+      completedRides,
+    };
+  }
+
   /** Locks and redeems the promotion previewed in `requestRide`, using the
    * Ride's own id as `referenceId` (created just before this call). This is
    * a second, non-atomic step — Ride creation and promotion redemption are
@@ -337,12 +370,24 @@ export class RidesService {
     // same way the marketplace already does via PricingService.evaluateForCart.
     // This is what makes an automatic campaign such as "Free First Ride"
     // (perUserLimit: 1) apply without the rider having to know a code.
+    // DPX-PROMO-REF-001 — the eligibility context the rules engine has always
+    // read and nobody ever supplied.
+    //
+    // `newUsersOnly`, `returningUsersOnly`, `referralOnly` and `inviteOnly` are
+    // implemented in the evaluator and were dead in production: no caller set
+    // `isNewUser`, `isReferral` or `isInvited`, so a `newUsersOnly` campaign
+    // configured in Ops refused everybody and said nothing. Their unit tests
+    // passed because they handed the evaluator a context directly. Supplying it
+    // here is what makes those rules real, and what the universal acquisition
+    // incentive needs.
+    const acquisition = await this.acquisitionContext(customerId);
+
     if (!couponCode) {
       const auto = await this.promotionsService.previewPromotion({
         userId: customerId,
         domain: PromotionDomain.RIDE,
         subtotal,
-        eligibility: { rideType },
+        eligibility: { rideType, ...acquisition },
       });
       // A ride records ONE promotionId, so only a single promotion may be
       // attached. Take the best (selectDiscounts orders by priority) and use
@@ -359,7 +404,10 @@ export class RidesService {
       domain: PromotionDomain.RIDE,
       subtotal,
       couponCode,
-      eligibility: { rideType },
+      // The same context as the codeless branch. A typed coupon must be judged
+      // by the same rules as an automatic one, or a `newUsersOnly` code would
+      // behave differently from a `newUsersOnly` campaign.
+      eligibility: { rideType, ...acquisition },
     });
     if (!preview || preview.discountAmount <= 0) {
       return { promotionId: null, promoDiscount: 0 };

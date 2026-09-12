@@ -87,6 +87,21 @@ export class PromotionRulesDto {
   @IsBoolean()
   public referralOnly?: boolean;
 
+  /**
+   * DPX-PROMO-REF-001 — the universal acquisition incentive's ceiling.
+   *
+   * "Eligible while the customer has fewer than N completed rides." Counted
+   * from the rides table at pricing time, never from redemptions: `perUserLimit`
+   * counts *claims*, so a customer who declined the discount twice would still
+   * have three claims left and could stretch the benefit indefinitely. The
+   * founder's rule is the first three completed rides ever, and only the rides
+   * themselves can say which ride this is.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  public maxPriorCompletedRides?: number;
+
   @IsOptional()
   @IsBoolean()
   public inviteOnly?: boolean;
@@ -132,6 +147,15 @@ export interface PromotionEligibilityContext {
   isNewUser?: boolean;
   isReferral?: boolean;
   isInvited?: boolean;
+  /**
+   * How many rides this customer has already completed.
+   *
+   * Supplied by the ride path; absent everywhere a ride is not being priced,
+   * which is why a rule constraining it fails closed rather than defaulting to
+   * zero. Defaulting would make every marketplace checkout look like a
+   * customer's first ride.
+   */
+  completedRides?: number;
   now?: Date;
 }
 
@@ -206,6 +230,19 @@ export function evaluatePromotionRules(
   }
   if (rules.returningUsersOnly && context.isNewUser !== false) {
     return { eligible: false, reason: 'Promotion is limited to returning users' };
+  }
+  if (rules.maxPriorCompletedRides !== undefined) {
+    // Fails closed on an absent count. A caller that cannot say how many rides
+    // somebody has completed cannot be told they are inside the first three.
+    if (
+      context.completedRides === undefined ||
+      context.completedRides >= rules.maxPriorCompletedRides
+    ) {
+      return {
+        eligible: false,
+        reason: `Promotion is limited to the first ${String(rules.maxPriorCompletedRides)} completed rides`,
+      };
+    }
   }
   if (rules.referralOnly && context.isReferral !== true) {
     return { eligible: false, reason: 'Promotion requires a referral' };
