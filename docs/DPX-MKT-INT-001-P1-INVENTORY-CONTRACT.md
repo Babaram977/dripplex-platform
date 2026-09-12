@@ -1,7 +1,7 @@
 # MKT-INT-001-J — Inventory Sync: implementation contract
 
 **Document**: DPX-MKT-INT-001-P1-INVENTORY-CONTRACT.md
-**Status**: Implemented, **awaiting founder / architecture sign-off on §4 and §5**
+**Status**: Implemented. §5.1 **ruled and closed** (2026-09-12). **Awaiting sign-off on §4**; §5.2 is open on purpose.
 **Date**: 2026-09-12
 **Supersedes nothing.** Extends `DPX-MKT-INT-001-P1-CATALOGUE-CONTRACT.md` (and its
 Amendment 1) to the inventory-only push. Where the two disagree, the catalogue contract
