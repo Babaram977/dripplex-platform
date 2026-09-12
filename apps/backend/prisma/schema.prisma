@@ -552,6 +552,8 @@ model User {
   driverInspections           Inspection[]
   driverSupportTickets        DriverSupportTicket[]        @relation("DriverSupportTicketDriver")
   supportTickets              SupportTicket[]              @relation("SupportTicketUser")
+  supportMessages             SupportMessage[]             @relation("SupportMessageAuthor")
+  supportMessagesRedacted     SupportMessage[]             @relation("SupportMessageRedactor")
   resolvedSupportTickets      SupportTicket[]              @relation("SupportTicketResolver")
   driverSupportTicketsHandled DriverSupportTicket[]        @relation("DriverSupportTicketResolver")
   incidentReports             IncidentReport[]             @relation("IncidentReportDriver")
@@ -2796,6 +2798,19 @@ model SupportTicket {
   /// the gate read the message and found nothing.
   gateNotEnglish Boolean @default(false) @map("gate_not_english")
 
+  /// DPX-SUPPORT-002 B2 — who is handling this ticket right now.
+  ///
+  /// Lives on the ticket rather than the conversation deliberately. The ticket
+  /// is authority; the conversation is history. Keeping this beside
+  /// `requiresHumanHandling` puts both halves of the safety invariant on one
+  /// row, so PostgreSQL can enforce it with a plain CHECK:
+  ///
+  ///   requiresHumanHandling AND handlingState = AI_HANDLING  ->  rejected
+  ///
+  /// A check constraint cannot look into another table, so had this lived on
+  /// the conversation the database could not have been the final boundary.
+  handlingState SupportHandlingState @default(OPEN) @map("handling_state")
+
   /// Context captured at submission, so Operations is not asking a person who
   /// is already unhappy to tell them who they are. All optional: a ticket with
   /// less context is still a ticket, and refusing one for want of an app
@@ -2813,15 +2828,140 @@ model SupportTicket {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user     User  @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
-  resolver User? @relation("SupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  user         User                 @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
+  resolver     User?                @relation("SupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  conversation SupportConversation?
 
   @@index([userId])
   @@index([status])
   @@index([persona, status])
   @@index([category])
   @@index([gateDetectedCategory])
+  @@index([handlingState])
   @@map("support_tickets")
+}
+
+/// DPX-SUPPORT-002 B2 — who is handling a ticket.
+///
+/// `AI_HANDLING` is unreachable for any ticket whose `requiresHumanHandling` is
+/// true, enforced by a database CHECK rather than by care. `REOPENED` returns a
+/// resolved ticket to play without starting a second conversation: eligibility
+/// for AI is re-read from the ticket at that point, never remembered from when
+/// it was first filed.
+enum SupportHandlingState {
+  OPEN
+  AI_HANDLING
+  HUMAN_HANDLING
+  RESOLVED
+  REOPENED
+  CLOSED
+}
+
+/// DPX-SUPPORT-002 B2 — the transcript of one ticket.
+///
+/// Exactly one per ticket, for the life of the ticket. Reopening a resolved
+/// ticket reuses this conversation rather than starting another: the transcript
+/// is already ordered and already immutable, so a second conversation would buy
+/// a join and a "which one is live" question and nothing else.
+///
+/// Carries no state of its own. Handling state is the ticket's, because the
+/// ticket is the thing with authority; this is the thing with history.
+model SupportConversation {
+  id       String @id @default(uuid()) @db.Uuid
+  ticketId String @unique @map("ticket_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  ticket   SupportTicket    @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@map("support_conversations")
+}
+
+/// Who wrote a message.
+///
+/// `ASSISTANT` exists in the enum and nothing writes it: there is no provider,
+/// no model and no route that produces one. It is declared now so the shape of
+/// the transcript does not change when B3 arrives, and so the authorization
+/// tests that say "no route accepts this" have something to name.
+enum SupportMessageAuthorType {
+  USER
+  ASSISTANT
+  HUMAN_AGENT
+  SYSTEM
+}
+
+/// Who may see a message.
+///
+/// An explicit field rather than an inference from `authorType`. `SYSTEM`
+/// covers both events the filer should see ("transferred to a specialist") and
+/// internal audit or control records. Deriving visibility from the author would
+/// mean the first `SYSTEM` event carrying operational detail becomes
+/// user-visible by default — a leak caused by an omission rather than a
+/// decision.
+enum SupportMessageVisibility {
+  /// The filer and Operations.
+  PARTICIPANTS
+  /// Operations only.
+  INTERNAL
+}
+
+/// DPX-SUPPORT-002 B2 — one message. Append-only.
+///
+/// Immutability is enforced by a database trigger, not by this comment and not
+/// only by the absence of an update method: `INSERT` is allowed, `UPDATE` and
+/// `DELETE` raise. Prisma cannot express a trigger, which means `migrate diff`
+/// will never report it missing either — so a database must be rebuilt by
+/// applying the migrations, never from this datamodel alone, and a test proves
+/// the trigger is present rather than trusting the clean diff.
+///
+/// Immutable is not the same as un-redactable. A retention or NDPR obligation
+/// may later require content to stop being shown; that is expressed by the
+/// redaction fields below, beside the record, never by mutating it. A design
+/// where redaction requires breaking immutability is one where somebody
+/// eventually drops the trigger in good faith.
+model SupportMessage {
+  id             String @id @default(uuid()) @db.Uuid
+  conversationId String @map("conversation_id") @db.Uuid
+
+  /// Total order across all messages, from a database sequence.
+  ///
+  /// `createdAt` is not an ordering — two messages can share a millisecond. A
+  /// per-conversation counter would need read-modify-write and would race, and
+  /// contiguity within a conversation buys nothing, so this is global.
+  seq BigInt @unique @default(autoincrement())
+
+  authorType SupportMessageAuthorType @map("author_type")
+
+  /// The ticket owner for `USER`, the operator for `HUMAN_AGENT`, null for
+  /// `ASSISTANT` and `SYSTEM`. Never read from a request body.
+  authorId String? @map("author_id") @db.Uuid
+
+  body       String                   @db.VarChar(8000)
+  visibility SupportMessageVisibility @default(PARTICIPANTS)
+
+  /// Redaction state, beside the immutable record rather than replacing it.
+  /// Null means nothing has been redacted — the ordinary case.
+  redactedAt    DateTime? @map("redacted_at")
+  redactedBy    String?   @map("redacted_by") @db.Uuid
+  redactionNote String?   @map("redaction_note") @db.VarChar(500)
+
+  /// Caller-supplied idempotency key, unique within the conversation. A phone
+  /// on a bad connection retries; a retry must return the message it already
+  /// wrote rather than writing a second one.
+  clientMessageId String? @map("client_message_id") @db.VarChar(120)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  conversation SupportConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  author       User?               @relation("SupportMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  redactor     User?               @relation("SupportMessageRedactor", fields: [redactedBy], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, clientMessageId])
+  @@index([conversationId, seq])
+  @@index([authorType])
+  @@map("support_messages")
 }
 
 /// Driver Slice 2 item 4 — Incident Reporting (founder-approved 2026-08-04):

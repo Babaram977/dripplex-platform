@@ -153,7 +153,10 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // `driver:support-ticket:manage` / `admin:drivers:support-ticket:manage`,
     // which stay in the catalogue because deployed driver apps still call the
     // routes behind them.
-    expect(PERMISSION_SEEDS).toHaveLength(152);
+    // 152 -> 153: `support:tickets:ai-handoff` (DPX-SUPPORT-002 B2). Seeded and
+    // granted to no role — see support-conversation.permissions.spec.ts, which
+    // asserts that stays true.
+    expect(PERMISSION_SEEDS).toHaveLength(153);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',
