@@ -2816,6 +2816,14 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
   // and two customers named Ismail shared the same "code". The real one comes
   // from /customer/referrals/me.
   const [referralCode, setReferralCode] = useState('');
+  // DPX-PROMO-REF-001 — the reward this card promises comes from the server.
+  //
+  // It used to be the string "₦350", compiled into the bundle. That is an
+  // authoritative economic value living in a client: it survives any repricing
+  // of the programme, so the card would go on promising ₦350 while the
+  // programme paid something else. Null until the server answers, and the card
+  // shows a dash rather than a number nobody has agreed to honour.
+  const [referrerReward, setReferrerReward] = useState<number | null>(null);
   useEffect(() => {
     let live = true;
     api.referrals
@@ -2825,6 +2833,14 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
       })
       .catch(() => {
         /* Leave it blank rather than showing a code that cannot be redeemed. */
+      });
+    api.referrals
+      .stats()
+      .then((s) => {
+        if (live) setReferrerReward(s.referrerRewardAmount);
+      })
+      .catch(() => {
+        /* Same rule as the code: no number beats a wrong number. */
       });
     return () => {
       live = false;
@@ -3050,7 +3066,9 @@ export function RewardsScreen({ onBack }: { onBack?: () => void }) {
             }}
           >
             <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 8 }}>
-              Share and earn ₦350 per friend who signs up (V2)
+              {referrerReward === null
+                ? 'Share and earn — when your friend qualifies'
+                : `Share and earn ₦${referrerReward.toLocaleString()} when your friend qualifies`}
             </div>
             <div
               style={{
