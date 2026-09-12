@@ -19,6 +19,9 @@ import { ProductsService } from './products.service';
     ProductSearchSyncService,
     CustomerProductsService,
   ],
-  exports: [ProductsService],
+  // MerchantProductsService is exported so POS catalogue ingestion can create
+  // products through the same write path a merchant uses, rather than growing a
+  // second one that would have to be kept in step with it.
+  exports: [ProductsService, MerchantProductsService],
 })
 export class ProductsModule {}

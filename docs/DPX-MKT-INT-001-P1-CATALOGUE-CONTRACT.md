@@ -333,3 +333,74 @@ directly requires · no deletion of the shadowed legacy routes · no permission 
 **Related:** `docs/DPX-MKT-INT-001-MERCHANT-INTEGRATION-PLATFORM.md` ·
 `docs/DPX-MKT-INT-001-C-SCHEMA.md` · `docs/DPX-MKT-INT-001-IMPLEMENTATION-BACKLOG.md` ·
 `docs/CATALOG-ERD.md` · `docs/MARKETPLACE-FOUNDATION.md`
+
+---
+
+# Amendment 1 — status vocabulary, 2026-09-08
+
+**Status: APPROVED. Supersedes the string literals named in §6, §10 and §11 above.**
+
+All nine decisions were approved as written. Two corrections were then ruled during
+implementation. Neither reverses a decision; the first changes only string literals, the
+second records a fact about the schema that the contract had inferred wrongly.
+
+## What changed and why
+
+The contract fixed four status vocabularies without checking them against the values the
+schema's own doc comments already documented. Every one of those columns is a `VarChar` with
+no enum, so both sets were storable — which is precisely the problem: implementing the
+contract literally would have left two disagreeing sets of magic strings inside one module.
+
+The ruling is to use the vocabulary the schema already established, and add only what is
+genuinely new.
+
+| Field                                       | Contract said                                        | **Now authoritative**                                        |
+| ------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------ |
+| `CatalogSyncJob.syncDirection`              | `FROM_EXTERNAL`                                      | **`POS_TO_DRIPPLEX`** (export stays `DRIPPLEX_TO_POS`)       |
+| `CatalogSyncJob.jobStatus`                  | `PENDING → RUNNING → SUCCEEDED \| PARTIAL \| FAILED` | **`PENDING → IN_PROGRESS → COMPLETED \| PARTIAL \| FAILED`** |
+| `InventoryUpdate.deliveryStatus` (inbound)  | `APPLIED`                                            | **`DELIVERED`**, `attemptCount` 0                            |
+| `IntegrationConflict.conflictType` — price  | `PRICE_DIVERGED`                                     | **`CATALOG_PRICE_DIFF`**                                     |
+| `IntegrationConflict.conflictType` — name   | `NAME_DIVERGED`                                      | **`CATALOG_NAME_DIFF`**                                      |
+| `IntegrationConflict.conflictType` — absent | `PRODUCT_ABSENT`                                     | unchanged; `PRODUCT_ARCHIVED` used for removal at source     |
+
+`PARTIAL` is the one genuinely new value and is required by decision #8 — a job that applied
+some items and rejected others is neither COMPLETED nor FAILED, and reporting it as either
+would misrepresent what landed. `CATEGORY_UNMAPPED`, `CATEGORY_INACTIVE`,
+`CURRENCY_UNSUPPORTED`, `NEGATIVE_QUANTITY` and `SKU_COLLISION` are new conflict types in the
+existing house style.
+
+Every _behaviour_ §10 and §11 locked is preserved exactly. The literals now live in one place,
+`apps/backend/src/integrations/catalogue-ingestion.constants.ts`, and the schema doc comments
+were updated in the same change so the two cannot drift.
+
+**Column types are unchanged and no enum was introduced.**
+
+## Correction to §0 — `MerchantIntegration.merchantId` holds a User id
+
+§0 observed that `MerchantIntegration.merchantId` is "a bare indexed UUID with no relation".
+That is true, and the contract then inferred from the column's name that the UUID is a
+merchant id. It is not.
+
+`MerchantScoped` sets it from `user.id` (`merchant-scoped.decorator.ts:37`, whose own comment
+says _"For now, use user.id as merchantId"_), and `integrations.service.ts:122` writes the
+same value back as `userId`. Meanwhile `Product.merchantId` is a foreign key to
+`MerchantProfile.id`. Writing one into the other would have violated that foreign key on
+**every ingested product**.
+
+**Ruled:** ingestion resolves `MerchantProfile` by its unique `userId` before creating any
+product. No data migration, and none of the fourteen existing integration endpoints changes.
+Correcting the decorator and backfilling the column is the real fix and is recorded as a
+follow-up, deliberately outside this boundary.
+
+## Still open, deliberately not fixed
+
+The three schema gaps §1, §8 and §9 recorded remain recorded rather than repaired, except the
+one decision #3 authorised:
+
+1. `ProductSync.productId` still has **no foreign key** to `Product`. Ingestion therefore
+   treats a mapping whose `productId` no longer resolves as remap-or-conflict, never as
+   "product exists" — but the database still permits the orphan.
+2. `CatalogSyncJob.idempotencyKey` — **closed** by decision #3.
+3. `CatalogSyncJob.failureReason` is still one `VarChar(500)` for a whole job. Per-item detail
+   goes to `IntegrationLog` with `correlationId` set to the job id (decision #8), which makes
+   a run's failures retrievable together without a new table.
