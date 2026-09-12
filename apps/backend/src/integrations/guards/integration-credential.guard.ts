@@ -1,6 +1,13 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 
-import { CATALOGUE_WRITE_SCOPE } from '../catalogue-ingestion.constants';
+import { INTEGRATION_SCOPE_KEY } from '../decorators/integration-scope.decorator';
 import { CredentialsService } from '../services/credentials.service';
 
 import type { MerchantIntegration } from '@prisma/client';
@@ -31,10 +38,32 @@ export interface IntegrationAuthenticatedRequest {
  */
 @Injectable()
 export class IntegrationCredentialGuard implements CanActivate {
-  constructor(private readonly credentialsService: CredentialsService) {}
+  private readonly logger = new Logger(IntegrationCredentialGuard.name);
+
+  constructor(
+    private readonly credentialsService: CredentialsService,
+    private readonly reflector: Reflector,
+  ) {}
 
   public async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<IntegrationAuthenticatedRequest>();
+
+    // The route says which scope it needs. Handler first, then controller, so a
+    // controller-wide default can be narrowed per route.
+    const requiredScope = this.reflector.getAllAndOverride<string | undefined>(
+      INTEGRATION_SCOPE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+
+    if (!requiredScope) {
+      // Fails closed. A route that forgot @RequireIntegrationScope would
+      // otherwise inherit whichever scope this guard happened to hard-code, and
+      // an inventory key would silently gain catalogue write.
+      this.logger.error(
+        `${context.getClass().name}.${context.getHandler().name} is guarded by IntegrationCredentialGuard but declares no @RequireIntegrationScope; refusing`,
+      );
+      throw new UnauthorizedException('Invalid integration credentials');
+    }
 
     const integrationId = this.header(request, INTEGRATION_ID_HEADER);
     const apiKey = this.header(request, INTEGRATION_KEY_HEADER);
@@ -46,7 +75,7 @@ export class IntegrationCredentialGuard implements CanActivate {
     const integration = await this.credentialsService.authenticateIncoming(
       integrationId,
       apiKey,
-      CATALOGUE_WRITE_SCOPE,
+      requiredScope,
     );
 
     if (!integration) {

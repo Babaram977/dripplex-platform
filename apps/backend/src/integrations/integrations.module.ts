@@ -8,12 +8,15 @@ import { ProductsModule } from '../products/products.module';
 import { CatalogueSyncController } from './controllers/catalogue-sync.controller';
 import { IntegrationsCController } from './controllers/integrations-c.controller';
 import { IntegrationsController } from './controllers/integrations.controller';
+import { InventorySyncController } from './controllers/inventory-sync.controller';
 import { IntegrationCredentialGuard } from './guards/integration-credential.guard';
 import { CatalogueIngestionService } from './services/catalogue-ingestion.service';
 import { CategoryMappingService } from './services/category-mapping.service';
 import { CredentialsService } from './services/credentials.service';
 import { EncryptionService } from './services/encryption.service';
 import { IntegrationsService } from './services/integrations.service';
+import { InventoryIngestionService } from './services/inventory-ingestion.service';
+import { MerchantProfileResolver } from './services/merchant-profile-resolver.service';
 import { SsrfProtectionService } from './services/ssrf-protection.service';
 
 @Module({
@@ -25,6 +28,7 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
     IntegrationsCController, // MKT-INT-001-C: Integration CRUD API (6 endpoints)
     IntegrationsController, // Legacy: Credential management endpoints (D phase, future)
     CatalogueSyncController, // P1: catalogue ingestion (POS push) + job history
+    InventorySyncController, // MKT-INT-001-J: stock level push + current levels
   ],
   providers: [
     IntegrationsService,
@@ -33,6 +37,8 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
     SsrfProtectionService,
     CatalogueIngestionService,
     CategoryMappingService,
+    InventoryIngestionService,
+    MerchantProfileResolver,
     IntegrationCredentialGuard,
   ],
   exports: [
@@ -42,6 +48,7 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
     SsrfProtectionService,
     CatalogueIngestionService,
     CategoryMappingService,
+    InventoryIngestionService,
   ],
 })
 export class IntegrationsModule {}

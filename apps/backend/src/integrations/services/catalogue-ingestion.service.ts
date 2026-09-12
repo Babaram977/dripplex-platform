@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Prisma, ProductStatus, StockMovementType } from '@prisma/client';
+import { Prisma, ProductStatus } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -8,14 +8,14 @@ import {
   CATALOGUE_SYNC_AUDIT_ACTIONS,
   CATALOG_SYNC_JOB_STATUS,
   CONFLICT_TYPE,
-  INVENTORY_DELIVERY_STATUS,
-  INVENTORY_SOURCE_TYPE,
   MAPPING_STATUS,
   SUPPORTED_CURRENCY,
   SYNC_DIRECTION,
 } from '../catalogue-ingestion.constants';
 
 import { CategoryMappingService } from './category-mapping.service';
+import { deriveItemKey, InventoryIngestionService } from './inventory-ingestion.service';
+import { MerchantProfileResolver } from './merchant-profile-resolver.service';
 
 import type { IngestCatalogueDto, IngestCatalogueItemDto } from '../dtos/ingest-catalogue.dto';
 import type { CatalogSyncJob, MerchantIntegration } from '@prisma/client';
@@ -60,6 +60,11 @@ export class CatalogueIngestionService {
     private readonly merchantProducts: MerchantProductsService,
     private readonly categoryMapping: CategoryMappingService,
     private readonly auditService: AuditService,
+    private readonly merchantProfiles: MerchantProfileResolver,
+    // Stock is written through the shared inventory writer, never here. Two
+    // writers would be two chances to disagree about `reserved`, and the one
+    // that got it wrong would release stock promised to a customer.
+    private readonly inventory: InventoryIngestionService,
   ) {}
 
   /**
@@ -93,7 +98,7 @@ export class CatalogueIngestionService {
       metadata: { integrationId: integration.id, itemCount: dto.items.length },
     });
 
-    const merchantId = await this.resolveMerchantProfileId(integration.merchantId);
+    const merchantId = await this.merchantProfiles.resolve(integration.merchantId);
     if (!merchantId) {
       // Not an item problem — nothing in this batch can be written, so the job
       // fails as a whole rather than reporting 500 individual rejections.
@@ -116,7 +121,7 @@ export class CatalogueIngestionService {
 
     for (const item of dto.items) {
       try {
-        await this.applyItem(integration, merchantId, item, context);
+        await this.applyItem(integration, merchantId, item, context, job.id);
         applied += 1;
       } catch (error) {
         failedCount += 1;
@@ -149,28 +154,6 @@ export class CatalogueIngestionService {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-  }
-
-  /**
-   * Resolve the `MerchantProfile.id` products must be created under.
-   *
-   * `MerchantIntegration.merchantId` holds a **User id**, not a merchant id —
-   * `MerchantScoped` sets it from `user.id` and the column has no foreign key
-   * to say otherwise. `Product.merchantId` is an FK to `MerchantProfile.id`.
-   * Writing one into the other would violate that FK on every ingested
-   * product, so the two are bridged here through `MerchantProfile.userId`,
-   * which is unique.
-   *
-   * Correcting the decorator and backfilling the column is the real fix and is
-   * recorded as a follow-up; doing it here would change fourteen existing
-   * endpoints and migrate a deployed table.
-   */
-  private async resolveMerchantProfileId(integrationMerchantId: string): Promise<string | null> {
-    const profile = await this.prisma.merchantProfile.findUnique({
-      where: { userId: integrationMerchantId },
-      select: { id: true },
-    });
-    return profile?.id ?? null;
   }
 
   private async findReplayedJob(
@@ -324,6 +307,7 @@ export class CatalogueIngestionService {
     merchantId: string,
     item: IngestCatalogueItemDto,
     context: AuditContext,
+    jobId: string,
   ): Promise<void> {
     const currency = (item.currency ?? SUPPORTED_CURRENCY).toUpperCase();
     if (currency !== SUPPORTED_CURRENCY) {
@@ -383,7 +367,7 @@ export class CatalogueIngestionService {
       ? await this.updateExisting(integration, existing, item, category.categoryId, mapping)
       : await this.createNew(integration, merchantId, item, category.categoryId, context);
 
-    await this.applyInventory(integration, mapping.id, productId, item);
+    await this.applyInventory(integration, merchantId, mapping.id, productId, item, jobId);
 
     await this.prisma.productSync.update({
       where: { id: mapping.id },
@@ -522,25 +506,47 @@ export class CatalogueIngestionService {
   }
 
   /**
-   * Apply an absolute external quantity.
+   * Apply an absolute external quantity through the shared inventory writer.
    *
-   * The rule that matters more than the rest: this writes `quantity` and
-   * nothing else. `reserved` is DrippleX-owned — it is carts and in-flight
-   * orders — and a POS knows nothing about it. Clobbering it would release
-   * stock already promised to a customer mid-checkout.
+   * Nothing about stock is decided here. `InventoryIngestionService` owns the
+   * row lock, the true `previousQuantity`, the idempotency record and the rule
+   * that `reserved` is never written — and it owns them for the inventory-only
+   * push as well, so the two paths cannot drift into disagreeing about a
+   * merchant's stock.
    */
   private async applyInventory(
     integration: MerchantIntegration,
+    merchantProfileId: string,
     productSyncId: string,
     productId: string,
     item: IngestCatalogueItemDto,
+    jobId: string,
   ): Promise<void> {
     if (item.quantity === undefined) {
       return;
     }
 
-    const quantity = Math.max(0, item.quantity);
-    if (item.quantity < 0) {
+    const externalSku = item.externalSku.trim();
+
+    const applied = await this.inventory.applyAbsoluteQuantity({
+      integrationId: integration.id,
+      productSyncId,
+      productId,
+      merchantProfileId,
+      externalSku,
+      requestedQuantity: item.quantity,
+      // Derived from the job, not from a clock. A clock-based key made every
+      // write unique, so the unique index on (integrationId, idempotencyKey)
+      // guarded nothing and two writes landing in the same millisecond
+      // collided by accident. This key is stable for a given job and SKU, so a
+      // resumed job re-applies nothing it already applied.
+      idempotencyKey: deriveItemKey(jobId, externalSku),
+    });
+
+    // Raised out here rather than in the writer: the conflict belongs to the
+    // catalogue item that carried the bad number, and a replay must not
+    // multiply it.
+    if (applied.clamped && !applied.replayed) {
       await this.raiseConflict(
         integration.id,
         CONFLICT_TYPE.NEGATIVE_QUANTITY,
@@ -550,49 +556,6 @@ export class CatalogueIngestionService {
         productId,
       );
     }
-
-    const inventory = await this.prisma.productInventory.upsert({
-      where: { productId },
-      create: { productId, quantity, trackInventory: true },
-      // `reserved` is deliberately absent from this update.
-      update: { quantity, trackInventory: true },
-    });
-
-    const update = await this.prisma.inventoryUpdate.create({
-      data: {
-        integrationId: integration.id,
-        productSyncId,
-        externalSku: item.externalSku.trim(),
-        previousQuantity: inventory.quantity,
-        newQuantity: quantity,
-        // Push-only in Phase 1, so an inbound row arrived by webhook.
-        sourceType: INVENTORY_SOURCE_TYPE.WEBHOOK,
-        // deliveryStatus and attemptCount describe delivery of an OUTBOUND
-        // update to a POS. An inbound row has nothing to deliver — it is
-        // already applied — so it is DELIVERED with zero attempts rather than
-        // sitting at PENDING for a delivery that will never happen.
-        deliveryStatus: INVENTORY_DELIVERY_STATUS.DELIVERED,
-        attemptCount: 0,
-        idempotencyKey: `${productSyncId}:${String(Date.now())}`,
-      },
-    });
-
-    await this.prisma.stockMovement.create({
-      data: {
-        inventoryId: inventory.id,
-        // StockMovementType has no SYNC member. ADJUSTMENT is the honest
-        // existing fit; referenceType is what makes it identifiable as a POS
-        // adjustment rather than a merchant one.
-        type: StockMovementType.ADJUSTMENT,
-        quantity,
-        balanceAfter: quantity,
-        reason: 'POS catalogue sync',
-        referenceType: 'INTEGRATION',
-        referenceId: update.id,
-        // No user did this. Leaving actorUserId null is the accurate record.
-        actorUserId: null,
-      },
-    });
   }
 
   /**

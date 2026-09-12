@@ -10,6 +10,8 @@ import { CATALOG_SYNC_JOB_STATUS } from '../catalogue-ingestion.constants';
 
 import { CatalogueIngestionService } from './catalogue-ingestion.service';
 import { CategoryMappingService } from './category-mapping.service';
+import { InventoryIngestionService } from './inventory-ingestion.service';
+import { MerchantProfileResolver } from './merchant-profile-resolver.service';
 
 import type { AuditLogRepository } from '../../audit/repositories/audit-log.repository';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -101,6 +103,7 @@ describe('catalogue ingestion — cross-merchant isolation', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
+    const merchantProfiles = new MerchantProfileResolver(prisma);
     service = new CatalogueIngestionService(
       prisma,
       new MerchantProductsService(
@@ -110,6 +113,8 @@ describe('catalogue ingestion — cross-merchant isolation', () => {
       ),
       new CategoryMappingService(prisma),
       auditService,
+      merchantProfiles,
+      new InventoryIngestionService(prisma, merchantProfiles, auditService),
     );
 
     alpha = await makeMerchant('alpha');

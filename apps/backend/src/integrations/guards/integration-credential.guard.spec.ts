@@ -1,6 +1,6 @@
 import { UnauthorizedException, type ExecutionContext } from '@nestjs/common';
 
-import { CATALOGUE_WRITE_SCOPE } from '../catalogue-ingestion.constants';
+import { CATALOGUE_WRITE_SCOPE, INVENTORY_WRITE_SCOPE } from '../catalogue-ingestion.constants';
 
 import {
   INTEGRATION_ID_HEADER,
@@ -9,6 +9,7 @@ import {
 } from './integration-credential.guard';
 
 import type { CredentialsService } from '../services/credentials.service';
+import type { Reflector } from '@nestjs/core';
 import type { MerchantIntegration } from '@prisma/client';
 
 /**
@@ -20,21 +21,38 @@ describe('IntegrationCredentialGuard', () => {
 
   let authenticateIncoming: jest.Mock;
   let guard: IntegrationCredentialGuard;
+  /** What the route under test declares via @RequireIntegrationScope. */
+  let declaredScope: string | undefined;
 
-  const contextWith = (
+  /**
+   * A context needs a handler and a class as well as a request now: the guard
+   * reads the required scope off the route rather than hard-coding one.
+   */
+  const contextFor = (
     headers: Record<string, string | string[] | undefined>,
-  ): ExecutionContext => {
-    const request = { headers };
-    return {
+    request: unknown = { headers },
+  ): ExecutionContext =>
+    ({
       switchToHttp: () => ({ getRequest: () => request }),
-    } as unknown as ExecutionContext;
-  };
+      // Named, because the guard puts the handler's name in the message it
+      // logs when a route forgets to declare a scope.
+      getHandler: () =>
+        function push() {
+          return undefined;
+        },
+      getClass: () => class InventorySyncController {},
+    }) as unknown as ExecutionContext;
+
+  const contextWith = (headers: Record<string, string | string[] | undefined>): ExecutionContext =>
+    contextFor(headers);
 
   beforeEach(() => {
     authenticateIncoming = jest.fn();
-    guard = new IntegrationCredentialGuard({
-      authenticateIncoming,
-    } as unknown as CredentialsService);
+    declaredScope = CATALOGUE_WRITE_SCOPE;
+    guard = new IntegrationCredentialGuard(
+      { authenticateIncoming } as unknown as CredentialsService,
+      { getAllAndOverride: () => declaredScope } as unknown as Reflector,
+    );
   });
 
   it('admits a request whose credential authenticates', async () => {
@@ -60,9 +78,7 @@ describe('IntegrationCredentialGuard', () => {
         [INTEGRATION_KEY_HEADER]: 'secret',
       },
     };
-    const context = {
-      switchToHttp: () => ({ getRequest: () => request }),
-    } as unknown as ExecutionContext;
+    const context = contextFor(request.headers, request);
 
     await guard.canActivate(context);
 
@@ -111,6 +127,44 @@ describe('IntegrationCredentialGuard', () => {
       guard.canActivate(
         contextWith({
           [INTEGRATION_ID_HEADER]: ['integration-1', 'integration-2'],
+          [INTEGRATION_KEY_HEADER]: 'secret',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(authenticateIncoming).not.toHaveBeenCalled();
+  });
+
+  it('asks for the scope the route declares, not a hard-coded one', async () => {
+    // The guard used to demand catalog:write whatever the route was, which
+    // would have let a stock-only key rewrite a catalogue and forced an
+    // inventory key to carry catalogue write.
+    declaredScope = INVENTORY_WRITE_SCOPE;
+    authenticateIncoming.mockResolvedValue(integration);
+
+    await guard.canActivate(
+      contextWith({
+        [INTEGRATION_ID_HEADER]: 'integration-1',
+        [INTEGRATION_KEY_HEADER]: 'secret',
+      }),
+    );
+
+    expect(authenticateIncoming).toHaveBeenCalledWith(
+      'integration-1',
+      'secret',
+      INVENTORY_WRITE_SCOPE,
+    );
+  });
+
+  it('refuses a route that declares no scope at all', async () => {
+    // Fails closed. A forgotten decorator must not inherit whichever scope the
+    // guard last happened to need.
+    declaredScope = undefined;
+    authenticateIncoming.mockResolvedValue(integration);
+
+    await expect(
+      guard.canActivate(
+        contextWith({
+          [INTEGRATION_ID_HEADER]: 'integration-1',
           [INTEGRATION_KEY_HEADER]: 'secret',
         }),
       ),

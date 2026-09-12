@@ -14,6 +14,8 @@ import {
 
 import { CatalogueIngestionService } from './catalogue-ingestion.service';
 import { CategoryMappingService } from './category-mapping.service';
+import { InventoryIngestionService } from './inventory-ingestion.service';
+import { MerchantProfileResolver } from './merchant-profile-resolver.service';
 
 import type { AuditLogRepository } from '../../audit/repositories/audit-log.repository';
 import type { PrismaService } from '../../prisma/prisma.service';
@@ -86,11 +88,14 @@ describe('CatalogueIngestionService', () => {
       auditService,
       new ProductSearchSyncService(new DomainEventBus()),
     );
+    const merchantProfiles = new MerchantProfileResolver(prisma);
     service = new CatalogueIngestionService(
       prisma,
       merchantProducts,
       new CategoryMappingService(prisma),
       auditService,
+      merchantProfiles,
+      new InventoryIngestionService(prisma, merchantProfiles, auditService),
     );
 
     const user = await prisma.user.create({

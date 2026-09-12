@@ -91,8 +91,47 @@ export const SUPPORTED_CURRENCY = 'NGN';
  */
 export const CATALOGUE_WRITE_SCOPE = 'catalog:write';
 
+/**
+ * The scope an incoming credential must carry to push stock levels. Separate
+ * from catalogue write on purpose: a till that only reports counts has no
+ * business rewriting names and prices.
+ *
+ * Already in the documented set on `IntegrationCredential.scopes` and already
+ * granted by default when an integration is created, so no existing credential
+ * has to be reissued for the inventory route to be reachable.
+ */
+export const INVENTORY_WRITE_SCOPE = 'inventory:write';
+
 /** Audit actions recorded for a sync job's lifecycle transitions. */
 export const CATALOGUE_SYNC_AUDIT_ACTIONS = {
   JOB_STARTED: 'integration.catalogue.sync.started',
   JOB_FINISHED: 'integration.catalogue.sync.finished',
+} as const;
+
+/** Audit action recorded for one inventory push. */
+export const INVENTORY_SYNC_AUDIT_ACTIONS = {
+  BATCH_APPLIED: 'integration.inventory.sync.applied',
+} as const;
+
+/**
+ * Why one item of an inventory push was not applied.
+ *
+ * Deliberately NOT `IntegrationConflict.conflictType` values. A conflict is a
+ * disagreement between two systems that a merchant has to settle; an unmapped
+ * SKU is simply an item this integration has never catalogued, and inventing
+ * conflict types for it would put values in a live audit table that no
+ * approved contract names. These travel in the response and in
+ * `IntegrationLog`, where per-item detail already lives (decision #8).
+ */
+export const INVENTORY_REJECTION = {
+  /** No ProductSync for (integration, externalSku) — the SKU was never catalogued. */
+  SKU_NOT_MAPPED: 'SKU_NOT_MAPPED',
+  /** A mapping exists but carries no productId — an interrupted catalogue batch. */
+  SKU_NOT_LINKED: 'SKU_NOT_LINKED',
+  /** The mapping is not ACTIVE, so it no longer accepts stock. */
+  MAPPING_INACTIVE: 'MAPPING_INACTIVE',
+  /** The mapped product is deleted, or belongs to a different merchant. */
+  PRODUCT_UNAVAILABLE: 'PRODUCT_UNAVAILABLE',
+  /** The same externalSku appeared twice in one batch. */
+  DUPLICATE_IN_BATCH: 'DUPLICATE_IN_BATCH',
 } as const;

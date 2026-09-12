@@ -19,6 +19,8 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Public, RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { CATALOGUE_WRITE_SCOPE } from '../catalogue-ingestion.constants';
+import { RequireIntegrationScope } from '../decorators/integration-scope.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
 import { UpsertCategoryMappingDto } from '../dtos/category-mapping.dto';
 import { IngestCatalogueDto } from '../dtos/ingest-catalogue.dto';
@@ -72,6 +74,9 @@ export class CatalogueSyncController {
   // below still has to pass.
   @Public()
   @UseGuards(IntegrationCredentialGuard)
+  // Was hard-coded inside the guard. Stated here instead so a second POS route
+  // cannot inherit catalogue write by accident.
+  @RequireIntegrationScope(CATALOGUE_WRITE_SCOPE)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Ingest a catalogue batch from an external POS' })
   @ApiResponse({ status: 200, description: 'Batch accepted; per-item outcome in the summary' })
