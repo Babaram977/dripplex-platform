@@ -238,62 +238,87 @@ ledger (`LoyaltyLedgerEntry`, type `BONUS` — "given rather than earned… the 
 of promoting it", `:4154`), never as wallet cash. A cash reward goes through
 `walletService.credit()` exactly as today.
 
-## 5. Customer acquisition benefit — 20% off the first 3 completed rides
+## 5. Customer acquisition benefit — universal, 20% off the first 3 rides
 
-Founder ruling: **the first three completed rides ever**, not the first three on
-which the benefit is claimed, so a customer cannot skip the discount and reset
-eligibility later. One platform-wide acquisition benefit; it cannot restart or
-stack through a second campaign.
+**Founder ruling (final): the 20% is a universal new-customer acquisition
+incentive, not a pioneer-driver benefit.** Every customer acquired through any
+eligible referral gets it identically — customer, rider, driver, pioneer driver,
+influencer, creator, ambassador. The referral _source_ decides only the
+promoter's reward (₦150 / ₦200 / ₦350 / configured). There is **one** mechanism,
+attached to the customer's acquisition, and no per-class variant.
 
-**`perUserLimit: 3` is the wrong mechanism and must not be used.** It counts
-`PromotionRedemption` rows for that user (`promotions.service.ts:780`) — that is
-_claims_, which is precisely the semantic the ruling rejects. My earlier contract
-proposed it; that was wrong.
+Eligibility is **separate from the promoter reward lifecycle**, per the ruling.
+It does not wait for QUALIFIED or APPROVED: it attaches to the acquisition
+attribution itself. That is a deliberate trade the founder has taken with the
+exposure in finding (b) below on the record.
 
-**The right mechanism needs no new counter.** Promotions are previewed and
-redeemed at _ride request_ time (`rides.service.ts:206-277`), so when ride N is
-priced the customer has exactly N-1 completed rides. Eligibility is therefore:
+**Mechanism — `perUserLimit: 3` is wrong and is not used.** It counts
+`PromotionRedemption` rows (claims), which the ruling rejects. Promotions are
+redeemed at _ride-request_ time (`rides.service.ts:206-277`), so when ride N is
+priced the customer has exactly N-1 completed rides:
 
 ```
-acquisition exists for this customer
-  AND  count(rides where customerId = X and status = COMPLETED) < 3
+acquisition attribution exists for this customer
+  AND count(rides WHERE customerId = X AND status = COMPLETED) < 3
 ```
 
-Ride #1 sees 0, #2 sees 1, #3 sees 2, #4 sees 3 and stops. Skipping the discount
-on a ride does not help, because the ride still completes and still counts. The
-counter is the rides table itself, which cannot be reset by campaign activity —
-exactly the anti-gaming property the ruling asks for, and with no column to keep
-in sync.
+Ride #1 sees 0, #2 sees 1, #3 sees 2, #4 sees 3 and stops. Declining the discount
+does not help — the ride still completes and still counts. The rides table is the
+counter, and no campaign activity can reset it.
 
-### Three findings from checking this ruling against the code
+### This needs no schema change
 
-**(a) The benefit cannot be conditioned on qualification if ride #1 is to be
-discounted.** Qualification for a customer requires
-`ride.count({ customerId, status: COMPLETED }) >= 1`
-(`referral-qualification.service.ts:100-107`). At the moment ride #1 is _priced_
-that count is 0, so the customer has not qualified. The ruling says both "after
-qualifying" and "Ride #1 … receives the benefit", and on this code those cannot
-both hold. Either the benefit is granted on the **pending** acquisition (the
-token was redeemed at signup, `ReferralRedemption` exists as PENDING), or it
-starts at the first ride _after_ the qualifying one. **This needs one more
-ruling — see below.**
+`Promotion.rules` is a JSON column with a validated shape
+(`PromotionRulesDto`, `promotion-rules.ts`). The benefit is one **platform-wide**
+`Promotion` row — `type: PERCENTAGE`, `domains: [RIDE]`, `percentOff: 20` — whose
+eligibility is expressed as rules, not as new tables or columns. One row, because
+the incentive is universal: a per-campaign row would let campaigns diverge, which
+the ruling forbids.
+
+### Finding (d): four existing rules are dead in production
+
+`PromotionRulesDto` already declares `newUsersOnly`, `returningUsersOnly`,
+`referralOnly` and `inviteOnly`, and the evaluator implements all four
+(`promotion-rules.ts:204-214`) against `context.isNewUser` / `isReferral` /
+`isInvited`.
+
+**No production caller populates any of those three context fields.** A grep
+across `apps/backend/src` for `isReferral|isNewUser|isInvited`, excluding
+`promotion-rules.ts` itself, returns nothing. The ride path passes only
+`eligibility: { rideType }` (`rides.service.ts:340-344`).
+
+So today an operator can configure a `newUsersOnly` campaign in Ops and it will
+silently refuse **everyone**, because `context.isNewUser !== true` always holds.
+`referralOnly` is the same. The unit tests pass
+(`promotion-rules.spec.ts:77-94`) because they hand the evaluator a context
+directly — the rule is correct and unreachable, which is precisely the
+"mapped is not reachable" class CLAUDE.md §5 records.
+
+This is pre-existing and not caused by this work, but it is load-bearing for the
+benefit: populating the eligibility context is a prerequisite, not an optional
+extra. Fixing it is therefore in scope; a regression test must drive it through
+the real ride path rather than through a hand-built context.
+
+### Findings (a)-(c), retained
+
+**(a) The benefit cannot wait for qualification if ride #1 is to be discounted.**
+Customer qualification needs `ride.count({ status: COMPLETED }) >= 1`
+(`referral-qualification.service.ts:100-107`); at the moment ride #1 is priced
+that count is 0. The ruling resolves this by separating the discount from the
+reward lifecycle — the discount keys off the attribution, which exists from
+signup.
 
 **(b) The discount is real platform money, spent before anti-abuse clears.**
-`ride-payment.service.ts:654` — "DrippleX funds its own promotion", and a cash
-ride's funding is clawed back on refund (`:862`). If the benefit is granted on a
-pending acquisition, three discounted rides are funded before the referral has
-passed screening; a referral later REJECTED has already cost real money with no
-clawback path for the discount. That is the same signup-only-abuse hazard the
-reward hold exists to prevent, relocated from the reward to the discount.
+`ride-payment.service.ts:654` — "DrippleX funds its own promotion" — and the
+clawback path covers refunds (`:862`), not a referral later REJECTED. Up to three
+discounted rides may therefore be funded for an acquisition that screening later
+rejects. Accepted by the founder; recorded because nothing in the code recovers
+it.
 
-**(c) Qualification does not require a ride at all.** The customer milestone is
-"a first qualifying paid transaction", and it accepts a completed _marketplace
-order_ as readily as a completed ride
-(`referral-qualification.service.ts:98-109`). So a referred customer can be fully
-qualified, and the promoter paid, having never taken a ride. Their first three
-rides then carry the benefit whenever those rides eventually happen. This is
-consistent and needs no change — recorded so nobody later reads "first completed
-ride" as the only route to qualification.
+**(c) Qualification does not require a ride.** The customer milestone accepts a
+completed marketplace order equally (`:98-109`), so a promoter can be paid for a
+customer who has never ridden; that customer's three-ride benefit then waits for
+their first ride whenever it happens.
 
 ## 6. Qualification — unchanged
 
@@ -380,3 +405,89 @@ implementation detail and is not being guessed.
 
 No migration, no service and no UI has been written. Nothing in this document is
 implemented yet.
+
+---
+
+# Migration / schema plan
+
+Not written and not applied. Listed so the shape can be checked against the
+existing constraints before any SQL exists.
+
+## What needs no migration at all
+
+The **20% acquisition benefit** (§5). `Promotion.rules` is JSON, so the new
+eligibility predicate is a field on `PromotionRulesDto` plus context the ride
+path already had a slot for. One seeded platform-wide `Promotion` row. No table,
+no column, no enum.
+
+That leaves the promoter side as the only schema work.
+
+## Migration 1 — enum additions (additive, no data change)
+
+```
+enum CampaignParticipantType {
+  CUSTOMER  RIDER  DRIVER  PIONEER_DRIVER  INFLUENCER  CREATOR  AMBASSADOR
+}
+enum CampaignPromoterStatus { ACTIVE  REMOVED }
+```
+
+`ReferralOwnerType` is **not** extended. Per §2 it decides which wallet a reward
+is paid into, and every participant class above already maps onto an existing
+owner type. Adding members to it would break `REFERRER_WALLETS[ownerType]`
+(`referral-lifecycle.service.ts:373`), which is an exhaustive map.
+
+## Migration 2 — `campaign_promoters`
+
+New table per §2. Constraints traced against what exists:
+
+| Constraint                        | Reason                                                                                             |
+| --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `@@unique([promotionId, userId])` | One participation per campaign per user; permits the same user in several campaigns (ruling 4)     |
+| `token @unique`                   | Database-level guarantee; §3's namespaced resolution sits on top                                   |
+| FK `promotionId → promotions.id`  | `onDelete: Restrict` — a campaign with promoters must not vanish under its own attribution history |
+| FK `userId → users.id`            | `onDelete: Cascade`, matching `Referral.userId` and `DriverReferral.driverId`                      |
+| `@@index([token])`                | Lookup path                                                                                        |
+
+`onDelete: Restrict` on `promotionId` is a deliberate divergence from
+`DriverReferral`, which cascades from `ReferralCampaign` (`schema.prisma:4895`).
+Cascading is right for a monthly driver campaign whose rows are derived; it is
+wrong here, because deleting a campaign would delete the promoter rows that paid
+reward history points at. Ruling 4 requires the attribution to survive.
+
+## Migration 3 — `referral_redemptions` additions
+
+All nullable, so every existing row stays valid and no backfill runs:
+
+```
+campaignPromoterId    String?  @map("campaign_promoter_id") @db.Uuid
+referrerRewardPoints  Int?     @map("referrer_reward_points")
+pointsPerNairaAtGrant Int?     @map("points_per_naira_at_grant")
+```
+
+Same precedent as `programmeId`, which is nullable "for every row that predates
+programmes" (`:4760-4762`). FK `campaignPromoterId → campaign_promoters.id`
+with `onDelete: Restrict`, for the reason above.
+
+**No change to `refereeUserId @unique`** (`:4752`). It already enforces ruling
+4's once-ever acquisition at the database level, and widening it to
+`[refereeUserId, campaignPromoterId]` would be the bug that allows campaign
+stacking. Stated explicitly because it is the tempting edit.
+
+## Ordering and reversibility
+
+1. Enums first (nothing references them yet).
+2. `campaign_promoters` second (references `promotions`, `users`).
+3. `referral_redemptions` columns last (references `campaign_promoters`).
+
+Every step is additive. No column is dropped, no type narrowed, no row rewritten,
+so a rollback is a `DROP` of what was added rather than a restore.
+
+## Still to trace before writing the SQL
+
+- Whether `promotions` has any trigger or view that a `Restrict` FK would
+  interact with.
+- Whether the referral sweep's queries need an index on
+  `referral_redemptions.campaign_promoter_id` for the Ops dashboard's
+  group-by-promoter reads.
+- The exact `REFERRER_WALLETS` mapping for each participant class, so that an
+  influencer's reward lands somewhere that exists.
