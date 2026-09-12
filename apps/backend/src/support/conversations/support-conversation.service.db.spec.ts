@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
+  Prisma,
   PrismaClient,
   SupportCategory,
   SupportHandlingState,
@@ -604,6 +607,474 @@ describe('SupportConversationService — against the database', () => {
       await expect(
         service.appendUserMessage(owner(), ticket.id, { body: 'x'.repeat(8001) }, {}),
       ).rejects.toThrow(/cannot exceed/i);
+    });
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* Nora's review checklist, verified explicitly                        */
+  /* ------------------------------------------------------------------ */
+
+  describe('a rolled-back transaction leaves a valid, reusable conversation', () => {
+    t('the empty conversation survives and the next request reuses it', async () => {
+      const ticket = await makeTicket(false);
+
+      // The conversation is created BEFORE the transaction, so a failure inside
+      // the transaction must not destroy it. Audit is the last step inside that
+      // transaction, so making it throw rolls the transaction back after the
+      // conversation already exists — exactly the window this design creates.
+      const failing = new SupportConversationService(
+        prisma,
+        {
+          record: (): Promise<void> => Promise.reject(new Error('audit sink is down')),
+        } as unknown as AuditService,
+        {
+          getOwnTicketRow: (): Promise<SupportTicket> =>
+            prisma.supportTicket.findUniqueOrThrow({ where: { id: ticket.id } }),
+        } as unknown as SupportService,
+      );
+
+      await expect(
+        failing.transitionByOperator(
+          operator(),
+          ticket.id,
+          SupportHandlingState.HUMAN_HANDLING,
+          {},
+        ),
+      ).rejects.toThrow(/audit sink is down/);
+
+      // The transaction rolled back: no state change, no SYSTEM message.
+      const afterFailure = await prisma.supportTicket.findUniqueOrThrow({
+        where: { id: ticket.id },
+      });
+      expect(afterFailure.handlingState).toBe(SupportHandlingState.OPEN);
+
+      const orphan = await prisma.supportConversation.findUnique({
+        where: { ticketId: ticket.id },
+      });
+      expect(orphan).not.toBeNull();
+      expect(
+        await prisma.supportMessage.count({ where: { conversationId: orphan?.id ?? '' } }),
+      ).toBe(0);
+
+      // An empty conversation is valid and harmless. The next request must REUSE
+      // it rather than trip over it or create a second.
+      const updated = await service.transitionByOperator(
+        operator(),
+        ticket.id,
+        SupportHandlingState.HUMAN_HANDLING,
+        {},
+      );
+      expect(updated.handlingState).toBe(SupportHandlingState.HUMAN_HANDLING);
+
+      const conversations = await prisma.supportConversation.findMany({
+        where: { ticketId: ticket.id },
+      });
+      expect(conversations).toHaveLength(1);
+      expect(conversations[0]?.id).toBe(orphan?.id);
+    });
+  });
+
+  describe('idempotency is scoped to the conversation', () => {
+    t('returns the PERSISTED message, not a freshly constructed response', async () => {
+      const ticket = await makeTicket(false);
+      const key = randomUUID();
+
+      const first = await service.appendUserMessage(
+        owner(),
+        ticket.id,
+        { body: 'original wording', clientMessageId: key },
+        {},
+      );
+      // A retry whose body DIFFERS. If the service were constructing a response
+      // rather than returning the stored row, this would echo the new text.
+      const retry = await service.appendUserMessage(
+        owner(),
+        ticket.id,
+        { body: 'different wording on the retry', clientMessageId: key },
+        {},
+      );
+
+      expect(retry.id).toBe(first.id);
+      expect(retry.body).toBe('original wording');
+
+      const persisted = await prisma.supportMessage.findUniqueOrThrow({ where: { id: first.id } });
+      expect(retry.body).toBe(persisted.body);
+      expect(retry.seq).toBe(persisted.seq.toString());
+    });
+
+    t('the same key in a different conversation is a different message', async () => {
+      const ticketA = await makeTicket(false);
+      const ticketB = await makeTicket(false);
+      const key = randomUUID();
+
+      const a = await service.appendUserMessage(
+        owner(),
+        ticketA.id,
+        { body: 'in A', clientMessageId: key },
+        {},
+      );
+      const b = await service.appendUserMessage(
+        owner(),
+        ticketB.id,
+        { body: 'in B', clientMessageId: key },
+        {},
+      );
+
+      // The unique is (conversationId, clientMessageId), not the key alone —
+      // a global key would let one ticket's retry suppress another's message.
+      expect(b.id).not.toBe(a.id);
+      expect(a.body).toBe('in A');
+      expect(b.body).toBe('in B');
+    });
+  });
+
+  describe('ownership isolation across all five personas', () => {
+    const PERSONAS = [
+      SupportPersona.CUSTOMER,
+      SupportPersona.RIDER,
+      SupportPersona.DRIVER,
+      SupportPersona.MERCHANT,
+      SupportPersona.FLEET_OWNER,
+    ];
+
+    t('every persona reaches its own ticket and no other persona reaches it', async () => {
+      const holders: { persona: SupportPersona; userId: string; ticketId: string }[] = [];
+
+      for (const persona of PERSONAS) {
+        const userId = await makeUser();
+        const ticket = await prisma.supportTicket.create({
+          data: {
+            userId,
+            persona,
+            category: SupportCategory.TECHNICAL,
+            subject: `${persona} subject`,
+            description: 'A description long enough to be realistic.',
+            requiresHumanHandling: false,
+          },
+        });
+        holders.push({ persona, userId, ticketId: ticket.id });
+      }
+
+      for (const holder of holders) {
+        const asHolder = authUser(holder.userId, [SUPPORT_PERMISSIONS.TICKETS_USE]);
+
+        // Reaches their own.
+        await expect(
+          service.appendUserMessage(asHolder, holder.ticketId, { body: 'mine' }, {}),
+        ).resolves.toBeDefined();
+        await expect(
+          service.getTranscriptForOwner(asHolder, holder.ticketId),
+        ).resolves.toHaveLength(1);
+
+        // Reaches nobody else's — all four other personas, both read and write.
+        for (const other of holders) {
+          if (other.userId === holder.userId) continue;
+
+          await expect(service.getTranscriptForOwner(asHolder, other.ticketId)).rejects.toThrow(
+            /do not have access/i,
+          );
+          await expect(
+            service.appendUserMessage(asHolder, other.ticketId, { body: 'intrusion' }, {}),
+          ).rejects.toThrow(/do not have access/i);
+        }
+      }
+    });
+
+    t('operations with ADMIN_MANAGE reaches every persona; without it, none', async () => {
+      const ticketIds: string[] = [];
+      for (const persona of PERSONAS) {
+        const userId = await makeUser();
+        const ticket = await prisma.supportTicket.create({
+          data: {
+            userId,
+            persona,
+            category: SupportCategory.TECHNICAL,
+            subject: `${persona} subject`,
+            description: 'A description long enough to be realistic.',
+            requiresHumanHandling: false,
+          },
+        });
+        ticketIds.push(ticket.id);
+      }
+
+      const withoutGrant = authUser(operatorId, [SUPPORT_PERMISSIONS.TICKETS_USE]);
+
+      for (const ticketId of ticketIds) {
+        await expect(
+          service.getTranscriptForOperations(operator(), ticketId),
+        ).resolves.toBeDefined();
+        await expect(service.getTranscriptForOperations(withoutGrant, ticketId)).rejects.toThrow(
+          /do not have access/i,
+        );
+      }
+    });
+
+    // `it`, not the DB-guarded `t`: this reads the source file and needs no
+    // database, so it must run even where Postgres is unavailable.
+    it('no B2 source authorises by reading SupportTicket.userId', () => {
+      const source = readFileSync(join(__dirname, 'support-conversation.service.ts'), 'utf8');
+
+      // The ONLY ownership decision is B1's. Two shapes would be a second
+      // authorization path: comparing the row's userId, or filtering a query by
+      // it. Neither may appear.
+      //
+      // Deliberately NOT asserting the absence of `userId: user.id` outright —
+      // that appears in the AUDIT context, where it is attribution rather than
+      // authorization. An earlier version of this test failed on exactly that
+      // and the test was wrong, not the service.
+      expect(source).not.toMatch(/ticket\.userId\s*[!=]==/);
+      expect(source).not.toMatch(/where:\s*\{[^}]*userId/);
+      expect(source).toContain('this.supportService.getOwnTicketRow(');
+    });
+  });
+
+  describe('SERVER authority is unreachable from an authenticated path', () => {
+    t('transitionByServer accepts no user and ignores whatever a caller holds', async () => {
+      const ticket = await makeTicket(true);
+
+      // Even a caller holding every permission cannot obtain SERVER authority,
+      // because no signature accepts an actor and transitionByServer takes no
+      // user at all. The gated ticket is refused on eligibility, not on identity.
+      await expect(
+        service.transitionByServer(ticket.id, SupportHandlingState.AI_HANDLING),
+      ).rejects.toThrow(/reserved for human handling/i);
+
+      expect(service.transitionByServer.length).toBeLessThanOrEqual(2);
+    });
+
+    t('the operator path cannot reach a SERVER-only transition', async () => {
+      const ticket = await makeTicket(false);
+
+      // OPEN -> AI_HANDLING is SERVER-only in the approved table.
+      await expect(
+        service.transitionByOperator(
+          handoffOperator(),
+          ticket.id,
+          SupportHandlingState.AI_HANDLING,
+          {},
+        ),
+      ).rejects.toThrow(/not yours to do/i);
+    });
+  });
+
+  /**
+   * The P2002 recovery in `append`, forced.
+   *
+   * The concurrency test above asserts the OUTCOME (exactly one message), and
+   * that outcome is satisfied by the pre-check alone whenever the calls do not
+   * genuinely interleave — so deleting the recovery sometimes left it green.
+   * Mutation testing caught that: a guard whose detector is a race is not
+   * guarded. This drives the branch deterministically with a stubbed client
+   * instead of hoping the scheduler cooperates.
+   */
+  describe('the idempotency recovery branch, forced deterministically', () => {
+    const P2002 = (): Error =>
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      });
+
+    function serviceWithRacingCreate(winner: Record<string, unknown>): SupportConversationService {
+      let findFirstCalls = 0;
+      const stub = {
+        supportConversation: {
+          findUnique: (): Promise<unknown> => Promise.resolve({ id: 'conversation-1' }),
+        },
+        supportMessage: {
+          // First call is the pre-check and finds nothing — i.e. the racing
+          // writer has not committed yet. Second call is the recovery read.
+          findFirst: (): Promise<unknown> => {
+            findFirstCalls += 1;
+            return Promise.resolve(findFirstCalls === 1 ? null : winner);
+          },
+          // The racing writer committed in between.
+          create: (): Promise<never> => Promise.reject(P2002()),
+        },
+      } as unknown as PrismaService;
+
+      return new SupportConversationService(
+        stub,
+        { record: (): Promise<void> => Promise.resolve() } as unknown as AuditService,
+        {
+          getOwnTicketRow: (): Promise<SupportTicket> =>
+            Promise.resolve({ id: 'ticket-1' } as SupportTicket),
+        } as unknown as SupportService,
+      );
+    }
+
+    it('returns the winner rather than throwing, when the create loses the race', async () => {
+      const winner = {
+        id: 'message-winner',
+        conversationId: 'conversation-1',
+        seq: 42n,
+        authorType: SupportMessageAuthorType.USER,
+        authorId: 'user-1',
+        body: 'the winning message',
+        visibility: SupportMessageVisibility.PARTICIPANTS,
+        redactedAt: null,
+        createdAt: new Date('2026-09-12T00:00:00.000Z'),
+      };
+
+      const result = await serviceWithRacingCreate(winner).appendUserMessage(
+        { id: 'user-1', permissions: [] } as unknown as AuthenticatedUser,
+        'ticket-1',
+        { body: 'my retry', clientMessageId: 'key-1' },
+        {},
+      );
+
+      // The loser must return the winner's persisted row, not its own text and
+      // not an error.
+      expect(result.id).toBe('message-winner');
+      expect(result.body).toBe('the winning message');
+      expect(result.seq).toBe('42');
+    });
+
+    it('rethrows P2002 when there is no idempotency key to recover by', async () => {
+      // A stub whose findFirst ALWAYS returns a row. The first version of this
+      // test reused the racing stub, whose first findFirst returns null — which
+      // meant the recovery read came back empty and the code rethrew for the
+      // WRONG reason. The mutation that drops the `clientMessageId !== undefined`
+      // condition stayed green against it. The stub was masking the guard.
+      const alwaysFinds = {
+        supportConversation: {
+          findUnique: (): Promise<unknown> => Promise.resolve({ id: 'conversation-1' }),
+        },
+        supportMessage: {
+          findFirst: (): Promise<unknown> =>
+            Promise.resolve({
+              id: 'someone-elses-message',
+              conversationId: 'conversation-1',
+              seq: 7n,
+              authorType: SupportMessageAuthorType.USER,
+              authorId: 'user-2',
+              body: 'not the callers message',
+              visibility: SupportMessageVisibility.PARTICIPANTS,
+              redactedAt: null,
+              createdAt: new Date('2026-09-12T00:00:00.000Z'),
+            }),
+          create: (): Promise<never> => Promise.reject(P2002()),
+        },
+      } as unknown as PrismaService;
+
+      const service = new SupportConversationService(
+        alwaysFinds,
+        { record: (): Promise<void> => Promise.resolve() } as unknown as AuditService,
+        {
+          getOwnTicketRow: (): Promise<SupportTicket> =>
+            Promise.resolve({ id: 'ticket-1' } as SupportTicket),
+        } as unknown as SupportService,
+      );
+
+      // Without a clientMessageId a unique violation is not an idempotent retry
+      // — there is no key identifying "the same message", so returning whatever
+      // row happens to be there would hand the caller someone else's message.
+      // It is a real error and must surface.
+      await expect(
+        service.appendUserMessage(
+          { id: 'user-1', permissions: [] } as unknown as AuthenticatedUser,
+          'ticket-1',
+          { body: 'no key' },
+          {},
+        ),
+      ).rejects.toThrow(/Unique constraint failed/);
+    });
+  });
+
+  describe('audit records observation, and is not a second state authority', () => {
+    t('the exact event for each operation', async () => {
+      const ticket = await makeTicket(false);
+
+      await service.appendUserMessage(owner(), ticket.id, { body: 'from the filer' }, {});
+      await service.appendOperatorMessage(operator(), ticket.id, { body: 'from ops' }, {});
+      await service.transitionByOperator(
+        operator(),
+        ticket.id,
+        SupportHandlingState.HUMAN_HANDLING,
+        {},
+      );
+      await service.transitionByOperator(operator(), ticket.id, SupportHandlingState.RESOLVED, {});
+      await service.transitionByOwner(owner(), ticket.id, SupportHandlingState.REOPENED, {});
+      await service
+        .transitionByServer(ticket.id, SupportHandlingState.CLOSED)
+        .catch(() => undefined);
+
+      expect(auditRecords).toEqual([
+        { action: 'support.conversation.message.appended', userId: ownerId },
+        { action: 'support.conversation.message.appended', userId: operatorId },
+        { action: 'support.ticket.handling_state.changed', userId: operatorId },
+        { action: 'support.ticket.handling_state.changed', userId: operatorId },
+        { action: 'support.ticket.handling_state.changed', userId: ownerId },
+      ]);
+    });
+
+    t('a refused transition records nothing', async () => {
+      const ticket = await makeTicket(true);
+
+      await expect(
+        service.transitionByServer(ticket.id, SupportHandlingState.AI_HANDLING),
+      ).rejects.toThrow();
+
+      // Refusals happen before the transaction. An audit trail that recorded
+      // attempts as if they were changes would misreport the ticket's history.
+      expect(auditRecords).toEqual([]);
+    });
+
+    t(
+      'a failed audit BLOCKS the state change rather than letting it proceed unaudited',
+      async () => {
+        const ticket = await makeTicket(false);
+        const failing = new SupportConversationService(
+          prisma,
+          {
+            record: (): Promise<void> => Promise.reject(new Error('audit sink is down')),
+          } as unknown as AuditService,
+          {
+            getOwnTicketRow: (): Promise<SupportTicket> =>
+              prisma.supportTicket.findUniqueOrThrow({ where: { id: ticket.id } }),
+          } as unknown as SupportService,
+        );
+
+        await expect(
+          failing.transitionByOperator(
+            operator(),
+            ticket.id,
+            SupportHandlingState.HUMAN_HANDLING,
+            {},
+          ),
+        ).rejects.toThrow();
+
+        // Audit sits inside the transaction deliberately. The direction matters:
+        // a broken sink costs availability, never an unrecorded state change.
+        const after = await prisma.supportTicket.findUniqueOrThrow({ where: { id: ticket.id } });
+        expect(after.handlingState).toBe(SupportHandlingState.OPEN);
+      },
+    );
+
+    t('the audit result cannot influence the outcome', async () => {
+      const ticket = await makeTicket(false);
+      const lying = new SupportConversationService(
+        prisma,
+        {
+          // Returns something that looks like a decision. It is discarded: the
+          // return value is never read, so audit cannot authorise, veto or
+          // rewrite a transition.
+          record: (): Promise<unknown> =>
+            Promise.resolve({ allowed: false, handlingState: SupportHandlingState.CLOSED }),
+        } as unknown as AuditService,
+        {
+          getOwnTicketRow: (): Promise<SupportTicket> =>
+            prisma.supportTicket.findUniqueOrThrow({ where: { id: ticket.id } }),
+        } as unknown as SupportService,
+      );
+
+      const updated = await lying.transitionByOperator(
+        operator(),
+        ticket.id,
+        SupportHandlingState.HUMAN_HANDLING,
+        {},
+      );
+
+      expect(updated.handlingState).toBe(SupportHandlingState.HUMAN_HANDLING);
     });
   });
 
