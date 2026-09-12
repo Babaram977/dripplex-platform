@@ -1,7 +1,7 @@
 # MKT-INT-001-L (inbound half) — POS order status sync: implementation contract
 
 **Document**: DPX-MKT-INT-001-P1-ORDER-SYNC-CONTRACT.md
-**Status**: Implemented, **awaiting founder / architecture sign-off on §5, §6 and §7**
+**Status**: Implemented. §5 **ruled and closed** (2026-09-12), with the caveat in §5.3 recorded. **Awaiting sign-off on §7**; §6 and §8 are open on purpose.
 **Date**: 2026-09-12
 **Extends**: `DPX-MKT-INT-001-P1-CATALOGUE-CONTRACT.md` (+ Amendment 1) and
 `DPX-MKT-INT-001-P1-INVENTORY-CONTRACT.md`. Where any of them disagree with the approved
@@ -63,11 +63,19 @@ All three are POS-facing and authenticate with an integration credential. There 
 merchant-facing route on this controller: a merchant reads their own orders in the portal,
 which shows them everything, while these responses are narrowed to what a third party may see.
 
-| Method | Path                                              | Scope          |
-| ------ | ------------------------------------------------- | -------------- |
-| `PUT`  | `/api/v1/integrations/orders/:orderNumber/status` | `orders:write` |
-| `GET`  | `/api/v1/integrations/orders/:orderNumber`        | `orders:read`  |
-| `GET`  | `/api/v1/integrations/orders?page=&pageSize=`     | `orders:read`  |
+| Method | Path                                               | Scope          |
+| ------ | -------------------------------------------------- | -------------- |
+| `PUT`  | `/api/v1/integrations/orders/status/:orderNumber`  | `orders:write` |
+| `GET`  | `/api/v1/integrations/orders/detail/:orderNumber`  | `orders:read`  |
+| `GET`  | `/api/v1/integrations/orders/list?page=&pageSize=` | `orders:read`  |
+
+**Every path leads with a literal segment, and that is load-bearing.** The first draft used
+`GET /api/v1/integrations/orders`, which `pos-route-reachability.spec.ts` proved was swallowed
+by **two** earlier routes — `GET /integrations/:integrationId` (`IntegrationsCController`) and
+`GET /integrations/:id` (the legacy controller). It would have shipped answering 401 from a
+CRUD route while looking alive, the same defect that made the stock push unreachable. Two
+literal segments cannot be claimed by a one-segment parameter, and giving all three routes the
+same shape means none can shadow another whatever order anything is declared in.
 
 `orders:read` and `orders:write` are already in the documented set on
 `IntegrationCredential.scopes` and already granted by default, so no credential is reissued.
@@ -114,31 +122,65 @@ status the order already holds is treated as already-applied rather than as a co
 
 ---
 
-## 5. What a POS may see — **sign-off requested**
+## 5. What a POS may see — **RULED, 2026-09-12. Closed.**
 
-`PosOrderView` is an **allow-list**, and the test pins the exact key set, so a field added to
-`Order` tomorrow is invisible here until somebody decides on purpose that a third-party POS may
-see it.
+`PosOrderView` is an **allow-list**, and the test pins the exact key set by equality, so a
+field added to `Order` tomorrow is invisible here until somebody decides on purpose that a
+third-party POS may see it.
+
+### 5.1 The three judgement calls, as ruled
+
+| Field           | Ruling                    | Reason given                                                                                                                                                                    |
+| --------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `paymentStatus` | ✅ **APPROVED**, narrowly | The merchant needs to know whether the order is paid or awaiting payment in order to fulfil it. It is a limited state — not credentials, method, transaction data or reference. |
+| `notes`         | ❌ **NOT EXPOSED**        | Customer-controlled free text, and therefore the largest uncontrolled privacy and data-exposure surface in the payload. Not sent to a third-party POS in P1.                    |
+| `deliveryFee`   | ❌ **NOT EXPOSED**        | DrippleX's delivery charge and revenue component, not required by the merchant's fulfilment workflow.                                                                           |
+
+**On `paymentStatus`, the narrowness is the ruling.** It is an order-level state and nothing
+more. The POS must never receive the payment provider, transaction or reference ids, card or
+bank details, wallet information, or payment metadata. Asserted by
+`paymentStatus is an order-level state and nothing more`, which checks the value is a member of
+the `PaymentStatus` enum and that no provider, transaction, reference, card, bank, wallet,
+method or authorization string appears anywhere in the serialised payload.
+
+**On `notes`, a replacement is the right route, not an exception.** If the business needs a
+kitchen instruction, that is a deliberate merchant-visible field with its own sanitisation and
+privacy rules — not an arbitrary customer text column exported to a third party because it
+happens to exist.
+
+### 5.2 The final P1 allow-list
 
 **Included:** `orderNumber`, `status`, `paymentStatus`, `fulfillmentType`, `currency`,
-`subtotal`, `discount`, `tax`, `deliveryFee`, `total`, `notes`, `placedAt`, `estimatedReadyAt`,
-`readyAt`, and per item `name`, `quantity`, `unitPrice`, `subtotal`, `externalSku`.
+`subtotal`, `discount`, `tax`, `total`, `placedAt`, `estimatedReadyAt`, `readyAt`, and per item
+`name`, `quantity`, `unitPrice`, `subtotal`, `externalSku`.
 
-**Excluded:** the DrippleX order id, customer id and any customer identity, delivery address,
-payment method, payment transactions, coupon code, cart id, delivery jobs, driver, and every
-ride field.
+**Excluded:** customer identity of every kind (id, name, phone, email), delivery address,
+payment method, payment transactions, delivery jobs, driver information, coupon code, cart id,
+the DrippleX internal order id, **`deliveryFee`**, **`notes`**, and every ride field.
 
-Three of the inclusions are judgement calls, and are flagged rather than assumed:
+### 5.3 Caveat recorded against 5.1 — **the delivery fee stays derivable**
 
-| Field           | Why it is in                                                                                                                           | The objection                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `paymentStatus` | A counter needs to know whether to hand the goods over. It is a state, not a payment detail — no method, no transaction, no reference. | It is still information about money reaching a third-party system.    |
-| `notes`         | It is the customer's instruction to the kitchen; withholding it defeats the point of the integration.                                  | A customer may type anything into it, including personal information. |
-| `deliveryFee`   | Included so `subtotal − discount + tax + deliveryFee = total` reconciles on a printed receipt.                                         | The delivery fee is DrippleX's revenue, not the merchant's.           |
+Withholding the field does not withhold the number. `total` is exposed and so are `subtotal`,
+`discount` and `tax`, and
 
-**No customer identity is exposed at all** — not name, not phone, not email. A kitchen matches
-on the order number. If a pickup counter genuinely needs a first name, that is a deliberate
-NDPR decision and needs approval, not a quiet addition.
+```
+total − (subtotal − discount + tax) = deliveryFee
+```
+
+exactly. A POS that wants DrippleX's per-order delivery revenue can compute it in one
+subtraction.
+
+This is recorded rather than quietly accepted or quietly fixed, because closing it means
+choosing, and the choice is a product decision:
+
+| Option                                                       | Cost                                                                                                                                                                       |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Leave as ruled                                               | The exclusion is presentational; the economics are one subtraction away.                                                                                                   |
+| Also withhold `total`                                        | The POS cannot show the customer's order value at all. `total` was explicitly in the allow-list.                                                                           |
+| Report a merchant-scoped total (`subtotal − discount + tax`) | Arithmetic reconciles and no DrippleX economics leak — but a field named `total` would no longer be what the customer paid, which is its own way to mislead an integrator. |
+
+Implemented as ruled (option 1). **No decision is required to ship**; this is flagged so the
+gap is a known one rather than a discovered one.
 
 ---
 
@@ -201,30 +243,64 @@ event envelope, HMAC-SHA256 signature, retries with backoff, delivery log, and t
 Every guard was removed one at a time and the suite confirmed to go red. A green suite is not
 evidence.
 
-| Mutation                                              | Result      |
-| ----------------------------------------------------- | ----------- |
-| `CANCELLED` added to the POS-drivable set             | 🔴 3 failed |
-| Order lookup drops the merchant-ownership predicate   | 🔴 2 failed |
-| P2002 replay recovery on the claim removed            | 🔴 4 failed |
-| A replayed `CONFLICT` reported as success             | 🔴 1 failed |
-| A replayed `PENDING` reported as success              | 🔴 1 failed |
-| Precondition failure settled as `ACCEPTED`            | 🔴 2 failed |
-| Precondition failure swallowed                        | 🔴 2 failed |
-| `ORDER_STATE_MISMATCH` no longer raised               | 🔴 1 failed |
-| POS view leaks `customerId`                           | 🔴 1 failed |
-| SKU lookup ignores the integration                    | 🔴 1 failed |
-| Already-in-status short circuit removed               | 🔴 1 failed |
-| Page size no longer capped                            | 🔴 1 failed |
-| Unknown order no longer logged                        | 🔴 1 failed |
-| `READY` routed to `acceptOrder`                       | 🔴 4 failed |
-| Service-level drivable-status check removed           | 🔴 1 failed |
-| Status route asks for the read scope instead of write | 🔴 1 failed |
+| Mutation                                                | Result      |
+| ------------------------------------------------------- | ----------- |
+| `CANCELLED` added to the POS-drivable set               | 🔴 4 failed |
+| Order lookup drops the merchant-ownership predicate     | 🔴 3 failed |
+| P2002 replay recovery on the claim removed              | 🔴 4 failed |
+| A replayed `CONFLICT` reported as success               | 🔴 1 failed |
+| A replayed `PENDING` reported as success                | 🔴 1 failed |
+| Precondition failure settled as `ACCEPTED`              | 🔴 1 failed |
+| Precondition failure swallowed                          | 🔴 1 failed |
+| `ORDER_STATE_MISMATCH` no longer raised                 | 🔴 2 failed |
+| POS view leaks `customerId`                             | 🔴 1 failed |
+| **Customer `notes` put back in the POS view**           | 🔴 2 failed |
+| **`deliveryFee` put back in the POS view**              | 🔴 2 failed |
+| **`paymentStatus` widened to carry the payment method** | 🔴 1 failed |
+| SKU lookup ignores the integration                      | 🔴 1 failed |
+| Already-in-status short circuit removed                 | 🔴 1 failed |
+| Page size no longer capped                              | 🔴 2 failed |
+| Unknown order no longer logged                          | 🔴 1 failed |
+| `READY` routed to `acceptOrder`                         | 🔴 3 failed |
+| Service-level drivable-status check removed             | 🔴 1 failed |
+| Status route asks for the read scope instead of write   | 🔴 1 failed |
+| List route restored to the shadowed bare path           | 🔴 1 failed |
+| Detail route given a leading parameter                  | 🔴 2 failed |
 
-The compiler-enforced exhaustiveness check (the `never` assignment) is not in this table on
-purpose: it is a build-time guarantee, not a test, and reporting it as a passing mutation would
-overstate what was measured.
+Twenty-one mutations, twenty-one red. The three in bold are the §5 rulings, so those decisions
+are enforced rather than merely recorded.
 
-No schema change; `prisma migrate diff` reports no difference.
+The compiler-enforced exhaustiveness check (the `never` assignment in the transition switch) is
+not in this table on purpose: it is a build-time guarantee, not a test, and reporting it as a
+passing mutation would overstate what was measured.
+
+### End to end, over real HTTP
+
+No unit test can show a route is reachable — that is what the shadowing defect proved twice.
+The whole path was driven against a locally running API: credential headers, guard, scope
+check, service, database, response.
+
+| Check                                                       | Result                                         |
+| ----------------------------------------------------------- | ---------------------------------------------- |
+| Detail and list routes reachable and authorised             | 200, 200                                       |
+| The old bare list path is not this controller               | 401 "Authentication required" (the CRUD route) |
+| The view carries exactly the ruled key set                  | 13 keys, matched                               |
+| Customer note does not cross the wire (detail **and** list) | absent                                         |
+| `deliveryFee` — neither field nor value on the wire         | absent                                         |
+| No customer identity on the wire                            | absent                                         |
+| `paymentStatus` is a bare state, no payment detail anywhere | `PAID`                                         |
+| An `orders:read`-only credential cannot move an order       | 401                                            |
+| An authorised push moves the order                          | CONFIRMED → PREPARING                          |
+| Replaying the key re-runs nothing                           | `replayed: true`, status unchanged             |
+| A POS requesting `CANCELLED`                                | 400, order not cancelled                       |
+| A push without `Idempotency-Key`                            | 400                                            |
+| Another merchant's order                                    | 404                                            |
+
+Twenty assertions, twenty passed.
+
+**Full backend suite: 3113 passed / 297 suites** against a fresh, never-seeded database with
+`CI=true`. `tsc` and `eslint` clean. No schema change; `prisma migrate diff` reports no
+difference.
 
 ---
 

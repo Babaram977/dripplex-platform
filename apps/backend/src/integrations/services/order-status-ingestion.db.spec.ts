@@ -26,6 +26,13 @@ import type { PrismaService } from '../../prisma/prisma.service';
 import type { WalletService } from '../../wallet/wallet.service';
 import type { MerchantIntegration } from '@prisma/client';
 
+/**
+ * A customer note no POS may ever see. Distinctive on purpose: the regression
+ * test scans the serialised payload for this exact string, so the assertion
+ * fails on a leak through any field, not only through a field called `notes`.
+ */
+const NOTE_MARKER = 'CUSTOMER-PRIVATE-do-not-export-7f3a91';
+
 const databaseUrl =
   process.env['DATABASE_URL'] ??
   'postgresql://dripplex:dripplex@localhost:5432/dripplex?schema=public';
@@ -122,8 +129,11 @@ describe('order status ingestion — real database', () => {
         paymentStatus: PaymentStatus.PAID,
         fulfillmentType: FulfillmentType.PICKUP,
         subtotal: 2500,
-        total: 2500,
-        notes: 'No pepper',
+        // Chosen so no leaked value hides inside another: "3055.55" contains
+        // no "555.55" substring, so a content scan for the fee is meaningful.
+        deliveryFee: 555.55,
+        total: 3055.55,
+        notes: NOTE_MARKER,
         items: {
           create: [
             {
@@ -583,12 +593,10 @@ describe('order status ingestion — real database', () => {
     expect(Object.keys(view).sort()).toEqual(
       [
         'currency',
-        'deliveryFee',
         'discount',
         'estimatedReadyAt',
         'fulfillmentType',
         'items',
-        'notes',
         'orderNumber',
         'paymentStatus',
         'placedAt',
@@ -612,6 +620,9 @@ describe('order status ingestion — real database', () => {
       'couponCode',
       'cartId',
       'id',
+      // Founder ruling, 2026-09-12.
+      'notes',
+      'deliveryFee',
     ]) {
       expect(record[forbidden]).toBeUndefined();
     }
@@ -619,6 +630,86 @@ describe('order status ingestion — real database', () => {
     expect(Object.keys(view.items[0] ?? {}).sort()).toEqual(
       ['externalSku', 'name', 'quantity', 'subtotal', 'unitPrice'].sort(),
     );
+  });
+
+  /**
+   * Founder ruling, 2026-09-12: a customer's note is customer-controlled free
+   * text, and so the largest uncontrolled disclosure surface in the payload.
+   * It does not go to a third party in P1.
+   *
+   * Scanned by content, not just by key name. A key-absence check would pass
+   * while the same text rode out inside some other field.
+   */
+  maybe('a customer note never reaches a POS, through any field', async () => {
+    const order = await makeOrder(alpha, OrderStatus.CONFIRMED, { mapSku: true });
+
+    // The fixture really does carry the note, so this test cannot pass just
+    // because there was nothing to leak.
+    const stored = await prisma.order.findUnique({ where: { id: order.orderId } });
+    expect(stored?.notes).toBe(NOTE_MARKER);
+
+    const view = await service.getOrder(alpha.integration, order.orderNumber);
+    expect(JSON.stringify(view)).not.toContain(NOTE_MARKER);
+    expect(JSON.stringify(view)).not.toContain('notes');
+
+    const listed = await service.listOrders(alpha.integration, 1, 50);
+    expect(JSON.stringify(listed)).not.toContain(NOTE_MARKER);
+  });
+
+  /**
+   * Founder ruling, 2026-09-12: the delivery fee is DrippleX's economics, not
+   * something a merchant needs to fulfil an order.
+   *
+   * **Recorded caveat, not a test failure:** `total` is still exposed, and
+   * `total - (subtotal - discount + tax)` is exactly the delivery fee. The
+   * field is withheld; the number remains derivable. See §5 of the contract.
+   */
+  maybe('the delivery fee is not a field a POS receives', async () => {
+    const order = await makeOrder(alpha, OrderStatus.CONFIRMED, { mapSku: true });
+
+    const stored = await prisma.order.findUnique({ where: { id: order.orderId } });
+    expect(Number(stored?.deliveryFee)).toBeCloseTo(555.55, 2);
+
+    const view = await service.getOrder(alpha.integration, order.orderNumber);
+    expect(Object.keys(view)).not.toContain('deliveryFee');
+    // "3055.55" contains no "555.55" substring, so this catches the value
+    // being carried under some other name.
+    expect(JSON.stringify(view)).not.toContain('555.55');
+
+    const listed = await service.listOrders(alpha.integration, 1, 50);
+    expect(JSON.stringify(listed)).not.toContain('deliveryFee');
+  });
+
+  /**
+   * Founder ruling, 2026-09-12: `paymentStatus` is approved for P1 **narrowly**
+   * — an order-level state, nothing more. The POS must never receive the
+   * payment provider, transaction or reference ids, card or bank details,
+   * wallet information, or payment metadata.
+   */
+  maybe('paymentStatus is an order-level state and nothing more', async () => {
+    const order = await makeOrder(alpha, OrderStatus.CONFIRMED, { mapSku: true });
+
+    const view = await service.getOrder(alpha.integration, order.orderNumber);
+
+    // A member of the enum, not a free-form string carrying extra detail.
+    expect(Object.values(PaymentStatus) as string[]).toContain(view.paymentStatus);
+    expect(view.paymentStatus).toBe(PaymentStatus.PAID);
+
+    const serialised = JSON.stringify(view).toLowerCase();
+    for (const forbidden of [
+      'provider',
+      'paystack',
+      'flutterwave',
+      'transaction',
+      'reference',
+      'card',
+      'bank',
+      'wallet',
+      'paymentmethod',
+      'authorization',
+    ]) {
+      expect(serialised).not.toContain(forbidden);
+    }
   });
 
   maybe("an item carries this integration's own SKU, and null when unmapped", async () => {

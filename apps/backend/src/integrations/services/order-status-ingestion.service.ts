@@ -36,17 +36,23 @@ import type { MerchantIntegration, OrderStatusUpdate } from '@prisma/client';
 export interface PosOrderView {
   orderNumber: string;
   status: string;
-  /** PAID / PENDING / … — whether to hand the goods over. No method, no transactions. */
+  /**
+   * An order-level state and nothing more — PAID, PENDING, … — so a counter
+   * knows whether to hand the goods over.
+   *
+   * Founder ruling, 2026-09-12: approved for P1 **narrowly**. The POS must
+   * never receive the payment provider, a transaction or reference id, card or
+   * bank details, wallet information, or any payment metadata. None of those
+   * is in this view, and `paymentStatus is an order-level state and nothing
+   * more` asserts it stays that way.
+   */
   paymentStatus: string;
   fulfillmentType: string;
   currency: string;
   subtotal: string;
   discount: string;
   tax: string;
-  deliveryFee: string;
   total: string;
-  /** The customer's instruction to the kitchen. */
-  notes: string | null;
   placedAt: Date;
   estimatedReadyAt: Date | null;
   readyAt: Date | null;
@@ -496,9 +502,19 @@ export class OrderStatusIngestionService {
       subtotal: order.subtotal.toString(),
       discount: order.discount.toString(),
       tax: order.tax.toString(),
-      deliveryFee: order.deliveryFee.toString(),
+      // No `deliveryFee` and no `notes`. Founder ruling, 2026-09-12:
+      //
+      //   - `notes` is customer-controlled free text and so the largest
+      //     uncontrolled disclosure surface in the payload. A deliberate
+      //     merchant-visible instruction field, with its own sanitisation and
+      //     privacy rules, is the way to serve that need — not exporting an
+      //     arbitrary text column to a third party because it happens to exist.
+      //   - `deliveryFee` is DrippleX's delivery economics and is not needed to
+      //     fulfil an order.
+      //
+      // See §5 of docs/DPX-MKT-INT-001-P1-ORDER-SYNC-CONTRACT.md, including the
+      // recorded caveat that `total` still lets the fee be derived.
       total: order.total.toString(),
-      notes: order.notes,
       placedAt: order.createdAt,
       estimatedReadyAt: order.estimatedReadyAt,
       readyAt: order.readyAt,
