@@ -34,7 +34,7 @@ export function SuperAppHorizontalSection<T>({
   return (
     <div className="mb-5">
       <SuperAppSectionHeader title={title} onSeeAll={onSeeAll} />
-      <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+      <div className="px-page flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {!loaded
           ? Array.from({ length: skeletonCount }).map((_, i) => (
               <SuperAppSkeleton key={i} w={skeletonWidth} h={skeletonHeight} />

@@ -90,7 +90,7 @@ export function SuperAppProductGallery({
         style={{ background: `linear-gradient(to top,${NAVY_BASE},transparent)` }}
       />
 
-      <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-5 pt-14">
+      <div className="px-page absolute left-0 right-0 top-0 z-10 flex items-center justify-between pt-14">
         <button
           type="button"
           onClick={onBack}

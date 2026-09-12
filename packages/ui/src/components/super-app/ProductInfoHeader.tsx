@@ -39,7 +39,7 @@ export function SuperAppProductInfoHeader({
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();
   return (
-    <div className="px-5 pb-2 pt-4">
+    <div className="px-page pb-2 pt-4">
       <div className="mb-1 flex items-start justify-between gap-2">
         <h1
           className={`flex-1 text-[22px] font-bold leading-tight text-white ${heading}`}

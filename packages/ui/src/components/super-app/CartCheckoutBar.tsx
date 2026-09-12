@@ -25,7 +25,7 @@ export function SuperAppCartCheckoutBar({
       className="absolute bottom-0 left-0 right-0 z-30"
       style={{ background: `linear-gradient(to top,${NAVY_BASE} 80%,transparent)` }}
     >
-      <div className="flex items-center gap-3 px-5 pb-2 pt-2">
+      <div className="px-page flex items-center gap-3 pb-2 pt-2">
         <div className="flex flex-col">
           <span className={`text-[11px] ${body}`} style={{ color: MUTED }}>
             Grand Total

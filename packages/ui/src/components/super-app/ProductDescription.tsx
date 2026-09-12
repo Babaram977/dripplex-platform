@@ -14,7 +14,7 @@ export function SuperAppProductDescription({
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
-    <div className="mb-4 px-5">
+    <div className="px-page mb-4">
       <p
         className={`mb-2 text-[12px] font-semibold uppercase tracking-widest ${body}`}
         style={{ color: MUTED }}

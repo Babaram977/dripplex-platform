@@ -45,7 +45,7 @@ export function SuperAppProductActionBar({
       className="absolute bottom-0 left-0 right-0 z-30"
       style={{ background: `linear-gradient(to top,${NAVY_BASE} 75%,transparent)` }}
     >
-      <div className="flex items-center gap-3 px-5 pb-3 pt-3">
+      <div className="px-page flex items-center gap-3 pb-3 pt-3">
         <div
           className="flex h-[50px] shrink-0 items-center gap-3 rounded-2xl px-3"
           style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}

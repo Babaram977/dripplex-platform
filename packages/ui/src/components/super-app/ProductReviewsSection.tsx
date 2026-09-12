@@ -75,7 +75,7 @@ export function SuperAppProductReviewsSection({
   const total = breakdown.reduce((a, b) => a + b, 0);
 
   return (
-    <div className="mb-6 flex flex-col gap-4 px-5">
+    <div className="px-page mb-6 flex flex-col gap-4">
       <p className={`text-[14px] font-semibold text-white ${heading}`}>{title}</p>
       <div
         className="flex items-start gap-5 rounded-2xl p-4"

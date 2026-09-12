@@ -48,7 +48,7 @@ export function SuperAppAuthAmbient(): React.JSX.Element {
 export function SuperAppAuthStatusBar(): React.JSX.Element {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-7 pt-[52px]"
+      className="pt-status-bar relative z-10 flex w-full items-center justify-between px-7"
       style={{ fontSize: 11, color: 'rgba(255,255,255,.28)' }}
     >
       <SuperAppStatusBarIcons />

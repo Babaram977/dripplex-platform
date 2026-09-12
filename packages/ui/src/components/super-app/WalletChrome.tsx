@@ -12,7 +12,7 @@ export function SuperAppWalletStatusBar(): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
     <div
-      className="flex items-center justify-between px-5"
+      className="px-page flex items-center justify-between"
       style={{ paddingTop: 14, paddingBottom: 4 }}
     >
       <span

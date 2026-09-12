@@ -9,7 +9,7 @@ import { SuperAppSkeleton } from './Skeleton';
  */
 export function SuperAppProductDetailSkeleton(): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-4 px-5 pb-8 pt-4">
+    <div className="px-page flex flex-col gap-4 pb-8 pt-4">
       <SuperAppSkeleton w="100%" h={280} r={24} />
       <SuperAppSkeleton w="70%" h={22} />
       <SuperAppSkeleton w="40%" h={16} />

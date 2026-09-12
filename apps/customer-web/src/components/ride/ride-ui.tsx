@@ -16,7 +16,7 @@ import * as React from 'react';
 export function RideStatusBar(): React.JSX.Element {
   return (
     <div
-      className="relative z-10 flex w-full items-center justify-between px-5 pt-[52px]"
+      className="px-page pt-status-bar relative z-10 flex w-full items-center justify-between"
       style={{ fontFamily: "'Inter',sans-serif", fontSize: 11, color: 'rgba(255,255,255,.55)' }}
     >
       <span>9:41</span>

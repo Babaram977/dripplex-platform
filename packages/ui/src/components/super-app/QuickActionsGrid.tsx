@@ -17,7 +17,7 @@ export function SuperAppQuickActionsGrid({
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
-    <div className="mb-1 px-5">
+    <div className="px-page mb-1">
       <div className="grid grid-cols-4 gap-3">
         {items.map((q) => (
           <button

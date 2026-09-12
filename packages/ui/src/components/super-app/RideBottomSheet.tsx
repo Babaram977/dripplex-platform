@@ -34,7 +34,7 @@ export function SuperAppRideBottomSheet({
         </div>
       ) : null}
       {title ? (
-        <p className={`px-5 pb-2 pt-4 text-[17px] font-bold text-white ${heading}`}>{title}</p>
+        <p className={`px-page pb-2 pt-4 text-[17px] font-bold text-white ${heading}`}>{title}</p>
       ) : null}
       {children}
     </div>

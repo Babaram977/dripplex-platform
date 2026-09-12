@@ -13,7 +13,7 @@ export function SuperAppRideStatusBar(): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
     <div
-      className={`relative z-10 flex w-full items-center justify-between px-5 pt-[52px] text-[11px] ${body}`}
+      className={`px-page pt-status-bar relative z-10 flex w-full items-center justify-between text-[11px] ${body}`}
       style={{ color: 'rgba(255,255,255,.55)' }}
     >
       <span>9:41</span>
@@ -83,7 +83,7 @@ export function SuperAppRideHeader({
   return (
     <div className={floating ? 'absolute inset-x-0 top-0' : 'relative'}>
       <SuperAppRideStatusBar />
-      <div className="mt-3 flex items-center justify-between px-5">
+      <div className="px-page mt-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
           {onBack ? <SuperAppRideBackArrow onClick={onBack} /> : null}
           {title ? <p className={`text-[17px] font-bold text-white ${heading}`}>{title}</p> : null}

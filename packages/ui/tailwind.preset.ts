@@ -1,5 +1,7 @@
 import type { Config } from 'tailwindcss';
 
+import { PAGE_H_PADDING, STATUS_BAR_H } from './src/tokens/spacing';
+
 export const dripplexTailwindPreset: Omit<Config, 'content'> = {
   darkMode: ['class'],
   theme: {
@@ -75,6 +77,22 @@ export const dripplexTailwindPreset: Omit<Config, 'content'> = {
       fontFamily: {
         display: ['var(--font-display)', 'system-ui', 'sans-serif'],
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+      },
+      /**
+       * Named spacing for the two values that are structural rather than
+       * decorative, so a className can name the token instead of repeating
+       * the number. Both come from `src/tokens/spacing.ts` — this is the
+       * existing scale being made reachable from a class, not a second one,
+       * and no value is introduced here.
+       *
+       * `px-page` is the phone-frame gutter; `pt-status-bar` clears the
+       * device status bar. Card and chip padding stay on Tailwind's own
+       * `4`/`5` steps: those are internal spacing, not page structure, and
+       * naming them would imply they must move together with the gutter.
+       */
+      spacing: {
+        page: `${String(PAGE_H_PADDING)}px`,
+        'status-bar': `${String(STATUS_BAR_H)}px`,
       },
       borderRadius: {
         lg: 'var(--radius-lg)',

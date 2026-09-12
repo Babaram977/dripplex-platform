@@ -42,7 +42,7 @@ function ProductCardSkeleton(): React.JSX.Element {
  * ported from `ProductGrid` in the locked Figma Make Store screen. The
  * header row here has no padding of its own in the source — it inherits
  * `px-4` from this same wrapper — so it's written inline rather than via
- * `SuperAppSectionHeader`, which hardcodes its own `px-5` and would
+ * `SuperAppSectionHeader`, which carries its own `px-page` gutter and would
  * double-indent/mismatch the spacing if nested here.
  */
 export function SuperAppProductGrid<T>({

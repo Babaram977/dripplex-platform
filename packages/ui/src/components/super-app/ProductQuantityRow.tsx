@@ -17,7 +17,7 @@ export function SuperAppProductQuantityRow({
 }): React.JSX.Element {
   const { heading } = useSuperAppFonts();
   return (
-    <div className="mb-4 flex items-center justify-between px-5">
+    <div className="px-page mb-4 flex items-center justify-between">
       <p className={`text-[13px] font-semibold text-white ${heading}`}>Quantity</p>
       <SuperAppQuantityStepper
         quantity={quantity}
