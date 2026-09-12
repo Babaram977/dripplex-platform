@@ -1119,7 +1119,7 @@ export interface LoyaltyAccountOverviewDto {
  */
 export interface LoyaltyPointsSummaryDto {
   balance: number;
-  /** Founder decision: 200 points = NGN 1. */
+  /** Founder decision: 100 points = NGN 1 since 2026-09-12 (was 200). */
   pointsPerNaira: number;
   /** Naira the balance is worth, rounded down to whole naira. */
   balanceValue: number;
@@ -1692,7 +1692,14 @@ export {
 
 /** DPX-LOYALTY-005 — the Ops-controlled terms on which DX Points convert. */
 export interface LoyaltySettingDto {
-  /** How many points buy one naira. Founder decision: 200. */
+  /**
+   * How many points buy one naira. Founder decision: 100 since 2026-09-12
+   * (DPX-PROMO-REF-001), previously 200.
+   *
+   * Canonical. Read it, never assume it — a client carrying its own copy went
+   * on quoting the old valuation against real balances, which is why nothing
+   * downstream is allowed a fallback constant.
+   */
   pointsPerNaira: number;
   /** Whether points may be turned into withdrawable wallet cash. */
   walletRedemptionEnabled: boolean;

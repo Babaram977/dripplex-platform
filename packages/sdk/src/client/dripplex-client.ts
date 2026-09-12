@@ -47,6 +47,7 @@ import { OperationsDashboardClient } from '../operations/operations-dashboard-cl
 import { OperationsFinanceClient } from '../operations/operations-finance-client.js';
 import { OperationsFleetClient } from '../operations/operations-fleet-client.js';
 import { OperationsHistoryClient } from '../operations/operations-history-client.js';
+import { OperationsPromotionsClient } from '../operations/operations-promotions-client.js';
 import { OperationsQueuesClient } from '../operations/operations-queues-client.js';
 import { OperationsRidesClient } from '../operations/operations-rides-client.js';
 import { OperationsStaffClient } from '../operations/operations-staff-client.js';
@@ -148,6 +149,9 @@ export class DripplexClient {
   public readonly operationsCases: OperationsCasesClient;
   public readonly operationsDashboard: OperationsDashboardClient;
   public readonly operationsStaff: OperationsStaffClient;
+  /** DPX-PROMO-REF-001 — campaign promoters and the universal acquisition
+   *  incentive, behind their own read/manage permissions. */
+  public readonly operationsPromotions: OperationsPromotionsClient;
   public readonly operationsAnalytics: OperationsAnalyticsClient;
   public readonly notifications: NotificationsClient;
   public readonly driverNotifications: NotificationsClient;
@@ -235,6 +239,7 @@ export class DripplexClient {
     this.operationsCases = new OperationsCasesClient(this.http);
     this.operationsDashboard = new OperationsDashboardClient(this.http);
     this.operationsStaff = new OperationsStaffClient(this.http);
+    this.operationsPromotions = new OperationsPromotionsClient(this.http);
     this.operationsAnalytics = new OperationsAnalyticsClient(this.http);
     this.notifications = new NotificationsClient(this.http);
     this.driverNotifications = new NotificationsClient(this.http, '/driver/notifications');

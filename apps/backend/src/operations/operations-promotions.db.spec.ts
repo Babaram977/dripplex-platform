@@ -315,4 +315,52 @@ describe('OperationsPromotionsService', () => {
       }),
     ).toBe(1);
   });
+
+  /**
+   * The three amounts a Promotions screen has to keep apart — 20%, three
+   * rides, and the referee's naira reward — come from here, not from the
+   * client. A UI that hardcoded them would keep displaying 20% after a founder
+   * repriced the row, which is the failure this assertion exists to prevent.
+   */
+  it('states the incentive terms and the referee reward from server state', async () => {
+    if (!databaseAvailable) return;
+    const usage = await ops.acquisitionIncentiveUsage();
+
+    expect(usage.percentOff).toBe(20);
+    expect(usage.maxDiscountedRides).toBe(3);
+
+    const programme = await prisma.referralProgramme.findUnique({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+      select: { refereeRewardAmount: true },
+    });
+    expect(usage.refereeRewardNgn).toBe(
+      programme === null ? null : Number(programme.refereeRewardAmount),
+    );
+
+    // Not the promoter's reward. The referee's reward is a property of the
+    // programme, identical whoever referred them; the promoter's is a property
+    // of their campaign row and varies 150/200/350.
+    expect(usage.refereeRewardNgn).not.toBeNull();
+  });
+
+  it('follows the promotion row when the discount is repriced', async () => {
+    if (!databaseAvailable) return;
+    const INCENTIVE = '00000000-0000-4000-8000-00000000200a';
+    const original = await prisma.promotion.findUniqueOrThrow({
+      where: { id: INCENTIVE },
+      select: { percentOff: true },
+    });
+    try {
+      await prisma.promotion.update({
+        where: { id: INCENTIVE },
+        data: { percentOff: 25 },
+      });
+      expect((await ops.acquisitionIncentiveUsage()).percentOff).toBe(25);
+    } finally {
+      await prisma.promotion.update({
+        where: { id: INCENTIVE },
+        data: { percentOff: original.percentOff },
+      });
+    }
+  });
 });

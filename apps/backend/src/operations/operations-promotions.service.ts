@@ -3,6 +3,7 @@ import {
   CampaignPromoterStatus,
   PromotionStatus,
   ReferralRedemptionStatus,
+  ReferralRefereeType,
   RideStatus,
   type CampaignParticipantType,
 } from '@prisma/client';
@@ -10,7 +11,10 @@ import {
 import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { CampaignPromoterService } from '../referrals/campaign-promoter.service';
-import { UNIVERSAL_ACQUISITION_INCENTIVE_ID } from '../rides/acquisition-incentive.constants';
+import {
+  UNIVERSAL_ACQUISITION_INCENTIVE_ID,
+  UNIVERSAL_ACQUISITION_INCENTIVE_MAX_RIDES,
+} from '../rides/acquisition-incentive.constants';
 
 import type { AuditContext } from '../audit/audit.service';
 
@@ -173,13 +177,23 @@ export class OperationsPromotionsService {
   public async acquisitionIncentiveUsage(): Promise<{
     promotionId: string;
     status: PromotionStatus | null;
+    percentOff: number | null;
+    maxDiscountedRides: number;
+    refereeRewardNgn: number | null;
     discountedRides: number;
     customersBenefiting: number;
     totalDiscountNgn: number;
   }> {
     const promotion = await this.prisma.promotion.findUnique({
       where: { id: UNIVERSAL_ACQUISITION_INCENTIVE_ID },
-      select: { status: true },
+      select: { status: true, percentOff: true },
+    });
+    // The referee's signup reward is the *other* thing a new customer gets, and
+    // the one most often confused with this discount. Read from the programme
+    // row so the two amounts cannot drift apart in a display.
+    const programme = await this.prisma.referralProgramme.findUnique({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+      select: { refereeRewardAmount: true },
     });
     const rides = await this.prisma.ride.findMany({
       where: {
@@ -188,9 +202,14 @@ export class OperationsPromotionsService {
       },
       select: { customerId: true, promoDiscount: true },
     });
+    const percentOff = promotion?.percentOff ?? null;
+    const refereeReward = programme?.refereeRewardAmount ?? null;
     return {
       promotionId: UNIVERSAL_ACQUISITION_INCENTIVE_ID,
       status: promotion?.status ?? null,
+      percentOff: percentOff === null ? null : Number(percentOff),
+      maxDiscountedRides: UNIVERSAL_ACQUISITION_INCENTIVE_MAX_RIDES,
+      refereeRewardNgn: refereeReward === null ? null : Number(refereeReward),
       discountedRides: rides.length,
       customersBenefiting: new Set(rides.map((r) => r.customerId)).size,
       totalDiscountNgn: rides.reduce((sum, r) => sum + Number(r.promoDiscount), 0),
