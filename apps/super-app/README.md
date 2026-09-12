@@ -23,7 +23,16 @@ rejected by Apple while looking like success to every check short of a real
 device, which is why `src/server.test.ts` pins the behaviour — including the
 regression cases for `assetlinks.json`, SPA routes and both cache headers.
 
-**Publishing the file:** drop it at `public/.well-known/apple-app-site-association`
-(Vite copies `public/` into `dist/`). Until it exists the route returns a
-deliberate **404**, not the SPA. The content needs the real Apple Team ID, which
-is why it is not committed yet.
+**The file is published** at `public/.well-known/apple-app-site-association`;
+Vite copies `public/` into `dist/`, extensionless name intact — verified against
+a real build, not assumed. It names `X9MCF93WB7.com.dripplex.customer`
+(AFNAN HOMES LTD + the **iOS** bundle id, which is `com.dripplex.customer`, not
+the Android `applicationId` `com.dripplex.app`).
+
+It claims `"/": "/*"` — every path — because the Android intent filter for
+`app.dripplex.com` carries no `pathPrefix` and so claims the whole host.
+Anything narrower would open a link in the app on Android and the browser on
+iOS. Both the Team ID and the path scope are pinned by test.
+
+If the file is ever missing, the route returns a deliberate **404**, not the
+SPA.

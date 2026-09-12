@@ -12,7 +12,7 @@
  * regression cases below fail if the replacement quietly changes anything else
  * — particularly the cache policy `serve.json` exists to enforce.
  */
-import { mkdtemp, mkdir, writeFile, rm, copyFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, copyFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Server } from 'node:http';
@@ -121,5 +121,35 @@ describe('apple-app-site-association is absent', () => {
     expect(res.status).toBe(404);
     expect(res.headers.get('content-type')).toMatch(/application\/json/);
     expect(await res.text()).not.toContain('<html');
+  });
+});
+
+describe('the committed apple-app-site-association', () => {
+  // Served straight from `public/` by Vite. A typo in the Team ID produces a
+  // file that parses, serves as JSON, and silently never opens the app — the
+  // container smoke test cannot tell that apart from a correct one, so the
+  // expected value is pinned here.
+  const PUBLISHED = join(process.cwd(), 'public', '.well-known', 'apple-app-site-association');
+
+  it('is valid JSON naming the Afnan Homes Ltd team and the iOS bundle id', async () => {
+    const aasa = JSON.parse(await readFile(PUBLISHED, 'utf8'));
+
+    // Team ID X9MCF93WB7 (AFNAN HOMES LTD) + the iOS bundle identifier, which
+    // is com.dripplex.customer — NOT the Android applicationId com.dripplex.app.
+    expect(aasa.applinks.details[0].appIDs).toEqual(['X9MCF93WB7.com.dripplex.customer']);
+  });
+
+  it('claims every path, matching what Android already claims', async () => {
+    const aasa = JSON.parse(await readFile(PUBLISHED, 'utf8'));
+
+    // The Android intent filter for app.dripplex.com carries no pathPrefix, so
+    // it claims the whole host. Anything narrower here means a link opens the
+    // app on Android and the browser on iOS.
+    expect(aasa.applinks.details[0].components).toEqual([{ '/': '/*' }]);
+  });
+
+  it('has no extension, because Apple requires exactly this filename', async () => {
+    await expect(readFile(PUBLISHED)).resolves.toBeDefined();
+    await expect(readFile(`${PUBLISHED}.json`)).rejects.toThrow();
   });
 });

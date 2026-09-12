@@ -197,48 +197,55 @@ jobs:
           echo "Android assetlinks.json unaffected:"
           check /.well-known/assetlinks.json 200 application/json
 
-          # No AASA file is committed yet — its content needs the real Apple
-          # Team ID. The honest 404 IS the assertion here: `serve` answered this
-          # path with index.html under a 200, so a JSON 404 proves server.mjs
-          # booted, the route was intercepted, and the SPA did not swallow it.
-          echo "AASA absent -> honest 404, never the SPA under a 200:"
-          check /.well-known/apple-app-site-association 404 application/json
+          # The path `serve` could not serve. Apple requires exactly this
+          # extensionless name, as application/json, with no redirect.
+          echo "AASA served as JSON, not the SPA:"
+          check /.well-known/apple-app-site-association 200 application/json
+
+          # Content, not just status. A 200 carrying the wrong Team ID is a
+          # Universal Link that silently never opens the app.
+          cat /tmp/body; echo
+          if grep -q '<html' /tmp/body; then
+            echo "::error::AASA returned HTML — the SPA swallowed the route"; exit 1
+          fi
+          if ! grep -q 'X9MCF93WB7.com.dripplex.customer' /tmp/body; then
+            echo "::error::AASA does not name X9MCF93WB7.com.dripplex.customer"; exit 1
+          fi
 
           docker rm -f dpx-super-app
 
-      # The 404 above cannot distinguish "shim works" from "route happens to be
-      # missing". Publishing a file and reading it back can.
-      - name: Smoke-test the super-app container with an AASA file published
+      # The 200 above proves the file is served. It cannot prove the absent-file
+      # branch still 404s rather than falling through to the SPA — and that
+      # branch is what keeps a future missing file visible instead of silent.
+      - name: Smoke-test the absent-AASA branch
         run: |
           set -euo pipefail
-          cat > /tmp/aasa.Dockerfile <<'DOCKERFILE'
+          cat > /tmp/no-aasa.Dockerfile <<'DOCKERFILE'
           FROM dripplex-super-app:ci
-          RUN mkdir -p dist/.well-known && \
-              printf '{"applinks":{"details":[{"appIDs":["CITEAM.com.dripplex.customer"],"components":[]}]}}' \
-              > dist/.well-known/apple-app-site-association
+          RUN rm -f dist/.well-known/apple-app-site-association
           DOCKERFILE
-          docker build -f /tmp/aasa.Dockerfile -t dripplex-super-app:ci-aasa /tmp
-          docker run -d --name dpx-super-app-aasa -p 3001:3000 dripplex-super-app:ci-aasa
+          docker build -f /tmp/no-aasa.Dockerfile -t dripplex-super-app:ci-no-aasa /tmp
+          docker run -d --name dpx-no-aasa -p 3001:3000 dripplex-super-app:ci-no-aasa
 
           for i in $(seq 1 30); do
             if curl -fsS -o /dev/null http://localhost:3001/; then break; fi
             if [ "$i" = 30 ]; then
               echo "::error::container never answered on :3001"
-              docker logs dpx-super-app-aasa || true
+              docker logs dpx-no-aasa || true
               exit 1
             fi
             sleep 1
           done
 
-          code=$(curl -sS -o /tmp/aasa.body -w '%{http_code}' http://localhost:3001/.well-known/apple-app-site-association)
+          code=$(curl -sS -o /tmp/no.body -w '%{http_code}' http://localhost:3001/.well-known/apple-app-site-association)
           ctype=$(curl -sSI http://localhost:3001/.well-known/apple-app-site-association | tr -d '\r' | awk 'tolower($1)=="content-type:"{print $2}')
-          echo "  AASA -> $code $ctype"
-          cat /tmp/aasa.body; echo
+          echo "  AASA removed -> $code $ctype"
+          head -c 200 /tmp/no.body; echo
 
-          # Apple requires application/json on exactly this extensionless path.
-          if [ "$code" != 200 ]; then echo "::error::AASA not served (got $code)"; exit 1; fi
-          case "$ctype" in application/json*) ;; *) echo "::error::AASA content-type is $ctype, Apple requires application/json"; exit 1;; esac
-          if grep -q '<html' /tmp/aasa.body; then echo "::error::AASA returned HTML — the SPA swallowed the route"; exit 1; fi
-          if ! grep -q 'CITEAM.com.dripplex.customer' /tmp/aasa.body; then echo "::error::AASA body is not the published file"; exit 1; fi
+          # An honest 404 is debuggable. `serve` returned the SPA under a 200
+          # here, which is the failure this whole change exists to remove.
+          if [ "$code" != 404 ]; then echo "::error::absent AASA gave $code, expected 404"; exit 1; fi
+          case "$ctype" in application/json*) ;; *) echo "::error::absent-AASA content-type is $ctype, expected application/json"; exit 1;; esac
+          if grep -q '<html' /tmp/no.body; then echo "::error::absent AASA fell through to the SPA"; exit 1; fi
 
-          docker rm -f dpx-super-app-aasa
+          docker rm -f dpx-no-aasa

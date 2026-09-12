@@ -60,21 +60,42 @@ Google's own checker is the other half:
 
 Path: `https://app.dripplex.com/.well-known/apple-app-site-association`
 
+**This is no longer a template.** The file is committed at
+`apps/super-app/public/.well-known/apple-app-site-association` and served by
+`apps/super-app/server.mjs`:
+
 ```json
 {
   "applinks": {
-    "apps": [],
     "details": [
       {
-        "appID": "TEAMID.com.dripplex.customer",
-        "paths": ["*"]
+        "appIDs": ["X9MCF93WB7.com.dripplex.customer"],
+        "components": [{ "/": "/*" }]
       }
     ]
   }
 }
 ```
 
-Replace `TEAMID` with Apple Developer Team ID.
+`X9MCF93WB7` is the AFNAN HOMES LTD Apple Developer Team ID. It is not a secret
+— this file is served publicly, which is the whole mechanism.
+
+Two things that were wrong in the old template here, kept as a warning:
+
+- It used the legacy `appID` / `paths` keys. Those still work, but `appIDs` /
+  `components` is the form Apple documents for iOS 13+, and the deployment
+  target is 15.0.
+- `paths: ["*"]` and `components: [{"/": "/*"}]` both claim the whole host,
+  which is correct **only because** the Android intent filter for
+  `app.dripplex.com` carries no `pathPrefix`. If either side is ever narrowed,
+  narrow both, or a link opens the app on one platform and the browser on the
+  other.
+
+> **`serve` cannot serve this file.** Apple requires the exact extensionless
+> name and does not follow redirects, and `serve` answers an extensionless path
+> with the SPA's `index.html` under HTTP 200 — a silent rejection that looks
+> like success. That is why the super-app runs `server.mjs` rather than the
+> `serve` CLI. Do not "simplify" it back.
 
 ## Custom scheme
 
