@@ -163,13 +163,23 @@ and leaves every existing `ReferralRedemption` untouched.
   (`schema.prisma:3893`). A promoter token must never be a public code.
 - **It is not `Referral.code`.** That is the public per-user referral code, one
   per user (`Referral.userId @unique`, `:4675`; `code` at `:4678`), 16 chars.
-- **Cross-table collision is a real risk and must be designed for, not hoped
-  about.** Three tables would now hold redeemable codes (`referrals.code`,
-  `promotions.code`, `campaign_promoters.token`), and a single resolver decides
-  what an incoming string means. Tokens are therefore generated in a shape the
-  other two cannot produce, and the resolver checks all three and refuses an
-  ambiguous match rather than guessing. **This needs a deliberate generation
-  rule before the migration — flagged, not assumed.**
+- **Cross-table collision is a real risk and is designed for, not hoped about.**
+  Three tables now hold redeemable strings (`referrals.code`, `promotions.code`,
+  `campaign_promoters.token`), and one resolver decides what an incoming string
+  means. Per the founder ruling: the token is cryptographically generated,
+  normalised before lookup, unique at the database level, and resolved through
+  the **campaign-promoter namespace explicitly** — no string is ever asked to
+  serve as all three. If a supplied string is ambiguous across the legacy
+  namespaces the resolver **rejects it rather than guessing**, because guessing
+  attribution wrong pays the wrong promoter.
+
+  Concretely: 32 chars from a CSPRNG over the existing unambiguous alphabet
+  (`REFERRAL_CODE_ALPHABET`, which already excludes 0/O and 1/I/L so a code read
+  aloud is not mistyped), upper-cased on write and on lookup. Length alone
+  separates it from `referrals.code`, which is `VarChar(16)` and generated at 8
+  (`referral.constants.ts:REFERRAL_CODE_LENGTH`), but length is a convenience for
+  humans reading logs, **not** the guarantee — the guarantee is that lookup is
+  namespaced to one table.
 
 **Immutable historical attribution:** `ReferralRedemption` gains
 
@@ -190,14 +200,21 @@ carries `referrerRewardAmount` / `refereeRewardAmount`, null until qualification
 because "Operations re-pricing a programme must never rewrite what somebody
 already earned" (`:4766`). Campaign rewards snapshot into the same columns.
 
-Locked economics, implemented as configuration on `CampaignPromoter`, not as
-constants:
+Locked economics. **The promoter side is configuration on `CampaignPromoter`;
+the referee side is not.** Founder ruling: the referred customer's ₦150 is fixed
+platform-wide through `ReferralProgramme.refereeRewardAmount` and is deliberately
+**not** per-campaign editable, so no campaign can outbid another for the same
+acquisition. Only the promoter's rate varies by participant class:
 
-| Referral                  | Referrer | Referred customer |
-| ------------------------- | -------- | ----------------- |
-| Customer → Customer       | ₦150     | ₦150              |
-| Driver → Customer         | ₦200     | ₦150              |
-| Pioneer Driver → Customer | ₦350     | ₦150              |
+| Referral                  | Referrer (per-campaign) | Referred customer (platform-wide) |
+| ------------------------- | ----------------------- | --------------------------------- |
+| Customer → Customer       | ₦150                    | ₦150                              |
+| Driver → Customer         | ₦200                    | ₦150                              |
+| Pioneer Driver → Customer | ₦350                    | ₦150                              |
+
+Both sides still snapshot onto the `ReferralRedemption` row at qualification, so
+a later change to either the campaign's rate or the programme's referee reward
+cannot alter what somebody has already earned.
 
 At the ruled 100:1 these are 15,000 / 20,000 / 35,000 points. **The point
 equivalents are computed from `loyalty_settings.points_per_naira`, never
@@ -221,19 +238,62 @@ ledger (`LoyaltyLedgerEntry`, type `BONUS` — "given rather than earned… the 
 of promoting it", `:4154`), never as wallet cash. A cash reward goes through
 `walletService.credit()` exactly as today.
 
-## 5. Customer acquisition benefit — 20% off the first 3 rides
+## 5. Customer acquisition benefit — 20% off the first 3 completed rides
 
-Expressible with the existing engine, no new discount machinery:
-`type: PERCENTAGE`, `domains: [RIDE]`, `percentOff: 20`, `perUserLimit: 3`.
+Founder ruling: **the first three completed rides ever**, not the first three on
+which the benefit is claimed, so a customer cannot skip the discount and reset
+eligibility later. One platform-wide acquisition benefit; it cannot restart or
+stack through a second campaign.
 
-`perUserLimit` counts `PromotionRedemption` rows for that user
-(`promotions.service.ts:780`), so "first 3 rides" is enforced by the same counter
-that already bounds coupon use, inside the same serializable transaction.
+**`perUserLimit: 3` is the wrong mechanism and must not be used.** It counts
+`PromotionRedemption` rows for that user (`promotions.service.ts:780`) — that is
+_claims_, which is precisely the semantic the ruling rejects. My earlier contract
+proposed it; that was wrong.
 
-**Open, and deliberately not assumed:** whether the three rides must be the
-customer's first three _ever_ or simply the first three on which the benefit is
-claimed, and whether the benefit is a separate `Promotion` row per campaign or
-one platform-wide row. Both are product decisions; §8 lists them.
+**The right mechanism needs no new counter.** Promotions are previewed and
+redeemed at _ride request_ time (`rides.service.ts:206-277`), so when ride N is
+priced the customer has exactly N-1 completed rides. Eligibility is therefore:
+
+```
+acquisition exists for this customer
+  AND  count(rides where customerId = X and status = COMPLETED) < 3
+```
+
+Ride #1 sees 0, #2 sees 1, #3 sees 2, #4 sees 3 and stops. Skipping the discount
+on a ride does not help, because the ride still completes and still counts. The
+counter is the rides table itself, which cannot be reset by campaign activity —
+exactly the anti-gaming property the ruling asks for, and with no column to keep
+in sync.
+
+### Three findings from checking this ruling against the code
+
+**(a) The benefit cannot be conditioned on qualification if ride #1 is to be
+discounted.** Qualification for a customer requires
+`ride.count({ customerId, status: COMPLETED }) >= 1`
+(`referral-qualification.service.ts:100-107`). At the moment ride #1 is _priced_
+that count is 0, so the customer has not qualified. The ruling says both "after
+qualifying" and "Ride #1 … receives the benefit", and on this code those cannot
+both hold. Either the benefit is granted on the **pending** acquisition (the
+token was redeemed at signup, `ReferralRedemption` exists as PENDING), or it
+starts at the first ride _after_ the qualifying one. **This needs one more
+ruling — see below.**
+
+**(b) The discount is real platform money, spent before anti-abuse clears.**
+`ride-payment.service.ts:654` — "DrippleX funds its own promotion", and a cash
+ride's funding is clawed back on refund (`:862`). If the benefit is granted on a
+pending acquisition, three discounted rides are funded before the referral has
+passed screening; a referral later REJECTED has already cost real money with no
+clawback path for the discount. That is the same signup-only-abuse hazard the
+reward hold exists to prevent, relocated from the reward to the discount.
+
+**(c) Qualification does not require a ride at all.** The customer milestone is
+"a first qualifying paid transaction", and it accepts a completed _marketplace
+order_ as readily as a completed ride
+(`referral-qualification.service.ts:98-109`). So a referred customer can be fully
+qualified, and the promoter paid, having never taken a ride. Their first three
+rides then carry the benefit whenever those rides eventually happen. This is
+consistent and needs no change — recorded so nobody later reads "first completed
+ride" as the only route to qualification.
 
 ## 6. Qualification — unchanged
 
@@ -282,20 +342,41 @@ The console already has `/referrals`, `/referrals/review` and
 
 ---
 
-## Decisions needed before the migration is written
+## The one ruling still needed
 
-1. **Token generation rule** (§3) — the shape that guarantees a promoter token
-   can never be confused with `referrals.code` or `promotions.code`, and what the
-   resolver does with an ambiguous string.
-2. **"First 3 rides"** (§5) — first three ever, or first three on which the
-   benefit is claimed; one platform-wide benefit row or one per campaign.
-3. **Referee reward under a campaign** — the table above pays the referred
-   customer ₦150 in all three cases. Confirm this is campaign-configurable too,
-   or fixed platform-wide via `ReferralProgramme`.
-4. **Can one user promote in two live campaigns at once?** `@@unique([promotionId,
-userId])` permits it (different campaigns, different tokens). If a referred
-   customer's token could then belong to either, the precedence rule is a
-   business decision, not an implementation detail.
+**When does the 20% benefit start?** Per finding (a), the ruling's "after
+qualifying" and "Ride #1 receives the benefit" cannot both be satisfied:
+qualification cannot have happened when ride #1 is priced.
+
+- **Option A — grant on the pending acquisition.** Rides #1-#3 are discounted.
+  Matches "Ride #1, #2, #3 receive the benefit" exactly. Cost: finding (b) —
+  up to three discounts funded before anti-abuse clears, unrecoverable if the
+  referral is later rejected.
+- **Option B — grant from the first ride after qualification.** No money is
+  spent before screening. Cost: the qualifying ride is not discounted, so the
+  customer's first three _discounted_ rides are their 2nd, 3rd and 4th.
+
+This is a business trade-off between honouring the advertised offer on ride #1
+and not funding discounts for referrals that may be fraudulent. It is not an
+implementation detail and is not being guessed.
+
+## Decisions now locked (founder ruling, 2026-09-12)
+
+1. **Token generation** — `CampaignPromoter.token` is the private campaign
+   attribution token: cryptographically generated, database-unique, normalised,
+   and kept separate from `referrals.code` and `promotions.code`. Resolution uses
+   the campaign-promoter namespace explicitly. An ambiguous string across legacy
+   namespaces is **rejected, never guessed**.
+2. **First three rides** — first three _completed rides ever_, one platform-wide
+   acquisition benefit, no restart and no stacking. Mechanism per §5.
+3. **Referee reward** — fixed platform-wide at ₦150 via `ReferralProgramme`, not
+   per-campaign configurable. Promoter side varies by participant class
+   (₦150 / ₦200 / ₦350) on `CampaignPromoter`. Both snapshot at qualification.
+4. **Multiple campaigns** — a promoter may participate in several at once, each
+   with its own token. A referred customer qualifies **once platform-wide**; the
+   first valid attribution wins and later attempts create neither a second reward
+   nor a fresh three-ride benefit. `ReferralRedemption.refereeUserId @unique`
+   (`:4752`) already enforces this at the database level.
 
 No migration, no service and no UI has been written. Nothing in this document is
 implemented yet.
