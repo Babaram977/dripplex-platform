@@ -4,6 +4,10 @@ export const SUPPORT_AUDIT_ACTIONS = {
   TICKET_CREATED: 'support.ticket.created',
   TICKET_UPDATED: 'support.ticket.updated',
   TICKET_RESOLVED: 'support.ticket.resolved',
+  /** DPX-SUPPORT-002 B2 — every accepted handling-state transition. */
+  HANDLING_STATE_CHANGED: 'support.ticket.handling_state.changed',
+  /** DPX-SUPPORT-002 B2 — a message appended to a conversation. */
+  MESSAGE_APPENDED: 'support.conversation.message.appended',
 } as const;
 
 export const SUPPORT_PERMISSIONS = {
@@ -13,6 +17,19 @@ export const SUPPORT_PERMISSIONS = {
   TICKETS_USE: 'support:tickets:use',
   /** Reading and answering anyone's ticket. Operations only. */
   ADMIN_MANAGE: 'admin:support:tickets:manage',
+  /**
+   * Handing a live conversation to automation — DPX-SUPPORT-002 B2 §4.
+   *
+   * Named for the capability, not for one direction through the lifecycle. It
+   * authorises `HUMAN_HANDLING -> AI_HANDLING` and nothing else, and is
+   * deliberately separate from ADMIN_MANAGE: handing a live conversation back
+   * to a machine is a different kind of act from replying to it, and must not
+   * ride along with the grant every Operations responder already holds.
+   *
+   * Seeded and granted to NO role. That is the correct end state for B2; the
+   * grant is an operational-policy decision that does not exist yet.
+   */
+  AI_HANDOFF: 'support:tickets:ai-handoff',
 } as const;
 
 /**
