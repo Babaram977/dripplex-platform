@@ -66,6 +66,24 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
     await app.listen(0);
     const url = await app.getUrl();
     baseUrl = `${url.replace('[::1]', '127.0.0.1')}/${config.apiGlobalPrefix}`;
+
+    // The `customer` role has to exist before anyone can register.
+    //
+    // This file used to inherit it: some earlier spec in the run seeded RBAC,
+    // and registration worked by accident of file ordering. Run alone — or in
+    // a run that ordered the files differently, which is exactly what CI did —
+    // every registration returned 404 "Role customer is not configured", and
+    // six tests failed with an unrelated-looking uuid error. A spec that needs
+    // a precondition creates it.
+    //
+    // Upserted, not created: the shared database may already have the role
+    // from a previous run or another suite, and this must not fight them for
+    // it. Nothing is deleted afterwards for the same reason.
+    await prisma.role.upsert({
+      where: { name: 'customer' },
+      update: {},
+      create: { name: 'customer', description: 'Customer (promo-ref HTTP spec precondition)' },
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -201,7 +219,7 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
     return code;
   }
 
-  async function register(referralCode?: string): Promise<{ status: number; userId?: string }> {
+  async function register(referralCode?: string): Promise<{ status: number; userId: string }> {
     const email = `reg-${randomUUID()}@dripplex.test`;
     const response = await post('/auth/register/customer', {
       email,
@@ -210,19 +228,24 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
       lastName: 'Customer',
       ...(referralCode === undefined ? {} : { referralCode }),
     });
-    if (response.status === 429) {
-      // Never silently: a throttled fixture that returned no user id used to
-      // surface three tests later as an unrelated uuid parse error.
-      throw new Error('Registration was rate-limited — the fixture caller is not unique');
-    }
     const data = response.body['data'] as { userId?: string } | undefined;
     if (data?.userId !== undefined) {
       users.push(data.userId);
     }
-    return {
-      status: response.status,
-      ...(data?.userId === undefined ? {} : { userId: data.userId }),
-    };
+    // Fail here, naming the status and body, rather than three tests later.
+    //
+    // A missing id used to be returned quietly. The next thing to touch it
+    // asked Prisma for a user with an empty-string uuid, which surfaced as
+    // "Error creating UUID, invalid length: found 0" inside `winnerFor` — a
+    // helper with nothing to do with the real problem. Six tests reported that
+    // same meaningless error and not one of them named the cause.
+    if (response.status !== 201 || data?.userId === undefined) {
+      throw new Error(
+        `Registration did not return a user: HTTP ${String(response.status)} ` +
+          JSON.stringify(response.body).slice(0, 400),
+      );
+    }
+    return { status: response.status, userId: data.userId };
   }
 
   /** Which mechanism, if any, claimed this customer. */
@@ -263,11 +286,10 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
       await aDriverCampaignCode();
 
       const { userId } = await register(token);
-      expect(userId).toBeDefined();
 
-      expect(await winnerFor(userId ?? '')).toBe('CAMPAIGN_PROMOTER');
+      expect(await winnerFor(userId)).toBe('CAMPAIGN_PROMOTER');
       const row = await prisma.referralRedemption.findUniqueOrThrow({
-        where: { refereeUserId: userId ?? '' },
+        where: { refereeUserId: userId },
       });
       expect(row.campaignPromoterId).toBe(promoterId);
     });
@@ -283,7 +305,7 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
 
       expect(status).toBe(201);
       // The locked rule: it must not be retried as another mechanism.
-      expect(await winnerFor(userId ?? '')).toBe('NONE');
+      expect(await winnerFor(userId)).toBe('NONE');
     });
 
     it('a driver campaign code wins when no campaign token is offered', async () => {
@@ -292,7 +314,7 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
 
       const { userId } = await register(code);
 
-      expect(await winnerFor(userId ?? '')).toBe('DRIVER_GROWTH_CAMPAIGN');
+      expect(await winnerFor(userId)).toBe('DRIVER_GROWTH_CAMPAIGN');
     });
 
     it('a standing referral code reaches the standing programme', async () => {
@@ -301,13 +323,13 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
 
       const { userId } = await register(code);
 
-      expect(await winnerFor(userId ?? '')).toBe('STANDING_PROGRAMME');
+      expect(await winnerFor(userId)).toBe('STANDING_PROGRAMME');
     });
 
     it('no code at all claims nobody', async () => {
       if (!databaseAvailable) return;
       const { userId } = await register();
-      expect(await winnerFor(userId ?? '')).toBe('NONE');
+      expect(await winnerFor(userId)).toBe('NONE');
     });
 
     /**
@@ -361,7 +383,7 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
       const { status, userId } = await register(token);
 
       expect(status).toBe(201);
-      expect(await winnerFor(userId ?? '')).toBe('NONE');
+      expect(await winnerFor(userId)).toBe('NONE');
     });
 
     it('a paused campaign acquires nobody', async () => {
@@ -374,7 +396,7 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
 
       const { userId } = await register(token);
 
-      expect(await winnerFor(userId ?? '')).toBe('NONE');
+      expect(await winnerFor(userId)).toBe('NONE');
     });
 
     it('a second promoter cannot take a customer the first already acquired', async () => {
@@ -383,13 +405,13 @@ describe('DPX-PROMO-REF-001 over HTTP', () => {
       const second = await aPromoter();
 
       const { userId } = await register(first.token);
-      expect(await winnerFor(userId ?? '')).toBe('CAMPAIGN_PROMOTER');
+      expect(await winnerFor(userId)).toBe('CAMPAIGN_PROMOTER');
 
       // The second promoter's token, same customer, after the fact. There is
       // no HTTP path that re-attributes an existing customer — the constraint
       // is what makes that true, and this asserts the row never moves.
       const row = await prisma.referralRedemption.findUniqueOrThrow({
-        where: { refereeUserId: userId ?? '' },
+        where: { refereeUserId: userId },
       });
       expect(row.campaignPromoterId).toBe(first.promoterId);
       expect(row.campaignPromoterId).not.toBe(second.promoterId);
