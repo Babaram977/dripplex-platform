@@ -1,13 +1,29 @@
-# DPX-UI — Token adoption register
+# DPX-UI — Zero-visual-delta token adoption register
 
 Status of design-token **adoption** in the shared UI kit, and the gaps this pass
 deliberately recorded instead of closing. Written during the token-adoption pass
 of 2026-09-12 (`feat/ui-token-adoption`).
 
-Scope of that pass was adoption only: replace a hardcoded number with the token
-that already holds the same number. It changed no rendered dimension and made no
-design decision. Everything under "Open" below is a decision for the founder or a
-later increment, not an oversight.
+## Rule this pass was held to (founder, 2026-09-12)
+
+> We are not allowed to redesign anything under the label of "token adoption."
+> Do not change the visual design, dimensions, proportions, spacing
+> relationships, typography sizes, icon sizes, component structure, or layout
+> behaviour. This is strictly a token substitution/adoption pass. If Figma
+> currently measures 52px, 20px, 16px, only replace the hardcoded value with an
+> existing token that resolves to that exact same value. Do not choose a
+> different token because it seems more compact, cleaner, or more consistent. If
+> no existing token exactly represents the current measured value, leave the
+> value unchanged and report it. Do not invent a new token or alter the
+> measurement. The objective is zero visual change. Figma remains the visual
+> source of truth. Any proposed visual/density change belongs in a separate
+> design-change pass requiring approval. Before/after computed CSS values must be
+> compared; the PR should demonstrate that token substitution produces the same
+> rendered dimensions as before.
+
+The pass is therefore **zero-visual-delta token adoption**, not "UI density
+improvement". Everything under "Open" below is a decision for the founder or a
+later increment, not an oversight. Nothing under "Open" was acted on.
 
 ---
 
@@ -61,20 +77,10 @@ the way that matters: they exist, they are already compact, and they are unused.
 
 ### One honest consequence, not a silent change
 
-`px-5` is Tailwind's own step and emits `1.25rem`; `px-page` emits `20px`. At the
-default 16px root these are the same 20 pixels, and no stylesheet in the repo
-overrides the root font size, so nothing renders differently today. They diverge
-only if a user raises their browser's base font size, where the old gutter would
-grow and the new one will not.
-
-That is a real difference and it is reported rather than buried. It is also the
-behaviour the surrounding code already has: these are fixed-width phone-frame
-screens (`PHONE_W = 390`) whose every other dimension — `h-[52px]`, `text-[11px]`,
-the 200px cover band — is px. A gutter that scaled while the content beside it did
-not would break the frame, so px is the consistent choice and the rem was
-incidental. If the founder wants the gutter to scale with user font size, that is
-a deliberate accessibility decision and should be taken for the whole frame at
-once, not for the gutter alone.
+`px-5` emits `1.25rem` and `px-page` emits `20px`. Same 20 pixels at the root font
+size in force, so nothing renders differently today. The full before/after and the
+reasoning are in §5.1, including the one-line alternative if byte-identical units
+are preferred.
 
 ## 3. Open — recorded, not decided
 
@@ -147,12 +153,58 @@ for it. Any redesign is a separate phase with a Figma decision behind it.
 
 ## 5. Verification performed
 
+### 5.1 Before/after computed CSS — the substitution demonstration
+
+Both columns are emitted by the Tailwind CLI run against `customer-web`'s own
+`tailwind.config.ts`, on the commit before and the commit after.
+
+| Site                      | Before (class → declaration)           | After (class → declaration)            | Rendered                                 |
+| ------------------------- | -------------------------------------- | -------------------------------------- | ---------------------------------------- |
+| Status-bar inset, 6 sites | `pt-[52px]` → `padding-top: 52px`      | `pt-status-bar` → `padding-top: 52px`  | identical, byte for byte                 |
+| Page gutter, 35 sites     | `px-5` → `padding-left/right: 1.25rem` | `px-page` → `padding-left/right: 20px` | identical at the root font size in force |
+
+No stylesheet in the repo sets a root `font-size`, so `1rem` is the browser
+default 16px and `1.25rem` is exactly the 20px that `PAGE_H_PADDING` holds and
+that Figma measures. The unit changed; the measurement did not.
+
+That unit change is the single place this pass is not literally byte-identical,
+so it is stated rather than buried. It is faithful to the rule as written — the
+measured value is 20px and `PAGE_H_PADDING = 20` is a px token — and it matches
+the surrounding code, which is a fixed-width phone frame (`PHONE_W = 390`) whose
+every other dimension (`h-[52px]`, `text-[11px]`, the 200px cover band) is already
+px. The two diverge only if a user raises their browser's base font size, where
+the gutter would previously have grown while the content beside it did not.
+
+If the founder would rather the emitted CSS be byte-identical including the unit,
+that is one line in `tailwind.preset.ts` (`page: '1.25rem'`) and no change to any
+component.
+
+### 5.2 The whole emitted-CSS diff
+
+Running the Tailwind CLI on `customer-web`'s config before and after produces
+exactly two differences in the entire stylesheet — the two rules above. Nothing
+else in the emitted CSS moved.
+
+### 5.3 The whole source diff
+
+Every changed line in every component differs **only** in `px-5` → `px-page` or
+`pt-[52px]` → `pt-status-bar`. No element, prop, structure, typography class,
+icon size, radius, height, width, gap or margin was touched; the rest of each
+className string is carried across unchanged. This is machine-checked, not
+asserted: filtering the component diff for any changed token other than those two
+returns nothing.
+
+The only other source changes are the `spacing` extension in
+`tailwind.preset.ts`, the `FAB_BOTTOM` import in `homeScreen.tsx`, and one stale
+doc comment in `ProductGrid.tsx` that named a class which no longer exists.
+
+### 5.4 Suites
+
 - `packages/ui`: typecheck, lint, vitest — green.
 - `customer-web`: typecheck, lint, `next build` — green.
 - `super-app`: typecheck, `vite build` — green.
-- Tailwind CSS emitted from `customer-web`'s real production build:
-  `.px-page{padding-left:20px;padding-right:20px}`,
-  `.pt-status-bar{padding-top:52px}`, and zero occurrences of `.pt-\[52px\]`.
-- The before/after utility diff was taken by running the Tailwind CLI against
-  `customer-web`'s own config on both sides; the only difference is the two added
-  rules above.
+- Re-run after lint-staged reformatted 35 files during the commit, per the
+  standing rule that a pre-commit reformat invalidates the run before it.
+- `customer-web`'s real production build emits
+  `.px-page{padding-left:20px;padding-right:20px}` and
+  `.pt-status-bar{padding-top:52px}`, with zero occurrences of `.pt-\[52px\]`.
