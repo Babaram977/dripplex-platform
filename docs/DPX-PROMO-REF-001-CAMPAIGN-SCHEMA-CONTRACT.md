@@ -491,3 +491,125 @@ so a rollback is a `DROP` of what was added rather than a restore.
   group-by-promoter reads.
 - The exact `REFERRER_WALLETS` mapping for each participant class, so that an
   influencer's reward lands somewhere that exists.
+
+---
+
+# The three traces
+
+## Trace 1 — triggers, views, and FK behaviour on `promotions`
+
+**No triggers and no views touch `promotions`.** The only trigger in the entire
+migration history is `support_messages_append_only`
+(`20260913090000_support_conversations/migration.sql:145`), in the support
+domain. No `CREATE VIEW` or `CREATE MATERIALIZED VIEW` exists anywhere. So a
+`Restrict` FK has nothing to interact with.
+
+**Existing FK behaviour is `ON DELETE CASCADE`**: `promotion_redemptions.promotion_id`
+cascades from `promotions`
+(`20260721210000_s1_c14_c23_platform_supporting_systems/migration.sql:411`).
+
+**But promotions are never hard-deleted.** No `promotion.delete(` or
+`deleteMany(` exists in application code — removal is the soft `deletedAt`
+column. The Cascade is therefore latent, which is why diverging from it costs
+nothing today and protects attribution if a hard delete is ever introduced.
+
+`Restrict` on `campaign_promoters.promotion_id` stands.
+
+## Trace 2 — index requirements for `campaignPromoterId`
+
+`referral_redemptions` carries only `@@index([referralId])` and
+`@@index([status])`. There is no existing `groupBy` or `aggregate` in
+`referrals.service.ts` or `admin-referrals.controller.ts`, so the Ops dashboard's
+per-promoter rollups are new queries whose indexes must be **designed, not
+inferred from existing traffic**.
+
+The dashboard's stated reads are, per promoter: referrals, qualified referrals,
+rewards earned, pending rewards. That is a group-by on `campaignPromoterId` with a
+filter on `status`. Two indexes:
+
+```
+@@index([campaignPromoterId])          // attribution lookups, FK support
+@@index([campaignPromoterId, status])  // the dashboard's group-and-filter
+```
+
+The composite is not redundant with the single: "pending rewards for this
+promoter" filters both columns, and a leading-column-only index would scan every
+redemption for that promoter. Both are cheap on a table this size and neither is
+on a write-hot path — a redemption is written once per acquisition.
+
+## Trace 3 — payout destination for every participant class
+
+**This is where the design could have broken, and the finding changes nothing
+about the wallet enum.**
+
+`WalletOwnerType` is `CUSTOMER MERCHANT RIDER DRIVER PLATFORM`
+(`schema.prisma:3486`). There is no INFLUENCER, CREATOR or AMBASSADOR, and none
+is being added.
+
+What the trace established, in order:
+
+1. **`Wallet` is polymorphic and has no FK to any profile.** `ownerType` +
+   `ownerId`, `@@unique([ownerType, ownerId, currency])`, created on demand by an
+   upsert (`wallet.service.ts:920-940`). Nothing requires the owner to hold a
+   customer profile.
+2. **The payout destination is keyed on the User, not a persona.**
+   `CustomerBankAccount.userId` (`:4505`) and
+   `bankAccountsService.assertOwned(userId, bankAccountId)`
+   (`bank-accounts.service.ts:309`) both key on the user id. Every non-merchant
+   persona withdraws through `customer_bank_accounts`
+   (`withdrawal.service.ts:119-134`).
+3. **No commission is charged on such a payout.**
+   `COMMISSION_OWNER_BY_WALLET_OWNER` is a `Partial<Record<...>>` that lists only
+   RIDER and DRIVER — "Customers have none — they owe DrippleX nothing on a
+   payout of their own topped-up balance" (`withdrawal.service.ts:80-86`). A
+   marketing payment should not be commissioned, so this is correct.
+4. **No KYC gate exists in the withdrawal path.**
+
+So an influencer, creator or ambassador who is an existing DrippleX **user** can
+hold a CUSTOMER wallet, link a bank account and withdraw. **This is not the
+driver/customer path being assumed to fit** — it is the identical reasoning the
+schema already committed to for `FLEET_OWNER`:
+
+> A fleet owner has no fleet wallet … A referral is not that: it is the owner's
+> own marketing, earned by the person, so it is paid into the personal wallet
+> they can actually withdraw from.
+> — `referral-lifecycle.service.ts:44-48`
+
+An influencer's referral reward is that same thing: the person's own marketing.
+
+### The structural finding, and why `REFERRER_WALLETS` needs no change
+
+`ReferralRedemption.referralId` is **NOT NULL** (`:4751`), and `Referral.userId`
+is `@unique` (`:4675`) — one public code row per user, created lazily by
+`getOrCreateMyCode` (`referrals.service.ts:53`). So a campaign promoter must have
+a `Referral` row before any redemption can be attributed to them.
+
+That constraint turns out to deliver the founder's invariant exactly, with no
+enum change anywhere:
+
+| Question                 | Answered by                               | Where it lives   |
+| ------------------------ | ----------------------------------------- | ---------------- |
+| Eligibility and **rate** | `CampaignPromoter.participantType`        | the campaign row |
+| **Wallet destination**   | `Referral.ownerType` → `REFERRER_WALLETS` | the referral row |
+
+`REFERRER_WALLETS` stays exactly as it is. An influencer's `Referral.ownerType`
+is `CUSTOMER`, which routes to their personal withdrawable wallet — the
+FLEET_OWNER outcome, reached by the existing map.
+
+### Two concrete requirements this produces
+
+1. **Adding a promoter to a campaign must ensure their `Referral` row exists**
+   (call `getOrCreateMyCode`). Without it the first qualification fails on a
+   NOT NULL foreign key — at payout time, on live money, which is the worst place
+   to discover it. This is a service requirement with a test, not an assumption.
+2. **`ReferralOwnerType` must not gain INFLUENCER/CREATOR/AMBASSADOR.** It looks
+   like the natural place for them and it is not: it routes money, and those
+   classes route to the same personal wallet a customer uses. The participant
+   class is recorded on `CampaignPromoter`, where it belongs. Stated because it
+   is the edit a future reader will be tempted to make.
+
+### No financial-routing gap remains
+
+Every newly supported participant class has a real, withdrawable destination
+through machinery that already exists. Nothing is papered over and no new wallet
+type is required.
