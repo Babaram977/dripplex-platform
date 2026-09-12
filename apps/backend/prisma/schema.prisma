@@ -3999,13 +3999,18 @@ model PromotionRedemption {
 model LoyaltySetting {
   id String @id @db.Uuid
 
-  /// How many points buy one naira. Founder decision: 200.
+  /// How many points buy one naira. Founder ruling 2026-09-12: **100**,
+  /// superseding the 200 this table shipped with the day before.
   ///
   /// The most consequential number on this table — it re-prices every unspent
   /// balance on the platform at once — so it is validated hard and every change
   /// is audited with the figure before and after. A redemption snapshots the
   /// rate it used, so re-pricing never rewrites one that already happened.
-  pointsPerNaira Int @default(200) @map("points_per_naira")
+  ///
+  /// Halving it doubled the naira value of every outstanding balance. That was
+  /// the point of the ruling, not a side effect: the founder's economics are
+  /// ₦150 = 15,000 points and ₦350 = 35,000 points, which only holds at 100:1.
+  pointsPerNaira Int @default(100) @map("points_per_naira")
 
   /// Whether points may be turned into withdrawable wallet cash at all.
   ///
@@ -4019,9 +4024,14 @@ model LoyaltySetting {
   /// that starts on changes nothing.
   storeRedemptionEnabled Boolean @default(true) @map("store_redemption_enabled")
 
-  /// The smallest cash-out allowed, in points. Seeded at one naira's worth,
-  /// which is the floor the conversion already implied.
-  minRedemptionPoints Int @default(200) @map("min_redemption_points")
+  /// The smallest cash-out allowed, in points. One naira's worth, which is the
+  /// floor the conversion already implied.
+  ///
+  /// Moved 200 -> 100 with the rate, deliberately. It is only validated as a
+  /// whole multiple of `pointsPerNaira`, and 200 is a whole multiple of 100 —
+  /// so leaving it would have passed every check while silently doubling the
+  /// minimum cash-out from ₦1 to ₦2. Its meaning is "one naira", not "200".
+  minRedemptionPoints Int @default(100) @map("min_redemption_points")
 
   /// The most a holder may cash out in a rolling 24 hours, in points. Null is
   /// uncapped, which is what shipped. A cap is the middle setting between

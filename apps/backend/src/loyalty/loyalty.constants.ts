@@ -46,16 +46,27 @@ export const LOYALTY_EVENT_POINTS = {
 export const LOYALTY_SETTING_ID = '00000000-0000-4000-8000-00000000100a';
 
 /**
- * What a DX point is worth. Founder decision: 200 points = ₦1.
+ * What a DX point is worth. Founder ruling 2026-09-12: **100 points = ₦1**.
+ *
+ * This supersedes the 200 that DPX-LOYALTY-005 shipped the day before. The
+ * founder's stated economics are ₦150 = 15,000 points, ₦200 = 20,000 points and
+ * ₦350 = 35,000 points, which is 100:1 at every point; the previous 200 was not
+ * the intended figure. Changing it doubles what every outstanding balance is
+ * worth in naira — no points are created or destroyed, but a point goes from
+ * ₦0.005 to ₦0.01, and the platform's liability against unspent points doubles
+ * with it. That is an accepted, explicitly approved consequence, recorded here
+ * because a number this consequential should say so where it is defined.
  *
  * Redemptions are required to be whole multiples of this, so no fraction of a
  * naira is ever silently rounded away from a customer.
  *
  * DPX-LOYALTY-005 moved the live figure into `loyalty_settings`, where an
  * operator edits it without a deployment. This constant now only seeds that
- * row, and is the fallback for a read that somehow finds no row at all.
+ * row, and is the fallback for a read that somehow finds no row at all — so
+ * changing it alone does **not** reprice a database whose row already exists.
+ * The migration that carries this ruling updates the live row too.
  */
-export const LOYALTY_POINTS_PER_NAIRA = 200;
+export const LOYALTY_POINTS_PER_NAIRA = 100;
 
 /** Founder decision: points are good for a year from the day they are earned. */
 export const LOYALTY_POINT_EXPIRY_DAYS = 365;

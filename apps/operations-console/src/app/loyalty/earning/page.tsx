@@ -181,7 +181,10 @@ function ProgrammeCard({
   const update = useUpdateLoyaltyEarningProgramme();
   const [draft, setDraft] = React.useState<Draft>(() => toDraft(programme));
   const [confirming, setConfirming] = React.useState(false);
-  const pointsPerNaira = impact?.pointsPerNaira ?? 200;
+  // Falls back only while the impact call is in flight. Kept in step with
+  // `LOYALTY_POINTS_PER_NAIRA`: a stale fallback here quotes a rate the platform
+  // no longer honours.
+  const pointsPerNaira = impact?.pointsPerNaira ?? 100;
 
   // The server is the source of truth — a value changed in another tab, or one
   // the server refused, must win over what is sitting in this form.

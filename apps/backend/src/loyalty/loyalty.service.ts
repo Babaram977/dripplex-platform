@@ -44,8 +44,9 @@ export interface LoyaltyAccountOverview {
  */
 export interface LoyaltyPointsSummary {
   balance: number;
-  /** Founder decision: 200 points = ₦1 — now an Ops setting rather than a
-   *  constant, so a screen quoting it must read it from here. */
+  /** Founder ruling 2026-09-12: 100 points = ₦1 — an Ops setting rather than a
+   *  constant, so a screen quoting it must read it from here and never restate
+   *  the number, which has already moved once. */
   pointsPerNaira: number;
   /** Naira the current balance is worth, rounded down to whole naira. */
   balanceValue: number;
@@ -362,7 +363,8 @@ export class LoyaltyService {
    * Redemption used to burn the points and pay nothing — the ledger said
    * "Redeemed loyalty points for discount" and no discount existed anywhere in
    * the platform. Now it credits the customer's wallet at the founder-set rate
-   * of 200 points to the naira, which makes a point worth something real in
+   * Operations holds in `loyalty_settings`, which makes a point worth something
+   * real in
    * every place the wallet already works: rides, deliveries, orders, transfers
    * and payouts.
    *

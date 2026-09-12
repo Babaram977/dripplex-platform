@@ -75,10 +75,10 @@ describe('loyalty settings', () => {
     await prisma.loyaltySetting.update({
       where: { id: LOYALTY_SETTING_ID },
       data: {
-        pointsPerNaira: 200,
+        pointsPerNaira: 100,
         walletRedemptionEnabled: true,
         storeRedemptionEnabled: true,
-        minRedemptionPoints: 200,
+        minRedemptionPoints: 100,
         dailyRedemptionPointsCap: null,
       },
     });
@@ -100,28 +100,36 @@ describe('loyalty settings', () => {
     return user.id;
   }
 
-  it('ships with exactly the behaviour that was already live', async () => {
+  it('holds the canonical valuation the founder ruled, not the one it shipped with', async () => {
     if (!databaseAvailable) return;
-    // The founder's instruction was "as shipped". Every default is the constant
-    // it replaced: 200 points to the naira, cash-out on, in-store on, no cap.
+    // Founder ruling 2026-09-12: 100 points = NGN 1, superseding the 200 that
+    // DPX-LOYALTY-005 shipped the day before. This asserts the migrated row,
+    // not a default, because changing a column default does nothing to a row
+    // that already exists — which is exactly how a re-pricing gets missed.
+    //
+    // `minRedemptionPoints` moved with it deliberately. It means "one naira's
+    // worth", and 200 is a whole multiple of 100, so leaving it would have
+    // passed every validator while doubling the smallest cash-out to NGN 2.
     const current = await settings.get();
     expect(current).toMatchObject({
-      pointsPerNaira: 200,
+      pointsPerNaira: 100,
       walletRedemptionEnabled: true,
       storeRedemptionEnabled: true,
-      minRedemptionPoints: 200,
+      minRedemptionPoints: 100,
       dailyRedemptionPointsCap: null,
     });
   });
 
-  it('redeems 200 points for ₦1 of wallet credit, unchanged', async () => {
+  it('redeems 100 points for ₦1 of wallet credit at the ruled rate', async () => {
     if (!databaseAvailable) return;
+    // The same 2,000 points that paid ₦10 under the superseded 200 now pay ₦20.
+    // That doubling is the ruling, not a defect.
     const userId = await holderWith(2000);
 
     await loyalty.redeemPoints(userId, 2000);
 
     const wallet = await walletService.getWallet('CUSTOMER', userId);
-    expect(wallet.availableBalance).toBeCloseTo(10);
+    expect(wallet.availableBalance).toBeCloseTo(20);
   });
 
   it('closes the cash-out without touching the balance, when Operations says so', async () => {
@@ -153,14 +161,18 @@ describe('loyalty settings', () => {
 
   it('re-prices points when Operations changes the rate', async () => {
     if (!databaseAvailable) return;
-    // 100 points to the naira makes the same 2,000 points worth ₦20.
+    // Deliberately 50, not 100. This test used to set 100 against a stored 200;
+    // once the founder's ruling made 100 the stored rate, setting 100 here would
+    // have asserted nothing at all while still passing — a test that proves the
+    // re-pricing path works only because the number it writes differs from the
+    // one already there. 50 makes the same 2,000 points worth ₦40.
     const userId = await holderWith(2000);
-    await settings.update({ pointsPerNaira: 100 }, userId);
+    await settings.update({ pointsPerNaira: 50, minRedemptionPoints: 50 }, userId);
 
     await loyalty.redeemPoints(userId, 2000);
 
     const wallet = await walletService.getWallet('CUSTOMER', userId);
-    expect(wallet.availableBalance).toBeCloseTo(20);
+    expect(wallet.availableBalance).toBeCloseTo(40);
   });
 
   it('enforces a rolling daily cap across separate redemptions', async () => {

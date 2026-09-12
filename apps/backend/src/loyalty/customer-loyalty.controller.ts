@@ -48,7 +48,9 @@ export class CustomerLoyaltyController {
   }
 
   /**
-   * Redeems points into the customer's own wallet at 200 points to the naira.
+   * Redeems points into the customer's own wallet at the rate Operations has
+   * set (`loyalty_settings.points_per_naira`; 100 since the founder ruling of
+   * 2026-09-12).
    * The response carries the credited amount and the wallet's new balance, so
    * the app can show what the redemption was actually worth rather than
    * inferring it.

@@ -128,10 +128,12 @@ export class LoyaltyStoreRedemptionService {
       throw new ValidationDomainException('Points must be a whole number');
     }
 
-    // DPX-LOYALTY-005 — the conversion rate is an Operations setting now. The
-    // in-store switch is seeded on and the rate seeded at 200, so nothing about
-    // spending at a counter changes; the founder's instruction was explicitly
-    // not to change in-store spending, and a switch that starts on does not.
+    // DPX-LOYALTY-005 — the conversion rate is an Operations setting now, read
+    // here rather than assumed, so this path follows a re-pricing without a
+    // deployment. The in-store switch is seeded on because the founder's
+    // instruction was explicitly not to change in-store spending, and a switch
+    // that starts on does not. The rate itself is 100 since the ruling of
+    // 2026-09-12, which doubled what the same points buy at a counter.
     const setting = await this.settings.getEffective();
     if (points > 0 && !setting.storeRedemptionEnabled) {
       throw new ValidationDomainException(
