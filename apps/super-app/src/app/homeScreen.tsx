@@ -25,6 +25,7 @@ import type {
   WalletLedgerEntryDto,
 } from '../lib/api';
 import { ImageWithFallback } from '@/app/components/figma/ImageWithFallback';
+import { FAB_BOTTOM } from '../tokens/spacing';
 import { Icon, type IconName } from './icons';
 import { monogram } from './marketplaceScreen';
 
@@ -1474,10 +1475,12 @@ function BottomNav({ active, onChange }: { active: NavTab; onChange: (t: NavTab)
 // ─────────────────────────────────────────────────────────────────────────────
 // FLOATING AI BUTTON
 // ─────────────────────────────────────────────────────────────────────────────
-/** Where the Ask Drip button sits and how big it is. Named so the scrollable
- *  body can reserve exactly enough room to scroll clear of it — the two were
- *  independent numbers, and the spacer was the smaller of them. */
-const FAB_BOTTOM = 94;
+/** How big the Ask Drip button is. Its offset from the bottom is
+ *  `FAB_BOTTOM` from the spacing tokens — the same value `storeScreen`
+ *  already imports, and which this file previously redeclared as its own
+ *  `94`. Named so the scrollable body can reserve exactly enough room to
+ *  scroll clear of it: the two were independent numbers, and the spacer was
+ *  the smaller of them. */
 const FAB_SIZE = 52;
 
 function FAB({ onPress }: { onPress: () => void }) {

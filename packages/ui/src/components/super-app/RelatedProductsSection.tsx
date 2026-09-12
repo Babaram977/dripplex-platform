@@ -18,8 +18,8 @@ export function SuperAppRelatedProductsSection({
   const { heading } = useSuperAppFonts();
   return (
     <div className="mb-4">
-      <p className={`mb-3 px-5 text-[14px] font-semibold text-white ${heading}`}>{title}</p>
-      <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+      <p className={`px-page mb-3 text-[14px] font-semibold text-white ${heading}`}>{title}</p>
+      <div className="px-page flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {products.map((product) => (
           <SuperAppRelatedProductCard
             key={product.id}

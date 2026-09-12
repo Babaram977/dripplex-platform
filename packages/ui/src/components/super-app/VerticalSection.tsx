@@ -36,7 +36,7 @@ export function SuperAppVerticalListCard<T>({
   return (
     <div className="mb-5">
       <SuperAppSectionHeader title={title} subtitle={subtitle} onSeeAll={onSeeAll} />
-      <div className="flex flex-col gap-0 px-5">
+      <div className="px-page flex flex-col gap-0">
         <div
           className="overflow-hidden rounded-3xl"
           style={{ background: NAVY_CARD, border: `1.5px solid ${BORDER}` }}

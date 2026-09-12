@@ -20,7 +20,7 @@ export function SuperAppCategoryGrid({
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
-    <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+    <div className="px-page flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
       {categories.map((c) => {
         const on = c.key === activeKey;
         return (

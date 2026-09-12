@@ -33,13 +33,13 @@ export function SuperAppFeaturedMerchantsSection({
         onSeeAll={onSeeAll}
       />
       {!loaded ? (
-        <div className="flex gap-3 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+        <div className="px-page flex gap-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {[1, 2, 3].map((i) => (
             <SuperAppSkeleton key={i} w={290} h={178} />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-3 px-5">
+        <div className="px-page flex flex-col gap-3">
           {merchants.map((m) => (
             <SuperAppFeaturedMerchantCard
               key={m.key}

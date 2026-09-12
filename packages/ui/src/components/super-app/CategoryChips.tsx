@@ -26,7 +26,7 @@ export function SuperAppCategoryChips({
   const { body } = useSuperAppFonts();
   return (
     <div className="mb-4 mt-3">
-      <div className="flex gap-2 overflow-x-auto px-5" style={{ scrollbarWidth: 'none' }}>
+      <div className="px-page flex gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {chips.map((c) => {
           const on = active === c.key;
           return (

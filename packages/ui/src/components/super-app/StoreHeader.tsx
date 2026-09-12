@@ -58,7 +58,7 @@ export function SuperAppStoreHeader({
     <div className="relative flex-shrink-0 overflow-hidden">
       <div className="relative" style={{ height: 200, background: merchant.coverBackground }}>
         <div
-          className="flex items-center justify-between px-5 pb-1 pt-[52px]"
+          className="px-page pt-status-bar flex items-center justify-between pb-1"
           style={{ fontSize: 11, color: 'rgba(255,255,255,.35)' }}
         >
           <span className={body}>{time}</span>

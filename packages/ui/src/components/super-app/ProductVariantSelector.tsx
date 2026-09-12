@@ -30,7 +30,7 @@ export function SuperAppProductVariantSelector({
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();
   return (
-    <div className="mb-4 px-5">
+    <div className="px-page mb-4">
       <p className={`mb-2 text-[13px] font-semibold text-white ${heading}`}>{label}</p>
       <div className="flex flex-wrap gap-2">
         {options.map((opt) => {

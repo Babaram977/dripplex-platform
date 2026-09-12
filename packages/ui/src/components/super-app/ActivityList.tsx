@@ -31,7 +31,7 @@ export function SuperAppActivityList({
 }): React.JSX.Element {
   const { heading, body } = useSuperAppFonts();
   return (
-    <div className="mb-4 px-5">
+    <div className="px-page mb-4">
       <SuperAppSectionHeader title={title} onSeeAll={onSeeAll} />
       {!loaded ? (
         <div className="flex flex-col gap-2">

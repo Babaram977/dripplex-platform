@@ -34,7 +34,7 @@ export function SuperAppSectionHeader({
   const alignClass = subtitle ? 'items-end' : 'items-center';
   const seeAllPadding = subtitle ? 'pb-0.5' : '';
   return (
-    <div className={`mb-3 flex ${alignClass} justify-between px-5`}>
+    <div className={`mb-3 flex ${alignClass} px-page justify-between`}>
       <div>
         <p className={`text-[15px] font-bold leading-tight ${heading}`} style={{ color: '#FFF' }}>
           {title}

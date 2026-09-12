@@ -20,7 +20,7 @@ export function SuperAppWalletTransactionRow({
 }): React.JSX.Element {
   const { body } = useSuperAppFonts();
   return (
-    <div className="flex items-center justify-between px-5 py-3">
+    <div className="px-page flex items-center justify-between py-3">
       <div className="flex items-center gap-3">
         <div
           className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-full"

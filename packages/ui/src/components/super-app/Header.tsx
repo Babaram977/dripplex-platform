@@ -52,14 +52,14 @@ export function SuperAppHeader({
       />
 
       <div
-        className="flex items-center justify-between px-5 pb-1 pt-[52px]"
+        className="px-page pt-status-bar flex items-center justify-between pb-1"
         style={{ fontSize: 11, color: 'rgba(255,255,255,.38)' }}
       >
         <span className={body}>{time}</span>
         <SuperAppStatusBarIcons />
       </div>
 
-      <div className="relative z-10 mt-2 flex items-center justify-between px-5">
+      <div className="px-page relative z-10 mt-2 flex items-center justify-between">
         <SuperAppGreetingHeader greeting={greeting} name={name} tagline={tagline} />
         <div className="flex items-center gap-2.5">
           <SuperAppNotificationBell
