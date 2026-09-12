@@ -40,6 +40,7 @@ describe('universal acquisition incentive', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let rides: RidesService;
+  let ridesNoRedeemContention: RidesService;
   const users: string[] = [];
 
   beforeAll(async () => {
@@ -66,12 +67,42 @@ describe('universal acquisition incentive', () => {
           Promise.resolve({ totalFare: FARE, baseFare: FARE, distanceKm: 3, durationMin: 10 }),
       } as never,
       audit,
-      {} as never,
+      // dispatchRide is the last step of requestRide and returns what the
+      // caller sees; the reservation has already happened by then, so the ride
+      // row itself is all this spec needs back.
+      {
+        dispatchRide: (rideId: string) => prisma.ride.findUniqueOrThrow({ where: { id: rideId } }),
+      } as never,
       {} as never,
       {} as never,
       promotions,
       bus,
+      { assertNotRequired: () => Promise.resolve(undefined) } as never,
       {} as never,
+      { findExclusion: () => Promise.resolve(null) } as never,
+    );
+    ridesNoRedeemContention = new RidesService(
+      prisma,
+      {
+        estimate: () =>
+          Promise.resolve({ totalFare: FARE, baseFare: FARE, distanceKm: 3, durationMin: 10 }),
+      } as never,
+      audit,
+      {
+        dispatchRide: (rideId: string) => prisma.ride.findUniqueOrThrow({ where: { id: rideId } }),
+      } as never,
+      {} as never,
+      {} as never,
+      {
+        previewPromotion: (i: never) => promotions.previewPromotion(i),
+        previewSinglePromotion: (i: never) => promotions.previewSinglePromotion(i),
+        // The only stub: redemption always succeeds, so the reservation is the
+        // sole limiter under concurrency.
+        redeemForReference: () =>
+          Promise.resolve({ redemption: { id: 'stub' }, discountAmount: 0, creditAmount: 0 }),
+      } as never,
+      bus,
+      { assertNotRequired: () => Promise.resolve(undefined) } as never,
       {} as never,
       { findExclusion: () => Promise.resolve(null) } as never,
     );
@@ -238,28 +269,169 @@ describe('universal acquisition incentive', () => {
     expect(marketplace.discounts.find((d) => d.promotionId === INCENTIVE_ID)).toBeUndefined();
   });
 
-  it('grants the same slot to simultaneous requests — measured, not assumed', async () => {
+  async function request(customerId: string): Promise<{ id: string; promotionId: string | null }> {
+    return await rides.requestRide(
+      customerId,
+      {
+        rideType: RideType.ECONOMY,
+        pickupLatitude: 12,
+        pickupLongitude: 8,
+        dropoffLatitude: 12.1,
+        dropoffLongitude: 8.1,
+      },
+      {},
+    );
+  }
+
+  /**
+   * The same ride path, with redemption stubbed to always succeed.
+   *
+   * `redeemForReference` runs after the ride transaction in its own SERIALIZABLE
+   * transaction locking the promotion row, and its caller strips the discount
+   * when it fails — so five simultaneous redemptions lose races with each other
+   * and mask whatever the reservation did. Removing the row lock from the
+   * reservation then changes nothing observable, which is exactly the mutation
+   * that survived the first battery.
+   *
+   * Stubbing only the redemption leaves the reservation — the thing under test —
+   * completely real, and makes it the only limiter.
+   */
+  async function requestUncontendedRedemption(
+    customerId: string,
+  ): Promise<{ id: string; promotionId: string | null }> {
+    return await ridesNoRedeemContention.requestRide(
+      customerId,
+      {
+        rideType: RideType.ECONOMY,
+        pickupLatitude: 12,
+        pickupLongitude: 8,
+        dropoffLatitude: 12.1,
+        dropoffLongitude: 8.1,
+      },
+      {},
+    );
+  }
+
+  async function granted(customerId: string): Promise<number> {
+    return await prisma.ride.count({
+      where: {
+        customerId,
+        promotionId: INCENTIVE_ID,
+        status: { notIn: [RideStatus.CANCELLED, RideStatus.NO_DRIVERS_FOUND] },
+      },
+    });
+  }
+
+  it('never grants a fourth slot, however many requests arrive at once', async () => {
     if (!databaseAvailable) return;
-    // The counter is COMPLETED rides, and a ride being priced is not completed.
-    // So N simultaneous requests all read the same count and all price as
-    // eligible. This measures that window rather than asserting it away,
-    // because the honest question is not whether the reads race — they do —
-    // but whether the outcome can exceed three DISCOUNTED COMPLETED rides.
+    // Measured as a ratio, not asserted from one pass. Before the reservation
+    // this was the exposure: every concurrent request read the same COMPLETED
+    // count — which a ride being priced does not change — and all of them
+    // priced as eligible.
+    const RUNS = 6;
+    for (let run = 0; run < RUNS; run += 1) {
+      const customerId = await anAcquiredCustomer();
+
+      const results = await Promise.allSettled([
+        requestUncontendedRedemption(customerId),
+        requestUncontendedRedemption(customerId),
+        requestUncontendedRedemption(customerId),
+        requestUncontendedRedemption(customerId),
+        requestUncontendedRedemption(customerId),
+      ]);
+      expect(results.filter((r) => r.status === 'rejected')).toHaveLength(0);
+
+      // The founder's rule is a MAXIMUM, and that is what is asserted. Before
+      // the reservation this ran to five.
+      // Exactly three, every run. With redemption no longer contending, the
+      // reservation is the only thing deciding — so this is the row lock being
+      // measured, not merely a maximum that something else happens to enforce.
+      expect(await granted(customerId)).toBe(3);
+      // Every ride still happens; the only question is which carry the benefit.
+      expect(await prisma.ride.count({ where: { customerId } })).toBe(5);
+    }
+  });
+
+  it('grants a full three when the requests are merely close together', async () => {
+    if (!databaseAvailable) return;
+    // Five at the same instant can end with fewer than three discounted, and
+    // the reason is worth stating: `redeemForReference` runs after the ride
+    // transaction, in a SERIALIZABLE transaction that locks the promotion row,
+    // and its caller swallows a failure by stripping the discount. Five
+    // simultaneous redemptions of one promotion row therefore lose races with
+    // each other. That is pre-existing promotion behaviour, it errs towards
+    // giving away less rather than more, and the cap above is unaffected.
+    //
+    // Overlapping-but-not-identical arrivals — which is what real traffic looks
+    // like — still get the full three.
     const customerId = await anAcquiredCustomer();
-    await completeRides(customerId, 2);
+    for (let i = 0; i < 3; i += 1) {
+      await request(customerId);
+    }
+    expect(await granted(customerId)).toBe(3);
 
-    const quotes = await Promise.all([quote(customerId), quote(customerId), quote(customerId)]);
-    const discounted = quotes.filter((q) => q.promoDiscount > 0);
+    const fourth = await request(customerId);
+    expect(fourth.promotionId).toBeNull();
+  });
 
-    // All three are quoted the discount: each sees 2 prior completed rides.
-    expect(discounted).toHaveLength(3);
-    // And that is the exposure, stated plainly: rides 3, 4 and 5 would each
-    // carry 20% if all three were requested at once and all three completed.
-    // The cap holds for sequential riding, which is every ordinary customer,
-    // and leaks only for genuinely simultaneous requests by one person.
-    // Recorded in the increment report as an open decision rather than patched
-    // here: closing it means counting in-flight rides as consumed, which
-    // charges somebody for a ride they may cancel.
+  it('releases a slot when the ride is cancelled, and only then', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await anAcquiredCustomer();
+    const first = await request(customerId);
+    await request(customerId);
+    await request(customerId);
+    expect(await granted(customerId)).toBe(3);
+
+    // A fourth is refused while three are live.
+    const fourth = await request(customerId);
+    expect(fourth.promotionId).toBeNull();
+
+    // Cancelling one gives the slot back: a ride that never happened must not
+    // consume a benefit somebody was promised.
+    await prisma.ride.update({
+      where: { id: first.id },
+      data: { status: RideStatus.CANCELLED },
+    });
+    expect(await granted(customerId)).toBe(2);
+
+    const replacement = await request(customerId);
+    expect(replacement.promotionId).toBe(INCENTIVE_ID);
+    expect(await granted(customerId)).toBe(3);
+  });
+
+  it('a completed ride keeps its slot for good', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await anAcquiredCustomer();
+    const ride = await request(customerId);
+    await prisma.ride.update({ where: { id: ride.id }, data: { status: RideStatus.COMPLETED } });
+    await request(customerId);
+    await request(customerId);
+
+    const fourth = await request(customerId);
+
+    expect(fourth.promotionId).toBeNull();
+    expect(await granted(customerId)).toBe(3);
+  });
+
+  it('still grants exactly three when the rides are requested one at a time', async () => {
+    if (!databaseAvailable) return;
+    // The cap must not have been bought by breaking the ordinary path.
+    const customerId = await anAcquiredCustomer();
+    const outcomes: (string | null)[] = [];
+    for (let i = 0; i < 4; i += 1) {
+      const ride = await request(customerId);
+      await prisma.ride.update({ where: { id: ride.id }, data: { status: RideStatus.COMPLETED } });
+      outcomes.push(ride.promotionId);
+    }
+    expect(outcomes).toEqual([INCENTIVE_ID, INCENTIVE_ID, INCENTIVE_ID, null]);
+  });
+
+  it('leaves a ride with no acquisition entirely alone', async () => {
+    if (!databaseAvailable) return;
+    const customerId = await aUser();
+    const ride = await request(customerId);
+    expect(ride.promotionId).toBeNull();
+    expect(await granted(customerId)).toBe(0);
   });
 
   it('refuses a caller that cannot say how many rides somebody has completed', async () => {
