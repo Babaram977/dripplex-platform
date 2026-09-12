@@ -34,15 +34,50 @@ import { PrismaOrdersRepository } from './repositories/prisma-orders.repository'
 import { ReservationCleanupService } from './reservation-cleanup.service';
 
 @Module({
-  imports: [PrismaModule, AuditModule, NotificationsModule, CartModule, AddressesModule, ProductsModule, WalletModule, PricingModule, CommercialModule, UploadsModule],
-  controllers: [CustomerOrdersController, AdminOrdersController, MerchantOrdersController, AdminMerchantCommissionSettingsController, MerchantSettlementsController, MerchantBankSettlementWebhookController],
+  imports: [
+    PrismaModule,
+    AuditModule,
+    NotificationsModule,
+    CartModule,
+    AddressesModule,
+    ProductsModule,
+    WalletModule,
+    PricingModule,
+    CommercialModule,
+    UploadsModule,
+  ],
+  controllers: [
+    CustomerOrdersController,
+    AdminOrdersController,
+    MerchantOrdersController,
+    AdminMerchantCommissionSettingsController,
+    MerchantSettlementsController,
+    MerchantBankSettlementWebhookController,
+  ],
   providers: [
-    CheckoutService, MerchantOrdersService, InventoryReservationService, ReservationCleanupService, OrderCompletionSweepService,
-    MerchantCommissionSettingsService, MerchantSettlementService, MerchantBankSettlementService, OrderPaymentProofService,
+    CheckoutService,
+    MerchantOrdersService,
+    InventoryReservationService,
+    ReservationCleanupService,
+    OrderCompletionSweepService,
+    MerchantCommissionSettingsService,
+    MerchantSettlementService,
+    MerchantBankSettlementService,
+    OrderPaymentProofService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     { provide: CHECKOUT_INVENTORY_VALIDATOR, useClass: CatalogCheckoutInventoryValidator },
   ],
-  exports: [CheckoutService, InventoryReservationService, ORDERS_REPOSITORY, MerchantCommissionSettingsService],
+  // MerchantOrdersService is exported so the POS order-sync route drives the
+  // order lifecycle through the merchant's own service rather than through a
+  // second state machine of its own. Nothing about the lifecycle — its
+  // preconditions, its notifications, its refunds — is reimplemented elsewhere.
+  exports: [
+    CheckoutService,
+    InventoryReservationService,
+    ORDERS_REPOSITORY,
+    MerchantCommissionSettingsService,
+    MerchantOrdersService,
+  ],
 })
 export class OrdersModule {}

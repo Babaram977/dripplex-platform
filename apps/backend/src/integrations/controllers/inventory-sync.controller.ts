@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Get,
@@ -26,16 +25,11 @@ import {
   IntegrationCredentialGuard,
   type IntegrationAuthenticatedRequest,
 } from '../guards/integration-credential.guard';
+import { IDEMPOTENCY_KEY_HEADER, requireIdempotencyKey } from '../idempotency-key';
 import { IntegrationsService } from '../services/integrations.service';
 import { InventoryIngestionService } from '../services/inventory-ingestion.service';
 
 import type { InventoryLevel, InventorySyncSummary } from '../services/inventory-ingestion.service';
-
-/** The header a POS carries its batch idempotency key in (MKT-INT-001-J). */
-export const IDEMPOTENCY_KEY_HEADER = 'idempotency-key';
-
-/** Matches `InventoryUpdate.idempotencyKey`'s column width headroom. */
-const MAX_IDEMPOTENCY_KEY_LENGTH = 100;
 
 /**
  * Stock level synchronisation (MKT-INT-001-J).
@@ -106,18 +100,7 @@ export class InventorySyncController {
       throw new UnauthorizedException('Integration credentials required');
     }
 
-    const batchKey = (idempotencyKey ?? '').trim();
-    if (batchKey === '') {
-      // Required, not optional. Without a key a retried push is a second
-      // distinct write, and the retry a POS makes after a timeout is exactly
-      // the case idempotency exists for.
-      throw new BadRequestException('Idempotency-Key header is required');
-    }
-    if (batchKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
-      throw new BadRequestException(
-        `Idempotency-Key header must be at most ${String(MAX_IDEMPOTENCY_KEY_LENGTH)} characters`,
-      );
-    }
+    const batchKey = requireIdempotencyKey(idempotencyKey);
 
     // Empty context on purpose: no user did this, the actor is an integration.
     // Recording a fabricated userId here would put a lie in the audit trail,

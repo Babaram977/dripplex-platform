@@ -5,6 +5,7 @@ import { IntegrationsModule } from '../integrations.module';
 
 import { CatalogueSyncController } from './catalogue-sync.controller';
 import { InventorySyncController } from './inventory-sync.controller';
+import { OrderSyncController } from './order-sync.controller';
 
 /**
  * Every POS route must actually be reachable at the path it declares.
@@ -102,7 +103,11 @@ function escapeRegExp(value: string): string {
 }
 
 describe('POS routes are reachable, not just mapped', () => {
-  const POS_CONTROLLERS = new Set([CatalogueSyncController.name, InventorySyncController.name]);
+  const POS_CONTROLLERS = new Set([
+    CatalogueSyncController.name,
+    InventorySyncController.name,
+    OrderSyncController.name,
+  ]);
 
   const routes = registeredRoutes();
 
@@ -110,7 +115,7 @@ describe('POS routes are reachable, not just mapped', () => {
     const posRoutes = routes.filter((route) => POS_CONTROLLERS.has(route.controller));
     // If this drops to zero the rest of the file passes vacuously, which is the
     // one way a reachability test can lie.
-    expect(posRoutes.length).toBeGreaterThanOrEqual(7);
+    expect(posRoutes.length).toBeGreaterThanOrEqual(10);
   });
 
   it('registers no earlier route that swallows a POS route', () => {

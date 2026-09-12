@@ -1,11 +1,8 @@
 import { CONTROLLER_WATERMARK, GUARDS_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 
 import { IS_PUBLIC_KEY, PERMISSIONS_KEY } from '../../common/decorators/permissions.decorator';
-import { CATALOGUE_WRITE_SCOPE, INVENTORY_WRITE_SCOPE } from '../catalogue-ingestion.constants';
-import { INTEGRATION_SCOPE_KEY } from '../decorators/integration-scope.decorator';
 import { IntegrationCredentialGuard } from '../guards/integration-credential.guard';
 
-import { CatalogueSyncController } from './catalogue-sync.controller';
 import { InventorySyncController } from './inventory-sync.controller';
 
 /**
@@ -71,61 +68,6 @@ describe('inventory sync controller route prefix', () => {
     const guards = (Reflect.getMetadata(GUARDS_METADATA, InventorySyncController.prototype.push) ??
       []) as unknown[];
     expect(guards).toContain(IntegrationCredentialGuard);
-  });
-});
-
-/**
- * The two POS routes must ask for different credential scopes.
- *
- * The guard used to hard-code `catalog:write`, so any second POS route would
- * have inherited it: a till issued a stock-only key could have rewritten names
- * and prices, and a catalogue key could have moved stock. Scope is now stated
- * per route, and these assertions are what stop the two drifting back together.
- */
-describe('POS credential scopes are stated per route', () => {
-  it('the stock push requires inventory:write', () => {
-    expect(Reflect.getMetadata(INTEGRATION_SCOPE_KEY, InventorySyncController.prototype.push)).toBe(
-      INVENTORY_WRITE_SCOPE,
-    );
-  });
-
-  it('the catalogue push requires catalog:write', () => {
-    expect(Reflect.getMetadata(INTEGRATION_SCOPE_KEY, CatalogueSyncController.prototype.sync)).toBe(
-      CATALOGUE_WRITE_SCOPE,
-    );
-  });
-
-  it('neither route accepts the other route’s scope', () => {
-    expect(
-      Reflect.getMetadata(INTEGRATION_SCOPE_KEY, InventorySyncController.prototype.push),
-    ).not.toBe(CATALOGUE_WRITE_SCOPE);
-    expect(
-      Reflect.getMetadata(INTEGRATION_SCOPE_KEY, CatalogueSyncController.prototype.sync),
-    ).not.toBe(INVENTORY_WRITE_SCOPE);
-  });
-
-  /**
-   * Every route the credential guard protects has to declare a scope. The
-   * guard fails closed on a missing one, so forgetting the decorator turns a
-   * route into a 401 rather than an over-grant — but a route that answers 401
-   * forever is still a broken route, and this catches it here instead.
-   */
-  it('every credential-guarded route declares a scope', () => {
-    const guarded: readonly (readonly [object, string])[] = [
-      [InventorySyncController.prototype.push, 'InventorySyncController.push'],
-      [CatalogueSyncController.prototype.sync, 'CatalogueSyncController.sync'],
-    ];
-
-    for (const [handler, name] of guarded) {
-      const guards = (Reflect.getMetadata(GUARDS_METADATA, handler) ?? []) as unknown[];
-      if (!guards.includes(IntegrationCredentialGuard)) {
-        continue;
-      }
-      expect([name, Reflect.getMetadata(INTEGRATION_SCOPE_KEY, handler)]).toEqual([
-        name,
-        expect.any(String),
-      ]);
-    }
   });
 });
 

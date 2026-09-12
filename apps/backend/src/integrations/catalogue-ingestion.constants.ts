@@ -70,6 +70,12 @@ export const CONFLICT_TYPE = {
   NEGATIVE_QUANTITY: 'NEGATIVE_QUANTITY',
   /** One external SKU resolved to more than one DrippleX product. */
   SKU_COLLISION: 'SKU_COLLISION',
+  /**
+   * A POS asked for an order transition the order's current status does not
+   * allow. Already in the set the schema's own doc comment documents, so this
+   * adds no vocabulary — it only stops the string being spelled inline.
+   */
+  ORDER_STATE_MISMATCH: 'ORDER_STATE_MISMATCH',
 } as const;
 
 /** `ProductSync.mappingStatus`. */
