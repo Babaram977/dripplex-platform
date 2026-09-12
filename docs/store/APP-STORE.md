@@ -135,11 +135,11 @@ Same body as `docs/store/GOOGLE-PLAY.md` full description.
 
 ## Screenshots
 
-| Device         | Size      | Count    | Status                      |
-| -------------- | --------- | -------- | --------------------------- |
-| iPhone 6.7"    | 1290×2796 | 3–10     | ❌ none — required          |
-| iPhone 6.5"    | 1284×2778 | 3–10     | ❌ none — required          |
-| iPad Pro 12.9" | 2048×2732 | Optional | ❌ none — see the iPad note |
+| Device         | Size      | Count    | Status                               |
+| -------------- | --------- | -------- | ------------------------------------ |
+| iPhone 6.7"    | 1290×2796 | 3–10     | ⚙️ capture command ready — see below |
+| iPhone 6.5"    | 1284×2778 | 3–10     | ⚙️ capture command ready — see below |
+| iPad Pro 12.9" | 2048×2732 | Optional | ❌ none — see the iPad note          |
 
 None exist. They cannot be captured until a build installs on hardware, so this
 is downstream of enrolment and a macOS host.
@@ -149,6 +149,30 @@ declares iPad support, so Apple will review it on iPad and will expect iPad
 screenshots. Dropping to `"1"` is a one-line project change that removes an
 entire review surface. Founder decision, not yet taken; tracked in the iOS
 preflight as D6.
+
+### Capturing them
+
+`scripts/capture-screenshots.mjs` now takes a device profile. It signs in as a
+real customer against the real backend and photographs whatever that account
+actually has — nothing is mocked, seeded or dressed up, which is both why the
+shots are honest and why they need live credentials:
+
+```
+DPX_BASE=https://app.dripplex.com \
+DPX_CUSTOMER_EMAIL=... DPX_CUSTOMER_PASSWORD=... \
+DPX_DEVICE=ios-6.7 node scripts/capture-screenshots.mjs
+
+DPX_BASE=https://app.dripplex.com \
+DPX_CUSTOMER_EMAIL=... DPX_CUSTOMER_PASSWORD=... \
+DPX_DEVICE=ios-6.5 node scripts/capture-screenshots.mjs
+```
+
+Output lands in `resources/ios-screenshots/6.7` and `.../6.5` at exactly
+1290×2796 and 1284×2778. Apple rejects anything that is not the exact size.
+
+**This has not been run.** It needs a real customer account's credentials, which
+belong to the founder and should not be pasted into a chat or a CI log. Run it
+from a machine that already has them.
 
 ## App Preview
 

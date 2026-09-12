@@ -36,6 +36,15 @@ const gradlePath = join(root, 'android/app/build.gradle');
 const plistPath = join(root, 'ios/App/App/Info.plist');
 const privacyPath = join(root, 'ios/App/App/PrivacyInfo.xcprivacy');
 const projectPath = join(root, 'ios/App/App.xcodeproj/project.pbxproj');
+const podfilePath = join(root, 'ios/App/Podfile');
+
+/**
+ * Apple's floor, not ours. Xcode 26 — mandatory for App Store Connect uploads
+ * since 2026-04-28 — supports deployment targets iOS 15-26 only, so a project
+ * pinned below 15.0 fails at the first archive.
+ * @see https://developer.apple.com/xcode/system-requirements/
+ */
+const MIN_IOS_DEPLOYMENT_TARGET = 15.0;
 
 if (existsSync(gradlePath)) {
   const gradle = readFileSync(gradlePath, 'utf8');
@@ -248,10 +257,36 @@ if (existsSync(projectPath)) {
     fail('iOS marketing version is missing or unexpected');
   if (!project.includes('CURRENT_PROJECT_VERSION = 1000100;'))
     fail('iOS build number is missing or unexpected');
-  if (!project.includes('IPHONEOS_DEPLOYMENT_TARGET = 14.0;'))
-    fail('iOS deployment target is missing');
+  // Asserted as a floor rather than a literal. This check used to read
+  // `includes('IPHONEOS_DEPLOYMENT_TARGET = 14.0;')`, so raising the target to
+  // Apple's required minimum made it report "deployment target is missing"
+  // when the target was present and correct — the message named the wrong
+  // fault and cost a CI cycle to read.
+  const targets = [...project.matchAll(/IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+);/g)].map((m) => m[1]);
+  if (targets.length === 0) {
+    fail('iOS deployment target is missing from project.pbxproj');
+  } else if (new Set(targets).size > 1) {
+    fail(`iOS deployment target disagrees across build configurations: ${targets.join(', ')}`);
+  } else if (Number(targets[0]) < MIN_IOS_DEPLOYMENT_TARGET) {
+    fail(
+      `iOS deployment target is ${targets[0]}; Xcode 26 supports ${MIN_IOS_DEPLOYMENT_TARGET}+ and will refuse to archive below it`,
+    );
+  }
   if (!project.includes('ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;'))
     fail('iOS AppIcon asset catalog is not configured');
+
+  // The Podfile carries its own copy of the same number, and `post_install`
+  // forces every pod to it. If the two drift, the pods are built against a
+  // different floor than the app and the mismatch surfaces only on a Mac.
+  if (existsSync(podfilePath) && new Set(targets).size === 1) {
+    const podPlatform = readFileSync(podfilePath, 'utf8').match(/^platform :ios, '([\d.]+)'/m)?.[1];
+    if (!podPlatform) fail('Podfile is missing its `platform :ios` line');
+    else if (Number(podPlatform) !== Number(targets[0]))
+      fail(
+        `Podfile platform :ios, '${podPlatform}' disagrees with IPHONEOS_DEPLOYMENT_TARGET = ${targets[0]}`,
+      );
+  }
+
   if (!failed) ok('iOS release build metadata');
 }
 

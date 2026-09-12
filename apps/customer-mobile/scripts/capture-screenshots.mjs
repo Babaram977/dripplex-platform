@@ -10,6 +10,12 @@
  *
  * Output: resources/play-screenshots/*.png, 1080x1920 each.
  *
+ * For the App Store, set DPX_DEVICE — the sizes Apple requires are different
+ * from Play's and it rejects anything that is not exact:
+ *
+ *   DPX_DEVICE=ios-6.7 ... -> resources/ios-screenshots/6.7/*.png, 1290x2796
+ *   DPX_DEVICE=ios-6.5 ... -> resources/ios-screenshots/6.5/*.png, 1284x2778
+ *
  * WHY 360x640 AT deviceScaleFactor 3
  * 1080x1920 is Play's phone minimum and 9:16 is inside its aspect limits, and
  * 360 CSS px puts the app below the 480px breakpoint in App.tsx's GLOBAL_STYLES
@@ -29,7 +35,40 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = resolve(ROOT, 'resources/play-screenshots');
+
+/**
+ * DEVICE PROFILES
+ *
+ * `play` is the original behaviour and the default, so nothing about the Play
+ * capture changes. The two iOS profiles exist because App Store Connect will
+ * not accept a submission without 6.7" and 6.5" phone screenshots, and it
+ * rejects anything that is not exactly the pixel size it asks for.
+ *
+ * The CSS widths matter as much as the output size: 430 and 428 are both under
+ * the 480px breakpoint in App.tsx's GLOBAL_STYLES, so the app renders full
+ * bleed as a handset does rather than inside the desktop phone-frame mockup
+ * with its bezel and fake 9:41 clock. A 6.7" shot taken at 1290 CSS px would be
+ * a picture of the desktop site.
+ */
+const DEVICES = {
+  play: { width: 360, height: 640, scale: 3, out: 'resources/play-screenshots' },
+  // iPhone 15 Pro Max / 14 Pro Max — 1290x2796
+  'ios-6.7': { width: 430, height: 932, scale: 3, out: 'resources/ios-screenshots/6.7' },
+  // iPhone 14 Plus / 13 Pro Max — 1284x2778
+  'ios-6.5': { width: 428, height: 926, scale: 3, out: 'resources/ios-screenshots/6.5' },
+};
+
+const DEVICE_KEY = process.env['DPX_DEVICE'] ?? 'play';
+const DEVICE = DEVICES[DEVICE_KEY];
+if (!DEVICE) {
+  console.error(`unknown DPX_DEVICE "${DEVICE_KEY}" — one of: ${Object.keys(DEVICES).join(', ')}`);
+  process.exit(1);
+}
+console.log(
+  `device ${DEVICE_KEY}: ${DEVICE.width}x${DEVICE.height} @${DEVICE.scale}x ` +
+    `-> ${DEVICE.width * DEVICE.scale}x${DEVICE.height * DEVICE.scale}`,
+);
+const OUT = resolve(ROOT, DEVICE.out);
 const BASE = process.env['DPX_BASE'] ?? 'http://127.0.0.1:4180';
 const EMAIL = process.env['DPX_CUSTOMER_EMAIL'];
 const PASSWORD = process.env['DPX_CUSTOMER_PASSWORD'];
@@ -51,8 +90,8 @@ const browser = await chromium.launch({
   args: ['--no-sandbox'],
 });
 const ctx = await browser.newContext({
-  viewport: { width: 360, height: 640 },
-  deviceScaleFactor: 3,
+  viewport: { width: DEVICE.width, height: DEVICE.height },
+  deviceScaleFactor: DEVICE.scale,
   isMobile: true,
   hasTouch: true,
   reducedMotion: 'reduce',
