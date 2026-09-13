@@ -69,33 +69,56 @@ a driver on the customer splash.
 
 ## 4. Required production sequence
 
-**Do not reorder these.** Attaching the Worker while Railway still holds the domain leaves two
-systems claiming one hostname.
+Authoritative order, as set by the founder on 2026-09-13. **Do not reorder.** Attaching the
+Worker while Railway still holds the domain leaves two systems claiming one hostname.
 
-1. **Detach** `driver.dripplex.com` from `@dripplex/driver-portal` in Railway.
-   (Project `f09361bd-3cda-4f0f-a22a-2ea464e47ab2`, service `fd77d021-611a-493d-82e4-270442df7be9`,
-   domain id `6b9b9d84-8ac9-41dd-b30c-38c742a5e39b`.)
-2. **Deploy the Worker without binding anything:** dispatch _Deploy Cloudflare Workers_ with
-   `apps=driver-redirect`, `confirm=deploy-production`, `attach_driver_redirect=false`.
-   Verify `https://dripplex-driver-redirect.<subdomain>.workers.dev/` returns
-   `301 → https://app.dripplex.com/driver`. Nothing user-facing has changed at this point.
-3. **Attach the hostname:** dispatch again with `attach_driver_redirect=true`. This deletes the
-   stale Railway CNAME and creates the Workers Custom Domain. Cloudflare creates the DNS record
-   and issues the certificate itself — per Cloudflare's documentation, _"Cloudflare will create
-   DNS records and issue necessary certificates on your behalf"_ — which is what removes this
-   whole class of failure: the party that owns the record also owns the certificate.
-4. **Verify the certificate** resolves for `driver.dripplex.com` (Cloudflare-issued, not
-   `*.up.railway.app`).
-5. **Verify the redirect** end to end: `curl -sSI https://driver.dripplex.com/` →
-   `301`, `location: https://app.dripplex.com/driver`. Repeat for `/login` and `/earnings`.
-6. **Verify the destination** in a real browser: `https://app.dripplex.com/driver` reaches the
-   **Driver login**, not the customer splash. See §5 — this has not been proved yet.
+### Gate — before any of it
+
+`https://app.dripplex.com/driver` must be confirmed **from a phone** to render the actual Driver
+login screen, not merely a 200 SPA shell. This is the redirect's destination; pointing a live
+hostname at an unverified target is the one mistake this whole runbook exists to avoid. See §5 —
+it could not be proved from the agent environment.
+
+### The operation
+
+| #   | Step                                                                                       | Where                                       |
+| --- | ------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| 1   | Merge the reviewed Worker                                                                  | GitHub                                      |
+| 2   | Confirm deployment succeeded                                                               | CI / Cloudflare                             |
+| 3   | **Explicitly authorize execution of the Driver redirect**                                  | founder                                     |
+| 4   | Detach `driver.dripplex.com` from Railway                                                  | Railway                                     |
+| 5   | Remove the stale Railway DNS CNAME                                                         | Cloudflare DNS                              |
+| 6   | Attach the hostname to the redirect Worker                                                 | dispatch with `attach_driver_redirect=true` |
+| 7   | Verify Cloudflare TLS issuance                                                             | Cloudflare                                  |
+| 8   | Open `https://driver.dripplex.com`                                                         | browser                                     |
+| 9   | Confirm `301 → https://app.dripplex.com/driver`                                            | browser / curl                              |
+| 10  | Confirm the Driver login actually appears                                                  | browser                                     |
+| 11  | Confirm the retired Railway Driver Portal is **no longer reachable** through that hostname | browser                                     |
+
+Step 3 is a deliberate audit point: steps 1–2 build and publish the mechanism, steps 4 onward use
+it against production infrastructure. Merging alone performs neither — `attach_driver_redirect`
+defaults to `false` precisely so that merging cannot silently make a DNS or custom-domain change.
+
+Step 11 is not a duplicate of step 10. Step 10 proves the new destination works; step 11 proves
+the old one is gone. Both must hold, or the retirement is only cosmetic.
+
+**Identifiers for step 4:** project `f09361bd-3cda-4f0f-a22a-2ea464e47ab2`, service
+`fd77d021-611a-493d-82e4-270442df7be9` (`@dripplex/driver-portal`), domain
+`6b9b9d84-8ac9-41dd-b30c-38c742a5e39b`.
+
+**What step 6 does for you.** Cloudflare creates the DNS record and issues the certificate itself
+— per its documentation, _"Cloudflare will create DNS records and issue necessary certificates on
+your behalf."_ That is what removes this entire class of failure: the party that owns the record
+also owns the certificate, so the split that stranded this host at `VALIDATING_OWNERSHIP` cannot
+recur.
+
+**No rider or merchant changes at any step.**
 
 ### Rollback
 
-Deleting the Workers Custom Domain reverts step 3. Cloudflare does **not** delete the
-Advanced Certificate it generated — that is a manual removal under SSL/TLS → Edge Certificates.
-Leaving it costs nothing but will confuse a later certificate audit.
+Deleting the Workers Custom Domain reverts step 6. Cloudflare does **not** delete the Advanced
+Certificate it generated — that is a manual removal under SSL/TLS → Edge Certificates. Leaving it
+costs nothing but will confuse a later certificate audit.
 
 ## 5. Not yet proved
 
