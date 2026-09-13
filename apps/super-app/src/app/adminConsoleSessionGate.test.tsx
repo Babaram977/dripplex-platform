@@ -80,6 +80,13 @@ const signInShowing = () => screen.queryByText('Sign in to the Operations Consol
 /** Sidebar heading, present only once the console shell itself has rendered. */
 const consoleShowing = () => screen.queryByText('Live Map');
 
+/**
+ * Console surfaces that an unconfirmed session must not reach. Sidebar rows,
+ * so they are present for the whole shell rather than for one page — if any of
+ * them renders, the operations surface rendered.
+ */
+const PROTECTED_SURFACES = ['Dashboard', 'Live Map', 'Trips', 'Drivers', 'Audit Logs'];
+
 beforeEach(() => {
   vi.clearAllMocks();
   storedUser = { roles: ['operations_staff'], permissions: [] };
@@ -95,6 +102,17 @@ describe('Operations Console session gate', () => {
     expect(me).toHaveBeenCalled();
   });
 
+  it('would notice if the protected surfaces stopped being findable', async () => {
+    // The two tests that loop over PROTECTED_SURFACES assert those labels are
+    // absent. A renamed sidebar row would make them absent always, and both
+    // loops would pass while checking nothing. This is what stops that.
+    await renderConsole();
+    await waitFor(() => expect(consoleShowing()).toBeTruthy());
+    for (const surface of PROTECTED_SURFACES) {
+      expect(screen.queryAllByText(surface).length).toBeGreaterThan(0);
+    }
+  });
+
   it('asks for a sign-in when the server rejects the stored token', async () => {
     // The whole reported defect: this is a token that reads fine locally and
     // is not a session any more.
@@ -105,7 +123,7 @@ describe('Operations Console session gate', () => {
     expect(clear).toHaveBeenCalled();
   });
 
-  it('renders no part of the console while the check is outstanding', async () => {
+  it('renders no protected content until the server has confirmed the session', async () => {
     let release: (v: unknown) => void = () => undefined;
     me.mockReturnValue(new Promise((r) => (release = r)));
     await renderConsole();
@@ -113,11 +131,32 @@ describe('Operations Console session gate', () => {
     // Not the dashboard behind a spinner. Whether this person may see the
     // dashboard is precisely what is not yet known.
     expect(screen.getByText('Checking your session…')).toBeTruthy();
-    expect(consoleShowing()).toBeNull();
     expect(signInShowing()).toBeNull();
+
+    // Named individually rather than through consoleShowing(), because the
+    // claim being pinned is about the whole protected surface and not about
+    // one sidebar row happening to be absent. Every one of these is a page an
+    // unconfirmed session must not reach.
+    for (const surface of PROTECTED_SURFACES) {
+      expect(screen.queryAllByText(surface)).toEqual([]);
+    }
 
     release(serverUser());
     await waitFor(() => expect(consoleShowing()).toBeTruthy());
+  });
+
+  it('does not fall through to the console when /auth/me fails for any other reason', async () => {
+    // Not a 401 — a 500, a dropped connection, a gateway that never answered.
+    // The tempting reading is that the server is at fault so the operator
+    // should not be punished for it, and that reading is how an outage turns
+    // into an open console. An unanswered question is not a yes.
+    me.mockRejectedValue({ statusCode: 503, message: 'Backend unavailable' });
+    await renderConsole();
+
+    await waitFor(() => expect(signInShowing()).toBeTruthy());
+    for (const surface of PROTECTED_SURFACES) {
+      expect(screen.queryAllByText(surface)).toEqual([]);
+    }
   });
 
   it('does not honour a stored user the server does not confirm', async () => {
