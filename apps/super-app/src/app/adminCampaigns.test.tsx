@@ -75,7 +75,7 @@ vi.mock('../lib/maps', () => ({
 
 const READ = 'operations:promotions:read';
 const MANAGE = 'operations:promotions:manage';
-const CREATE = 'promotions:admin:manage';
+const CREATE = 'admin:promotions:manage';
 
 const promotion = (over: Record<string, unknown> = {}) => ({
   id: 'c1',
@@ -470,7 +470,7 @@ describe('Referral Campaigns — a campaign can actually be run', () => {
     expect(createPromotion).not.toHaveBeenCalled();
   });
 
-  it('hides campaign creation without promotions:admin:manage', async () => {
+  it('hides campaign creation without admin:promotions:manage', async () => {
     permissions = [READ];
     await renderPage();
     await waitFor(() => expect(screen.getByText('Lagos Influencers')).toBeTruthy());

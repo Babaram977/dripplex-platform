@@ -4355,7 +4355,7 @@ export const api = {
     ) => dx<RideSurchargeZoneDto>('PATCH', `/admin/rides/pricing/zones/${id}`, body),
 
     // Promo campaigns. The engine and its admin API have existed all along
-    // (POST/GET/PATCH /admin/promotions, promotions:admin:manage); the console
+    // (POST/GET/PATCH /admin/promotions, admin:promotions:manage); the console
     // simply never called them and told the operator to go somewhere else —
     // somewhere that does not exist. Founder decision, 2026-08-19: promos are
     // created here.

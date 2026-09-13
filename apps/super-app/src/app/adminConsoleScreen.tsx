@@ -11534,7 +11534,12 @@ function PageCampaigns() {
   const [banner, setBanner] = useState<string | null>(null);
 
   const canManage = hasPerm('operations:promotions:manage');
-  const canCreate = hasPerm('promotions:admin:manage');
+  // `admin:promotions:manage`, not `promotions:admin:manage`. The segments are
+  // the other way round, the wrong one exists nowhere on the server, and
+  // hasPerm just returns false for a string nobody grants — so the New
+  // campaign control was invisible to every operator, which left the page with
+  // no campaigns and therefore no way to enrol a promoter into one.
+  const canCreate = hasPerm('admin:promotions:manage');
 
   const load = useCallback(async () => {
     setError(null);
