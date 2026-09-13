@@ -42,6 +42,26 @@ let permissions: string[] = [];
 
 vi.mock('../lib/api', () => ({
   api: {
+    // The console verifies the stored session against the server before it
+    // renders a single page. Every console test therefore needs a live
+    // /auth/me; without it the gate correctly refuses and the suite sees the
+    // sign-in screen.
+    auth: {
+      me: () =>
+        Promise.resolve({
+          id: 'u-ops-1',
+          email: 'ops@dripplex.test',
+          phone: null,
+          firstName: 'Dan',
+          lastName: 'Operator',
+          profilePhotoUrl: null,
+          dateOfBirth: null,
+          gender: null,
+          status: 'ACTIVE',
+          roles: ['operations_staff'],
+          permissions,
+        }),
+    },
     admin: {
       listCustomers: (q: unknown) => listCustomers(q),
       listDrivers: (q: unknown) => listDrivers(q),
@@ -62,6 +82,7 @@ vi.mock('../lib/auth', () => ({
   auth: {
     getUser: () => ({ permissions, roles: ['operations_staff'] }),
     getAccessToken: () => 'token',
+    setUser: () => undefined,
     clear: () => undefined,
   },
 }));
@@ -494,7 +515,10 @@ describe('Referral Campaigns — states', () => {
     let release: (v: unknown) => void = () => undefined;
     listPromotions.mockReturnValue(new Promise((r) => (release = r)));
     await renderPage();
-    expect(screen.getByText('Loading…')).toBeTruthy();
+    // The session gate resolves first — nothing of the console renders until
+    // the server confirms the stored session — so the loading state appears a
+    // tick later than it used to, not synchronously with the render.
+    await waitFor(() => expect(screen.getByText('Loading…')).toBeTruthy());
     release([]);
   });
 
