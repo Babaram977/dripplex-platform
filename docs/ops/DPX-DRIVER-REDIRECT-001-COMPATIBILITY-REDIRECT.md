@@ -72,12 +72,19 @@ a driver on the customer splash.
 Authoritative order, as set by the founder on 2026-09-13. **Do not reorder.** Attaching the
 Worker while Railway still holds the domain leaves two systems claiming one hostname.
 
-### Gate — before any of it
+### Gate — CLEARED 2026-09-13
 
-`https://app.dripplex.com/driver` must be confirmed **from a phone** to render the actual Driver
-login screen, not merely a 200 SPA shell. This is the redirect's destination; pointing a live
-hostname at an unverified target is the one mistake this whole runbook exists to avoid. See §5 —
-it could not be proved from the agent environment.
+`https://app.dripplex.com/driver` must render the actual Driver login, not merely a 200 SPA
+shell. This is the redirect's destination; pointing a live hostname at an unverified target is
+the one mistake this whole runbook exists to avoid.
+
+**Confirmed by the founder from a phone on 2026-09-13.** The page renders "Welcome back, Driver
+Partner — Sign in to continue" with email, password, Continue, and "New driver partner? Apply to
+join", served from `app.dripplex.com` over a valid certificate. The `/driver → drvlogin` mapping
+in `PORTAL_ROUTES` therefore holds at runtime, not only in the source.
+
+This was the last item that could not be established from the agent environment, and it is the
+reason the redirect's destination is now safe to commit to.
 
 ### The operation
 
@@ -122,12 +129,11 @@ costs nothing but will confuse a later certificate audit.
 
 ## 5. Not yet proved
 
-- **`app.dripplex.com/driver` renders the Driver login.** It returns 200 with the super-app
-  bundle, and the `/driver → drvlogin` mapping is in the source — but that mapping is
-  client-side, so serving 200 does not prove it. Browser verification from this environment was
-  attempted and failed: the egress relay closes browser tunnels mid-exchange, identically for
-  `accounts.google.com` and `www.google.com`, so it is environmental. **Founder-side check, and
-  worth doing before step 3 points a live hostname at it.**
+- ~~**`app.dripplex.com/driver` renders the Driver login.**~~ **Proved 2026-09-13** — see the
+  gate in §4. Browser verification from the agent environment had failed for environmental
+  reasons (the egress relay closes browser tunnels mid-exchange, identically for
+  `accounts.google.com` and `www.google.com`), so this was confirmed from the founder's phone
+  instead.
 - **Play Console listing.** Whether a store-listing field still publishes the old URL cannot be
   read from here. **Founder-side.**
 - **Anything outside `Babaram977/dripplex-platform`.** GitHub access is scoped to that one
