@@ -11,7 +11,7 @@ import {
   ReferralRefereeType,
 } from '@prisma/client';
 
-import { PARTICIPANT_OWNER_TYPE } from './campaign-promoter.constants';
+import { PARTICIPANT_OWNER_TYPE, CAMPAIGN_TOKEN_LENGTH } from './campaign-promoter.constants';
 import { CampaignPromoterService } from './campaign-promoter.service';
 import { ReferralsService } from './referrals.service';
 
@@ -192,13 +192,24 @@ describe('CampaignPromoterService', () => {
     await expect(service.addPromoter(input, ADMIN)).rejects.toThrow(/already an active promoter/i);
   });
 
-  it('lets one promoter hold separate tokens across simultaneous campaigns', async () => {
+  it('refuses a second simultaneous campaign, and names the first', async () => {
     if (!databaseAvailable) return;
-    // Founder ruling 4. Two live campaigns, one person, two private tokens —
-    // and no period-uniqueness stopping the campaigns overlapping, which is
-    // exactly why Promotion is the campaign layer and ReferralCampaign is not.
+    // SUPERSEDES founder ruling 4. Until 2026-09-13 one person could hold live
+    // participations on several campaigns at once, each with its own private
+    // token — this test asserted exactly that.
+    //
+    // The founder then ruled that a promoter shares their own referral code and
+    // nothing else, and that enrolling them raises what that one code pays.
+    // One code cannot carry two rates: nothing in the string says which
+    // campaign was meant. So simultaneous participations are now refused, and
+    // the schema's per-campaign token becomes a backend identifier rather than
+    // something anybody hands out.
+    //
+    // Removing somebody from the first campaign frees them for the next; that
+    // is covered in referral-code-campaign-rate.db.spec.
     const userId = await aUser();
-    const [campaignA, campaignB] = [await aCampaign(), await aCampaign()];
+    const campaignA = await aCampaign();
+    const campaignB = await aCampaign();
 
     const a = await service.addPromoter(
       {
@@ -209,18 +220,19 @@ describe('CampaignPromoterService', () => {
       },
       ADMIN,
     );
-    const b = await service.addPromoter(
-      {
-        promotionId: campaignB,
-        userId,
-        participantType: CampaignParticipantType.AMBASSADOR,
-        reward: { amountNgn: 150 },
-      },
-      ADMIN,
-    );
+    expect(a.token).toHaveLength(CAMPAIGN_TOKEN_LENGTH);
 
-    expect(a.token).not.toBe(b.token);
-    expect(a.id).not.toBe(b.id);
+    await expect(
+      service.addPromoter(
+        {
+          promotionId: campaignB,
+          userId,
+          participantType: CampaignParticipantType.AMBASSADOR,
+          reward: { amountNgn: 150 },
+        },
+        ADMIN,
+      ),
+    ).rejects.toThrow(/already promoting/i);
   });
 
   it('survives concurrent enrolment of the same person: one wins, the rest are told why', async () => {
@@ -251,6 +263,69 @@ describe('CampaignPromoterService', () => {
       // doing exactly that passed every other test here.
       expect(reason).not.toMatch(/token/i);
     }
+  });
+
+  it('tells the loser of a race it lost this campaign, not to leave another one', async () => {
+    if (!databaseAvailable) return;
+    // The race above finds this roughly twice in twenty runs, which is not
+    // protection. Here the interleaving is forced instead of hoped for: the
+    // competing enrolment is committed *during* the loser's existence check, so
+    // the loser always reaches the one-campaign-at-a-time guard with a row
+    // already written on the very campaign it is enrolling onto.
+    //
+    // Before the guard excluded that campaign, the loser was told "already
+    // promoting X — remove them from that campaign first", naming the campaign
+    // it was being added to. An operator following that sentence would remove
+    // the promoter from the enrolment that had just succeeded.
+    const [promotionId, userId] = [await aCampaign(), await aUser()];
+    const input = {
+      promotionId,
+      userId,
+      participantType: CampaignParticipantType.CUSTOMER,
+      reward: { amountNgn: 150 },
+    };
+
+    let winnerEnrolled = false;
+    const racingPrisma = Object.create(prisma) as PrismaService;
+    Object.defineProperty(racingPrisma, 'campaignPromoter', {
+      configurable: true,
+      value: {
+        ...prisma.campaignPromoter,
+        findUnique: async (args: Parameters<typeof prisma.campaignPromoter.findUnique>[0]) => {
+          // The read happens first and its answer is what the loser gets back:
+          // a stale "no row here". The winner commits in between. Returning a
+          // fresh read instead would hand the loser the winner's row and send
+          // it down the reinstate branch, which is a different bug entirely.
+          const stale = await prisma.campaignPromoter.findUnique(args);
+          if (!winnerEnrolled) {
+            winnerEnrolled = true;
+            await service.addPromoter(input, ADMIN);
+          }
+          return stale;
+        },
+      },
+    });
+    const auditService = { record: () => Promise.resolve(undefined) } as unknown as AuditService;
+    const loser = new CampaignPromoterService(
+      racingPrisma,
+      new ReferralsService(
+        prisma,
+        auditService,
+        { emit: () => Promise.resolve(undefined) } as unknown as DomainEventBus,
+        {
+          advance: () => Promise.resolve(undefined),
+        } as never,
+      ),
+      auditService,
+    );
+
+    // One attempt, both assertions on the same error. Calling twice would send
+    // the second one down the reinstate path — a different branch, which would
+    // quietly stop testing the race.
+    const error: unknown = await loser.addPromoter(input, ADMIN).catch((e: unknown) => e);
+    expect(String(error)).toMatch(/already a(n active)? promoter/i);
+    expect(String(error)).not.toMatch(/remove them from that/i);
+    expect(await prisma.campaignPromoter.count({ where: { promotionId, userId } })).toBe(1);
   });
 
   it('removal stops future participation and destroys nothing', async () => {

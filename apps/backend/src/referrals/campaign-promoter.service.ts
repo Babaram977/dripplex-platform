@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { generateCampaignToken } from './campaign-promoter-token.util';
 import {
+  isCampaignAttributable,
   CAMPAIGN_PROMOTER_AUDIT_ACTIONS,
   CAMPAIGN_TOKEN_MAX_GENERATION_ATTEMPTS,
   PARTICIPANT_OWNER_TYPE,
@@ -85,6 +86,18 @@ export class CampaignPromoterService {
     if (existing) {
       return await this.reinstate(existing, input, reward, adminUserId, context);
     }
+
+    // Founder ruling, 2026-09-13: one campaign at a time.
+    //
+    // A promoter shares their own referral code and nothing else, so that one
+    // code has to mean exactly one rate. Two live participations would make
+    // "what does this code pay?" unanswerable — the code belongs to the person,
+    // not to a campaign, and nothing in the string says which one was intended.
+    //
+    // Refused by name rather than silently, because an operator who sees
+    // "already on Pioneer Drivers" can go and remove them; one that just fails
+    // tells them nothing about what to do next.
+    await this.refuseIfAlreadyOnALiveCampaign(input.userId, campaign.id);
 
     for (let attempt = 0; attempt < CAMPAIGN_TOKEN_MAX_GENERATION_ATTEMPTS; attempt += 1) {
       try {
@@ -229,6 +242,50 @@ export class CampaignPromoterService {
    * sentence rather than a constraint name, and so a request carrying both is
    * refused before a row is attempted.
    */
+  /**
+   * Refuse an enrolment for somebody already promoting a live campaign.
+   *
+   * "Live" is `isCampaignAttributable`, the same predicate attribution uses, so
+   * a campaign that can no longer take acquisitions also no longer blocks a new
+   * enrolment. A REMOVED participation never blocks: removing somebody is how
+   * an operator frees them to be enrolled elsewhere.
+   */
+  private async refuseIfAlreadyOnALiveCampaign(
+    userId: string,
+    excludingPromotionId: string,
+  ): Promise<void> {
+    // The campaign being enrolled onto is excluded, and that exclusion is not
+    // padding — it is the concurrent case. Two simultaneous enrolments of the
+    // same person onto the *same* campaign both pass the `findUnique` above
+    // seeing no row; the winner writes one; the loser then reaches this guard
+    // and finds it. Without the exclusion the loser is told "already promoting
+    // X — remove them from that campaign first" about the very campaign it was
+    // enrolling onto, which reads as an instruction to undo the enrolment that
+    // just succeeded. Excluded, the loser falls through to the unique
+    // constraint on (promotion_id, user_id) and gets "already a promoter on
+    // this campaign", which is what happened.
+    //
+    // A single-threaded call never reaches here with a row on this campaign —
+    // `reinstate` returns first — which is why deleting this exclusion leaves
+    // every deterministic test green. The race is 1 run in 8.
+    const held = await this.prisma.campaignPromoter.findMany({
+      where: {
+        userId,
+        status: CampaignPromoterStatus.ACTIVE,
+        promotionId: { not: excludingPromotionId },
+      },
+      select: {
+        promotion: { select: { name: true, status: true, deletedAt: true } },
+      },
+    });
+    const live = held.find((row) => isCampaignAttributable(row.promotion));
+    if (live !== undefined) {
+      throw new ConflictDomainException(
+        `Already promoting "${live.promotion.name}". A promoter shares one referral code, so it can only carry one campaign's rate — remove them from that campaign first.`,
+      );
+    }
+  }
+
   private validateReward(reward: PromoterReward): PromoterReward {
     const { amountNgn, points } = reward;
     if ((amountNgn === undefined) === (points === undefined)) {
