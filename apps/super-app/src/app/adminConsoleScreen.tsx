@@ -4,6 +4,22 @@ import { useNarrowViewport } from './useNarrowViewport';
 import {
   api,
   type AdminPromotionDto,
+  type AcquisitionIncentiveDto,
+  type AddCampaignPromoterRequest,
+  type CampaignDetailDto,
+  type CampaignParticipantType,
+  type CampaignPerformanceDto,
+  type CampaignPromoterDto,
+  type CampaignSummaryDto,
+  type LoyaltyEarnerPersona,
+  type LoyaltyEarningImpactDto,
+  type LoyaltyEarningProgrammeDto,
+  type ReferralOverviewDto,
+  type ReferralPerformerDto,
+  type ReferralPersona,
+  type ReferralProgrammeDto,
+  type ReferralRefereeType,
+  type ReferralReviewItemDto,
   type CreatePromotionRequest,
   type PromotionDomain,
   type PromotionType,
@@ -101,6 +117,11 @@ export type AdminPage =
   | 'customers'
   | 'pricing'
   | 'commissions'
+  | 'campaigns'
+  | 'referrals'
+  | 'referralreview'
+  | 'referralprogrammes'
+  | 'dxpoints'
   | 'billpayments'
   | 'incidents'
   | 'support'
@@ -597,6 +618,38 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
   { page: 'commissions', icon: '🧾', label: 'Commissions' },
+  // "Referral Campaigns", not "Promotions": the Pricing page already carries a
+  // promotions editor for marketing promos, and two menu entries called the
+  // same thing would send an operator to the wrong desk.
+  {
+    page: 'campaigns',
+    icon: '📣',
+    label: 'Referral Campaigns',
+    requires: 'operations:promotions:read',
+  },
+  // The referral desks: how the programmes are performing, what is held for a
+  // decision, what each side is paid, and what partners earn in DX Points.
+  // Read is operations:finance:read; the two that change what the platform
+  // pays carry their own manage permissions on the row controls.
+  {
+    page: 'referrals',
+    icon: '📈',
+    label: 'Referral Performance',
+    requires: 'operations:finance:read',
+  },
+  {
+    page: 'referralreview',
+    icon: '🔎',
+    label: 'Referral Review Queue',
+    requires: 'operations:finance:read',
+  },
+  {
+    page: 'referralprogrammes',
+    icon: '⚖️',
+    label: 'Referral Programmes',
+    requires: 'operations:finance:read',
+  },
+  { page: 'dxpoints', icon: '⭐', label: 'DX Points Earning', requires: 'admin:loyalty:manage' },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -793,6 +846,11 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   customers: 'Customers',
   pricing: 'Pricing & Fares',
   commissions: 'Commission Accounts',
+  campaigns: 'Referral Campaigns',
+  referrals: 'Referral Performance',
+  referralreview: 'Referral Review Queue',
+  referralprogrammes: 'Referral Programmes',
+  dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -11338,6 +11396,1299 @@ function PageProfile() {
 }
 
 // ─── Page router ──────────────────────────────────────────────────────────────
+// ─── Referral Campaigns (DPX-PROMO-REF-001) ──────────────────────────────────
+// A management and read surface over the operations promotions API. It holds
+// no reward economics of its own: every naira and every point total below was
+// summed by the server, and `addPromoter` sends what the operator typed and
+// lets the server rule on it.
+
+/** Whether the session holds a permission. The sidebar already hid what this
+ *  account cannot open; this decides whether a *control* is offered. Hiding a
+ *  button is a courtesy — the 403 from the route is the refusal that counts. */
+function hasPerm(permission: string): boolean {
+  return auth.getUser()?.permissions.includes(permission) ?? false;
+}
+
+const PARTICIPANT_LABEL: Record<CampaignParticipantType, string> = {
+  CUSTOMER: 'Customer',
+  RIDER: 'Rider',
+  DRIVER: 'Driver',
+  PIONEER_DRIVER: 'Pioneer driver',
+  INFLUENCER: 'Influencer',
+  CREATOR: 'Creator',
+  AMBASSADOR: 'Ambassador',
+};
+
+const PARTICIPANT_TYPES = Object.keys(PARTICIPANT_LABEL) as CampaignParticipantType[];
+
+/** No referrals is not a 0% conversion rate, so a null rate reads as "—". */
+const conversion = (rate: number | null): string =>
+  rate === null ? '—' : `${(rate * 100).toFixed(1)}%`;
+
+/**
+ * DX Points, and separately what the server says they were worth.
+ *
+ * Never "10,000 points = ₦10,000", and never points divided by today's rate:
+ * the value shown is the server's per-grant sum at each grant's own rate.
+ */
+function PointsValue({ points, valueNgn }: { points: number; valueNgn: number | null }) {
+  return (
+    <span style={{ fontFamily: 'Inter, sans-serif' }}>
+      {points.toLocaleString()} DX
+      <span style={{ color: MUTED, marginLeft: 6 }}>
+        {valueNgn === null ? '(value unavailable)' : `(${naira(valueNgn)} when granted)`}
+      </span>
+    </span>
+  );
+}
+
+/** A promoter's token is what earns the money, so it is treated as a
+ *  credential: masked until the operator asks for it. */
+function PromoterToken({ token }: { token: string }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <code style={{ fontSize: 11.5, color: shown ? WHITE : MUTED, letterSpacing: 0.4 }}>
+        {shown ? token : '•'.repeat(Math.min(token.length, 12))}
+      </code>
+      <Btn
+        small
+        outline
+        color={G3}
+        label={shown ? 'Hide' : 'Reveal'}
+        onClick={() => setShown((v) => !v)}
+      />
+    </span>
+  );
+}
+
+function PerformanceTiles({ p }: { p: CampaignPerformanceDto }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 12,
+      }}
+    >
+      <KpiCard
+        label="Referrals"
+        value={String(p.totalReferrals)}
+        sub={`${String(p.qualifiedReferrals)} qualified`}
+        color={G3}
+        icon="👥"
+      />
+      <KpiCard
+        label="Conversion"
+        value={conversion(p.conversionRate)}
+        sub="Qualified of referred"
+        color={G3}
+        icon="📈"
+      />
+      <KpiCard
+        label="First rides"
+        value={String(p.firstCompletedRides)}
+        sub="Referees who rode"
+        color={G3}
+        icon="🚗"
+      />
+      <KpiCard
+        label="Cash earned"
+        value={naira(p.rewardsEarnedNgn)}
+        sub={`${naira(p.rewardsPaidNgn)} paid · ${naira(p.rewardsPendingNgn)} pending`}
+        color={G3}
+        icon="💰"
+      />
+      <KpiCard
+        label="Points earned"
+        value={`${p.rewardsEarnedPoints.toLocaleString()} DX`}
+        sub={
+          p.rewardsEarnedPointsValueNgn === null
+            ? 'Value unavailable'
+            : `${naira(p.rewardsEarnedPointsValueNgn)} when granted`
+        }
+        color={C_WARN}
+        icon="⭐"
+      />
+    </div>
+  );
+}
+
+function PageCampaigns() {
+  const [campaigns, setCampaigns] = useState<CampaignSummaryDto[] | null>(null);
+  const [incentive, setIncentive] = useState<AcquisitionIncentiveDto | null>(null);
+  const [incentiveError, setIncentiveError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CampaignDetailDto | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const canManage = hasPerm('operations:promotions:manage');
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setCampaigns(await api.admin.listCampaignPromotions());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load referral campaigns.');
+      setCampaigns(null);
+    }
+  }, []);
+
+  // The incentive panel fails independently: one universal promotion being
+  // unreadable must not blank the campaign list beside it.
+  const loadIncentive = useCallback(async () => {
+    setIncentiveError(null);
+    try {
+      setIncentive(await api.admin.getAcquisitionIncentive());
+    } catch (e: unknown) {
+      setIncentiveError(
+        (e as { message?: string }).message ?? 'Could not load the acquisition incentive.',
+      );
+      setIncentive(null);
+    }
+  }, []);
+
+  const loadDetail = useCallback(async (promotionId: string) => {
+    setDetailError(null);
+    setDetail(null);
+    try {
+      setDetail(await api.admin.getCampaignPromotion(promotionId));
+    } catch (e: unknown) {
+      setDetailError((e as { message?: string }).message ?? 'Could not load that campaign.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    void loadIncentive();
+  }, [load, loadIncentive]);
+
+  useEffect(() => {
+    if (openId !== null) void loadDetail(openId);
+  }, [openId, loadDetail]);
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+
+  if (campaigns === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+
+      <AcquisitionIncentivePanel incentive={incentive} error={incentiveError} />
+
+      {campaigns.length === 0 ? (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No campaigns with promoters yet.
+          </div>
+        </Card>
+      ) : (
+        campaigns.map((c) => (
+          <Card key={c.id} style={{ padding: 0 }}>
+            <div
+              onClick={() => setOpenId(openId === c.id ? null : c.id)}
+              style={{
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'pointer',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>{c.name}</span>
+              <StatusChip status={c.status} />
+              <span style={{ fontSize: 12, color: MUTED }}>
+                {c.promoterCount === 1 ? '1 promoter' : `${String(c.promoterCount)} promoters`}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: MUTED }}>
+                {openId === c.id ? 'Hide' : 'View'}
+              </span>
+            </div>
+
+            {openId === c.id && (
+              <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${BORDER}` }}>
+                <div style={{ height: 12 }} />
+                <PerformanceTiles p={c.performance} />
+                <div style={{ height: 12 }} />
+                {detailError !== null && (
+                  <div style={{ fontSize: 12.5, color: C_ERR }}>{detailError}</div>
+                )}
+                {detailError === null && detail === null && (
+                  <div style={{ fontSize: 12.5, color: MUTED }}>Loading promoters…</div>
+                )}
+                {detail !== null && detail.id === c.id && (
+                  <PromoterTable
+                    detail={detail}
+                    canManage={canManage}
+                    onChanged={(message) => {
+                      setBanner(message);
+                      void loadDetail(c.id);
+                      void load();
+                    }}
+                  />
+                )}
+              </div>
+            )}
+          </Card>
+        ))
+      )}
+    </div>
+  );
+}
+
+function AcquisitionIncentivePanel({
+  incentive,
+  error,
+}: {
+  incentive: AcquisitionIncentiveDto | null;
+  error: string | null;
+}) {
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (incentive === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading the acquisition incentive…
+        </div>
+      </Card>
+    );
+  }
+  // Every term here is the server's. Nothing is stated as a constant, so a
+  // reprice shows up on this screen instead of being contradicted by it.
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>
+          Universal acquisition incentive
+        </span>
+        {incentive.status !== null && <StatusChip status={incentive.status} />}
+        <span style={{ fontSize: 12, color: MUTED }}>
+          Every qualifying new customer, whatever brought them in
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: 12,
+        }}
+      >
+        <KpiCard
+          label="Discount"
+          value={incentive.percentOff === null ? '—' : `${String(incentive.percentOff)}%`}
+          sub={`First ${String(incentive.maxDiscountedRides)} rides`}
+          color={G3}
+          icon="🏷️"
+        />
+        <KpiCard
+          label="New-customer reward"
+          value={incentive.refereeRewardNgn === null ? '—' : naira(incentive.refereeRewardNgn)}
+          sub="Paid on qualifying"
+          color={G3}
+          icon="🎁"
+        />
+        <KpiCard
+          label="Discounted rides"
+          value={String(incentive.discountedRides)}
+          sub={`${String(incentive.customersBenefiting)} customers`}
+          color={G3}
+          icon="🚗"
+        />
+        <KpiCard
+          label="Discount given"
+          value={naira(incentive.totalDiscountNgn)}
+          sub="Funded by DrippleX"
+          color={C_WARN}
+          icon="💸"
+        />
+      </div>
+    </Card>
+  );
+}
+
+function PromoterTable({
+  detail,
+  canManage,
+  onChanged,
+}: {
+  detail: CampaignDetailDto;
+  canManage: boolean;
+  onChanged: (message: string) => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  // A removed promoter keeps their attributions and their earnings, so they
+  // stay on the page — but never in the active list, and never with controls
+  // that imply they are still running.
+  const active = detail.promoters.filter((p) => p.status === 'ACTIVE');
+  const removed = detail.promoters.filter((p) => p.status !== 'ACTIVE');
+
+  const remove = async (promoterId: string) => {
+    setRowError(null);
+    setBusyId(promoterId);
+    try {
+      const result = await api.admin.removeCampaignPromoter(promoterId);
+      onChanged(`Promoter removed. Their status is now ${result.status}.`);
+    } catch (e: unknown) {
+      setRowError((e as { message?: string }).message ?? 'Could not remove that promoter.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const row = (p: CampaignPromoterDto) => (
+    <div
+      key={p.id}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 0',
+        borderTop: `1px solid ${BORDER}`,
+        flexWrap: 'wrap',
+        opacity: p.status === 'ACTIVE' ? 1 : 0.55,
+      }}
+    >
+      <span style={{ fontSize: 12.5, color: WHITE, minWidth: 140 }}>{p.name}</span>
+      <span style={{ fontSize: 12, color: MUTED, minWidth: 100 }}>
+        {PARTICIPANT_LABEL[p.participantType]}
+      </span>
+      <PromoterToken token={p.token} />
+      <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
+        {p.rewardAmountNgn !== null ? (
+          naira(p.rewardAmountNgn)
+        ) : p.rewardPoints !== null ? (
+          <PointsValue points={p.rewardPoints} valueNgn={p.rewardPointsValueNgn} />
+        ) : (
+          '—'
+        )}
+      </span>
+      <span style={{ fontSize: 12, color: MUTED, minWidth: 110 }}>
+        {String(p.performance.qualifiedReferrals)}/{String(p.performance.totalReferrals)} ·{' '}
+        {conversion(p.performance.conversionRate)}
+      </span>
+      <span style={{ fontSize: 12, color: WHITE, minWidth: 90 }}>
+        {naira(p.performance.rewardsEarnedNgn)}
+      </span>
+      <StatusChip status={p.status} />
+      {canManage && p.status === 'ACTIVE' && (
+        <span style={{ marginLeft: 'auto' }}>
+          <Btn
+            small
+            outline
+            color={C_ERR}
+            label={busyId === p.id ? 'Removing…' : 'Remove'}
+            disabled={busyId === p.id}
+            onClick={() => void remove(p.id)}
+          />
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rowError !== null && <div style={{ fontSize: 12.5, color: C_ERR }}>{rowError}</div>}
+
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+        Promoters
+        <span style={{ color: MUTED, fontWeight: 400, marginLeft: 8 }}>
+          {detail.pointsPerNaira === null
+            ? 'DX Points rate unavailable'
+            : `${String(detail.pointsPerNaira)} DX Points to ₦1`}
+        </span>
+      </div>
+
+      {active.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: MUTED }}>No active promoters on this campaign.</div>
+      ) : (
+        active.map(row)
+      )}
+
+      {removed.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+            Removed — kept because their attributions and earnings stand
+          </div>
+          {removed.map(row)}
+        </>
+      )}
+
+      {canManage && (
+        <AddPromoterForm
+          promotionId={detail.id}
+          onAdded={(name) => onChanged(`${name} added to ${detail.name}.`)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddPromoterForm({
+  promotionId,
+  onAdded,
+}: {
+  promotionId: string;
+  onAdded: (name: string) => void;
+}) {
+  const [userId, setUserId] = useState('');
+  const [participantType, setParticipantType] = useState<CampaignParticipantType>('INFLUENCER');
+  // Cash or points, never both — the server and a database CHECK both refuse
+  // anything else, so the form offers a choice rather than two fields.
+  const [rewardKind, setRewardKind] = useState<'cash' | 'points'>('cash');
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    const parsed = Number(amount);
+    if (userId.trim() === '' || !Number.isFinite(parsed) || parsed <= 0) {
+      setError('Enter a user ID and a reward greater than zero.');
+      return;
+    }
+    setBusy(true);
+    try {
+      // The reward the operator typed is sent as typed. Whether it is legal is
+      // the server's ruling, not this form's.
+      const body: AddCampaignPromoterRequest = {
+        userId: userId.trim(),
+        participantType,
+        ...(rewardKind === 'cash' ? { rewardAmountNgn: parsed } : { rewardPoints: parsed }),
+      };
+      const created = await api.admin.addCampaignPromoter(promotionId, body);
+      setUserId('');
+      setAmount('');
+      onAdded(created.name);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not add that promoter.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${BORDER}`,
+        paddingTop: 12,
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}
+    >
+      <input
+        className="dx-input"
+        placeholder="User ID"
+        value={userId}
+        onChange={(e) => setUserId(e.target.value)}
+        style={{ minWidth: 220 }}
+      />
+      <select
+        className="dx-input"
+        value={participantType}
+        onChange={(e) => setParticipantType(e.target.value as CampaignParticipantType)}
+      >
+        {PARTICIPANT_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {PARTICIPANT_LABEL[t]}
+          </option>
+        ))}
+      </select>
+      <select
+        className="dx-input"
+        value={rewardKind}
+        onChange={(e) => setRewardKind(e.target.value === 'points' ? 'points' : 'cash')}
+      >
+        <option value="cash">Cash (₦)</option>
+        <option value="points">DX Points</option>
+      </select>
+      <input
+        className="dx-input"
+        placeholder={rewardKind === 'cash' ? 'Amount in ₦' : 'Points'}
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        style={{ maxWidth: 140 }}
+      />
+      <Btn
+        small
+        label={busy ? 'Adding…' : 'Add promoter'}
+        disabled={busy}
+        onClick={() => void submit()}
+      />
+      {error !== null && <span style={{ fontSize: 12, color: C_ERR }}>{error}</span>}
+    </div>
+  );
+}
+
+// ─── Referral desks & DX Points earning (DPX-PROMO-REF-001) ──────────────────
+// Read surfaces over /operations/finance/referrals, plus the two desks that
+// change what the platform pays. Nothing here computes a reward: the server
+// states every figure, and every edit is sent for the server to rule on.
+
+const REFERRAL_PERSONAS: ReferralPersona[] = [
+  'CUSTOMER',
+  'DRIVER',
+  'RIDER',
+  'MERCHANT',
+  'FLEET_OWNER',
+];
+
+const PERSONA_LABEL: Record<string, string> = {
+  CUSTOMER: 'Customers',
+  DRIVER: 'Drivers',
+  RIDER: 'Riders',
+  MERCHANT: 'Merchants',
+  FLEET_OWNER: 'Fleet owners',
+  FLEET: 'Fleets',
+};
+
+const personaLabel = (p: string): string => PERSONA_LABEL[p] ?? p;
+
+/** A rate the server sends as a plain number is still a rate: render it as a
+ *  percentage rather than a raw fraction. */
+const ratePct = (rate: number): string => `${(rate * 100).toFixed(1)}%`;
+
+function PageReferrals() {
+  const [overview, setOverview] = useState<ReferralOverviewDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [persona, setPersona] = useState<ReferralPersona>('CUSTOMER');
+  const [performers, setPerformers] = useState<ReferralPerformerDto[] | null>(null);
+  const [performerError, setPerformerError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setOverview(await api.admin.referralOverview());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load referral performance.');
+      setOverview(null);
+    }
+  }, []);
+
+  // The performer list fails on its own: one persona's leaderboard being
+  // unreadable must not blank the platform totals above it.
+  const loadPerformers = useCallback(async (p: ReferralPersona) => {
+    setPerformerError(null);
+    setPerformers(null);
+    try {
+      setPerformers((await api.admin.referralPerformers(p)).items);
+    } catch (e: unknown) {
+      setPerformerError((e as { message?: string }).message ?? 'Could not load top referrers.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+  useEffect(() => {
+    void loadPerformers(persona);
+  }, [persona, loadPerformers]);
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (overview === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Personas the founder named that carry no programme at all. Stated
+          rather than shown as zeros: nothing is running, which is a different
+          fact from a programme that has run and paid nothing. */}
+      {overview.personasWithoutProgramme.length > 0 && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+            No referral programme exists yet for{' '}
+            {overview.personasWithoutProgramme.map(personaLabel).join(', ')}.
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 12 }}>
+          By persona
+        </div>
+        {overview.personas.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>No referral activity yet.</div>
+        ) : (
+          overview.personas.map((row) => (
+            <div
+              key={row.persona}
+              style={{
+                display: 'flex',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: `1px solid ${BORDER}`,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: 12.5, color: WHITE, minWidth: 110 }}>
+                {personaLabel(row.persona)}
+              </span>
+              <span style={{ fontSize: 12, color: MUTED, minWidth: 150 }}>
+                {String(row.activeReferrers)} active of {String(row.referrers)} referrers
+              </span>
+              <span style={{ fontSize: 12, color: MUTED, minWidth: 170 }}>
+                {String(row.rewardedRedemptions)} rewarded · {String(row.pendingRedemptions)}{' '}
+                pending of {String(row.redemptions)}
+              </span>
+              <span style={{ fontSize: 12, color: G3, minWidth: 70 }}>
+                {ratePct(row.conversionRate)}
+              </span>
+            </div>
+          ))
+        )}
+      </Card>
+
+      {overview.driverCampaigns.length > 0 && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 12 }}>
+            Driver Growth Campaigns
+          </div>
+          {overview.driverCampaigns.map((c) => (
+            <div key={c.campaignId} style={{ padding: '10px 0', borderTop: `1px solid ${BORDER}` }}>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, color: WHITE }}>{c.campaignName}</span>
+                <StatusChip status={c.status} />
+                <span style={{ fontSize: 12, color: MUTED }}>
+                  {String(c.participatingDrivers)} drivers · {String(c.qualifiedPassengers)} of{' '}
+                  {String(c.registeredPassengers)} passengers qualified
+                </span>
+              </div>
+              <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                Pending {naira(c.rewardsPending.amount)} ({String(c.rewardsPending.count)}) ·
+                Approved {naira(c.rewardsApproved.amount)} ({String(c.rewardsApproved.count)}) ·
+                Paid {naira(c.rewardsPaid.amount)} ({String(c.rewardsPaid.count)})
+              </div>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            marginBottom: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>Top referrers</span>
+          <select
+            className="dx-input"
+            value={persona}
+            onChange={(e) => setPersona(e.target.value as ReferralPersona)}
+          >
+            {REFERRAL_PERSONAS.map((p) => (
+              <option key={p} value={p}>
+                {personaLabel(p)}
+              </option>
+            ))}
+          </select>
+        </div>
+        {performerError !== null ? (
+          <div style={{ fontSize: 12.5, color: C_ERR }}>{performerError}</div>
+        ) : performers === null ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>Loading top referrers…</div>
+        ) : performers.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>
+            No {personaLabel(persona).toLowerCase()} have referred anyone yet.
+          </div>
+        ) : (
+          performers.map((p) => (
+            <div
+              key={p.userId}
+              style={{
+                display: 'flex',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: `1px solid ${BORDER}`,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: 12.5, color: WHITE, minWidth: 150 }}>{p.name}</span>
+              <code style={{ fontSize: 11.5, color: MUTED, minWidth: 100 }}>{p.code}</code>
+              <span style={{ fontSize: 12, color: MUTED, minWidth: 150 }}>
+                {String(p.rewardedRedemptions)} rewarded of {String(p.redemptions)}
+              </span>
+              {/* Null is not zero here: only the Driver Growth Campaign carries
+                  a cash figure, so every other persona has no amount to show
+                  rather than an amount of nothing. */}
+              <span style={{ fontSize: 12, color: WHITE, minWidth: 110 }}>
+                {p.rewardAmountEarned === null ? '—' : naira(p.rewardAmountEarned)}
+              </span>
+              <span style={{ fontSize: 12, color: C_WARN, minWidth: 110 }}>
+                {p.rewardAmountUnpaid === null ? '—' : `${naira(p.rewardAmountUnpaid)} unpaid`}
+              </span>
+            </div>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PageReferralReview() {
+  const [items, setItems] = useState<ReferralReviewItemDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  const canDecide = hasPerm('admin:referrals:manage');
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setItems((await api.admin.referralReviewQueue()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load the review queue.');
+      setItems(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const decide = async (id: string, action: 'approve' | 'reject') => {
+    setRowError(null);
+    setBusyId(id);
+    try {
+      if (action === 'approve') await api.admin.approveReferralRedemption(id);
+      else await api.admin.rejectReferralRedemption(id);
+      setBanner(`Referral ${action === 'approve' ? 'approved' : 'rejected'}.`);
+      await load();
+    } catch (e: unknown) {
+      setRowError((e as { message?: string }).message ?? `Could not ${action} that referral.`);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (items === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+      {rowError !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+            {rowError}
+          </div>
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>
+          Referrals held for review
+        </div>
+        <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
+          A signal fired without refusing the reward. Nothing here pays until it is decided.
+        </div>
+
+        {items.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>Nothing is waiting for review.</div>
+        ) : (
+          items.map((row) => (
+            <div
+              key={row.redemptionId}
+              style={{
+                display: 'flex',
+                gap: 12,
+                padding: '10px 0',
+                borderTop: `1px solid ${BORDER}`,
+                flexWrap: 'wrap',
+                alignItems: 'center',
+              }}
+            >
+              <span style={{ fontSize: 12.5, color: WHITE, minWidth: 150 }}>
+                {row.referrerName}
+                <span style={{ color: MUTED }}> → {row.refereeName}</span>
+              </span>
+              <code style={{ fontSize: 11.5, color: MUTED, minWidth: 90 }}>{row.referrerCode}</code>
+              <span style={{ fontSize: 12, color: MUTED, minWidth: 80 }}>
+                {personaLabel(row.refereeType)}
+              </span>
+              <span style={{ fontSize: 12, color: C_WARN, minWidth: 150 }}>
+                {row.flaggedReason ?? 'Flagged'}
+              </span>
+              <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
+                {row.referrerRewardAmount === null ? '—' : naira(row.referrerRewardAmount)}
+                <span style={{ color: MUTED }}>
+                  {' '}
+                  / {row.refereeRewardAmount === null ? '—' : naira(row.refereeRewardAmount)}
+                </span>
+              </span>
+              {/* The hold having elapsed is the thing that makes a row urgent:
+                  nothing is coming to release it but a decision. */}
+              <span style={{ fontSize: 12, color: row.holdElapsed ? C_ERR : MUTED, minWidth: 130 }}>
+                {row.holdElapsed ? 'Hold elapsed — awaiting you' : 'Within hold period'}
+              </span>
+              {canDecide && (
+                <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <Btn
+                    small
+                    color={G2}
+                    label={busyId === row.redemptionId ? '…' : 'Approve'}
+                    disabled={busyId === row.redemptionId}
+                    onClick={() => void decide(row.redemptionId, 'approve')}
+                  />
+                  <Btn
+                    small
+                    outline
+                    color={C_ERR}
+                    label="Reject"
+                    disabled={busyId === row.redemptionId}
+                    onClick={() => void decide(row.redemptionId, 'reject')}
+                  />
+                </span>
+              )}
+            </div>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PageReferralProgrammes() {
+  const [programmes, setProgrammes] = useState<ReferralProgrammeDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<ReferralRefereeType | null>(null);
+  const [referrer, setReferrer] = useState('');
+  const [referee, setReferee] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const canManage = hasPerm('admin:referrals:manage');
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setProgrammes(await api.admin.referralProgrammes());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load referral programmes.');
+      setProgrammes(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const beginEdit = (p: ReferralProgrammeDto) => {
+    setRowError(null);
+    setEditing(p.refereeType);
+    setReferrer(String(p.referrerRewardAmount));
+    setReferee(String(p.refereeRewardAmount));
+  };
+
+  const save = async (refereeType: ReferralRefereeType) => {
+    setRowError(null);
+    const a = Number(referrer);
+    const b = Number(referee);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b < 0) {
+      setRowError('Both amounts must be numbers of zero or more.');
+      return;
+    }
+    setBusy(true);
+    try {
+      // Sent as typed. What a programme may legally pay is the server's
+      // ruling; this desk does not decide it and does not pre-empt it.
+      await api.admin.updateReferralProgramme(refereeType, {
+        referrerRewardAmount: a,
+        refereeRewardAmount: b,
+      });
+      setBanner(`${personaLabel(refereeType)} programme updated.`);
+      setEditing(null);
+      await load();
+    } catch (e: unknown) {
+      setRowError((e as { message?: string }).message ?? 'Could not update that programme.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (programmes === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>
+          Referral programmes
+        </div>
+        <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
+          What each side is paid when a referral qualifies. Changing an amount changes what the next
+          qualifying referral pays; it never re-prices one that already settled.
+        </div>
+
+        {rowError !== null && (
+          <div style={{ fontSize: 12.5, color: C_ERR, marginBottom: 8 }}>{rowError}</div>
+        )}
+
+        {programmes.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>No referral programmes are configured.</div>
+        ) : (
+          programmes.map((p) => (
+            <div
+              key={p.refereeType}
+              style={{ padding: '10px 0', borderTop: `1px solid ${BORDER}` }}
+            >
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
+                  {personaLabel(p.refereeType)}
+                </span>
+                <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
+                {editing === p.refereeType ? (
+                  <>
+                    <input
+                      className="dx-input"
+                      aria-label="Referrer reward"
+                      value={referrer}
+                      onChange={(e) => setReferrer(e.target.value)}
+                      style={{ maxWidth: 120 }}
+                    />
+                    <input
+                      className="dx-input"
+                      aria-label="Referee reward"
+                      value={referee}
+                      onChange={(e) => setReferee(e.target.value)}
+                      style={{ maxWidth: 120 }}
+                    />
+                    <Btn
+                      small
+                      label={busy ? 'Saving…' : 'Save'}
+                      disabled={busy}
+                      onClick={() => void save(p.refereeType)}
+                    />
+                    <Btn
+                      small
+                      outline
+                      color={MUTED}
+                      label="Cancel"
+                      onClick={() => setEditing(null)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 12, color: WHITE, minWidth: 190 }}>
+                      Referrer {naira(p.referrerRewardAmount)} · Referee{' '}
+                      {naira(p.refereeRewardAmount)}
+                    </span>
+                    <span style={{ fontSize: 12, color: MUTED, minWidth: 200 }}>
+                      {p.holdDays === 0 ? 'Pays immediately' : `${String(p.holdDays)}-day hold`} ·{' '}
+                      {String(p.qualificationWindowDays)}-day window ·{' '}
+                      {p.requireKycVerified ? 'KYC required' : 'No KYC gate'}
+                    </span>
+                    {canManage && (
+                      <span style={{ marginLeft: 'auto' }}>
+                        <Btn small outline color={G3} label="Edit" onClick={() => beginEdit(p)} />
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PageDxPoints() {
+  const [programmes, setProgrammes] = useState<LoyaltyEarningProgrammeDto[] | null>(null);
+  const [impact, setImpact] = useState<LoyaltyEarningImpactDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [impactError, setImpactError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<LoyaltyEarnerPersona | null>(null);
+  const [perJob, setPerJob] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const canManage = hasPerm('admin:loyalty:manage');
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setProgrammes(await api.admin.loyaltyEarningProgrammes());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load DX Points earning.');
+      setProgrammes(null);
+    }
+  }, []);
+
+  // Impact is a projection beside the settings, not part of them: it failing
+  // must not hide what each persona is actually being paid.
+  const loadImpact = useCallback(async () => {
+    setImpactError(null);
+    try {
+      setImpact(await api.admin.loyaltyEarningImpact());
+    } catch (e: unknown) {
+      setImpactError((e as { message?: string }).message ?? 'Could not load the impact estimate.');
+      setImpact(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    void loadImpact();
+  }, [load, loadImpact]);
+
+  const save = async (persona: LoyaltyEarnerPersona) => {
+    setRowError(null);
+    const n = Number(perJob);
+    if (!Number.isFinite(n) || n < 0) {
+      setRowError('Points per completed job must be a number of zero or more.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.admin.updateLoyaltyEarningProgramme(persona, { pointsPerCompletedJob: n });
+      setBanner(`${personaLabel(persona)} DX Points earning updated.`);
+      setEditing(null);
+      await load();
+      await loadImpact();
+    } catch (e: unknown) {
+      setRowError((e as { message?: string }).message ?? 'Could not update that programme.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (programmes === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  const impactFor = (persona: LoyaltyEarnerPersona) =>
+    impact?.find((i) => i.persona === persona) ?? null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>
+          DX Points earning
+        </div>
+        <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
+          What each partner persona earns in DX Points. Points are not naira — the worst-case value
+          beside each row is the server&rsquo;s conversion at its own rate.
+        </div>
+
+        {rowError !== null && (
+          <div style={{ fontSize: 12.5, color: C_ERR, marginBottom: 8 }}>{rowError}</div>
+        )}
+        {impactError !== null && (
+          <div style={{ fontSize: 12.5, color: C_WARN, marginBottom: 8 }}>{impactError}</div>
+        )}
+
+        {programmes.length === 0 ? (
+          <div style={{ fontSize: 12.5, color: MUTED }}>No earning programmes are configured.</div>
+        ) : (
+          programmes.map((p) => {
+            const i = impactFor(p.persona);
+            return (
+              <div
+                key={p.persona}
+                style={{
+                  display: 'flex',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderTop: `1px solid ${BORDER}`,
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }}
+              >
+                <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
+                  {personaLabel(p.persona)}
+                </span>
+                <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
+                {editing === p.persona ? (
+                  <>
+                    <input
+                      className="dx-input"
+                      aria-label="Points per completed job"
+                      value={perJob}
+                      onChange={(e) => setPerJob(e.target.value)}
+                      style={{ maxWidth: 120 }}
+                    />
+                    <Btn
+                      small
+                      label={busy ? 'Saving…' : 'Save'}
+                      disabled={busy}
+                      onClick={() => void save(p.persona)}
+                    />
+                    <Btn
+                      small
+                      outline
+                      color={MUTED}
+                      label="Cancel"
+                      onClick={() => setEditing(null)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontSize: 12, color: WHITE, minWidth: 180 }}>
+                      {String(p.pointsPerCompletedJob)} DX per job ·{' '}
+                      {String(p.pointsPerQualifyingReview)} per review
+                    </span>
+                    {/* Uncapped is not a big number, it is the absence of a
+                        ceiling. Saying so is the point of the row. */}
+                    <span style={{ fontSize: 12, color: MUTED, minWidth: 120 }}>
+                      {p.dailyPointsCap === null
+                        ? 'Uncapped daily'
+                        : `${String(p.dailyPointsCap)} DX/day cap`}
+                    </span>
+                    <span style={{ fontSize: 12, color: C_WARN, minWidth: 210 }}>
+                      {i === null
+                        ? '—'
+                        : i.worstCaseDailyNaira === null
+                          ? `${String(i.eligiblePartners)} partners · no ceiling to project`
+                          : `${String(i.eligiblePartners)} partners · up to ${naira(
+                              i.worstCaseDailyNaira,
+                            )}/day`}
+                    </span>
+                    {canManage && (
+                      <span style={{ marginLeft: 'auto' }}>
+                        <Btn
+                          small
+                          outline
+                          color={G3}
+                          label="Edit"
+                          onClick={() => {
+                            setRowError(null);
+                            setEditing(p.persona);
+                            setPerJob(String(p.pointsPerCompletedJob));
+                          }}
+                        />
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function renderPage(page: AdminPage) {
   // The sidebar already hides what a session may not open, but the page can
   // also be reached from restored state, so the same check is made here rather
@@ -11384,6 +12735,16 @@ function renderPage(page: AdminPage) {
       return <PagePricing />;
     case 'commissions':
       return <PageCommissions />;
+    case 'campaigns':
+      return <PageCampaigns />;
+    case 'referrals':
+      return <PageReferrals />;
+    case 'referralreview':
+      return <PageReferralReview />;
+    case 'referralprogrammes':
+      return <PageReferralProgrammes />;
+    case 'dxpoints':
+      return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
     case 'incidents':
@@ -11637,6 +12998,13 @@ export const AdminCustomersScreen = () => <AdminConsoleScreen initialPage="custo
 export const AdminPricingScreen = () => <AdminConsoleScreen initialPage="pricing" />;
 export const AdminIncidentsScreen = () => <AdminConsoleScreen initialPage="incidents" />;
 export const AdminSupportScreen = () => <AdminConsoleScreen initialPage="support" />;
+export const AdminCampaignsScreen = () => <AdminConsoleScreen initialPage="campaigns" />;
+export const AdminReferralsScreen = () => <AdminConsoleScreen initialPage="referrals" />;
+export const AdminReferralReviewScreen = () => <AdminConsoleScreen initialPage="referralreview" />;
+export const AdminReferralProgrammesScreen = () => (
+  <AdminConsoleScreen initialPage="referralprogrammes" />
+);
+export const AdminDxPointsScreen = () => <AdminConsoleScreen initialPage="dxpoints" />;
 export const AdminAnalyticsScreen = () => <AdminConsoleScreen initialPage="analytics" />;
 export const AdminReportsScreen = () => <AdminConsoleScreen initialPage="reports" />;
 export const AdminSettingsScreen = () => <AdminConsoleScreen initialPage="settings" />;
