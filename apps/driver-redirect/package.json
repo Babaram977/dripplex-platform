@@ -1,0 +1,23 @@
+{
+  "name": "@dripplex/driver-redirect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Compatibility redirect for the retired driver.dripplex.com \u2014 301 to the Super App's Driver login.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix --max-warnings=0",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "clean": "rm -rf .turbo node_modules/.cache coverage"
+  },
+  "devDependencies": {
+    "@dripplex/config": "workspace:*",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^3.2.7",
+    "wrangler": "^4.113.0"
+  }
+}

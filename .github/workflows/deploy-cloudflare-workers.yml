@@ -17,6 +17,13 @@ on:
         description: 'Attempt custom domain attach after deploy (true/false)'
         required: false
         default: 'true'
+      attach_driver_redirect:
+        description: >-
+          Bind driver.dripplex.com to dripplex-driver-redirect. Deletes the
+          stale Railway CNAME first. Detach the Railway custom domain BEFORE
+          running this — see docs/ops/DPX-DRIVER-REDIRECT-001. Default false.
+        required: false
+        default: 'false'
   # Auto-deploy on merge to main.
   #
   # These Workers ARE the public portals — admin/merchant/rider/www and the ops
@@ -69,6 +76,10 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: ${{ vars.PROD_API_BASE_URL || 'https://api.dripplex.com/api/v1' }}
       DEPLOY_APPS: ${{ github.event.inputs.apps || 'customer-web,merchant-portal,rider-portal,operations-console' }}
       ATTACH_DOMAINS: ${{ github.event.inputs.attach_domains || 'true' }}
+      # Deliberately NOT `|| 'true'`. Every other default here is what we want
+      # on an ordinary merge; this one binds a public hostname and deletes a DNS
+      # record, so it happens only when a human types it.
+      ATTACH_DRIVER_REDIRECT: ${{ github.event.inputs.attach_driver_redirect || 'false' }}
       WORKERS_DEV_SUBDOMAIN: danwakili
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +121,9 @@ jobs:
               merchant-portal) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_MERCHANT_URL || 'https://merchant.dripplex.com' }}" ;;
               rider-portal) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_RIDER_URL || 'https://rider.dripplex.com' }}" ;;
               operations-console) export NEXT_PUBLIC_APP_URL="${{ vars.PROD_OPS_URL || 'https://ops.dripplex.com' }}" ;;
+              # driver-redirect takes no NEXT_PUBLIC_APP_URL: it is not a Next.js
+              # app, has no origin, and hard-codes its one destination.
+              driver-redirect) ;;
             esac
             bash "apps/${app}/scripts/cf-build.sh"
             (cd "apps/${app}" && npx wrangler deploy)
@@ -191,6 +205,34 @@ jobs:
           # lines in place would re-attach both hosts on the next merge and
           # silently undo that, which is the same trap the comment above
           # describes for the apex.
+
+          # driver.dripplex.com is the one exception, and it is gated so it
+          # cannot fire on a merge.
+          #
+          # The hostname was retired with the other two, but unlike them it had
+          # no Worker to keep answering, so it degraded into Railway's "Not
+          # Found" page behind an invalid certificate — its CNAME still points
+          # at hhni6n78.up.railway.app while Railway wants u1jtq3rx, so
+          # ownership validation can never finish and no certificate is ever
+          # issued. Drivers still hold the old link.
+          #
+          # dripplex-driver-redirect answers it with a 301 to the Super App's
+          # Driver login. That restores nothing: the Worker has no origin and no
+          # bindings, so it cannot serve the retired portal.
+          #
+          # Ungated, this pair would run on the next merge — binding a public
+          # hostname and deleting a production DNS record with nobody watching,
+          # exactly the trap described above. It runs only on a manual dispatch
+          # with attach_driver_redirect=true, and only after the Railway custom
+          # domain has been detached. The order matters and is written down in
+          # docs/ops/DPX-DRIVER-REDIRECT-001-COMPATIBILITY-REDIRECT.md.
+          if [[ "${ATTACH_DRIVER_REDIRECT}" == "true" ]]; then
+            delete_conflicting_dns driver.dripplex.com
+            attach dripplex-driver-redirect driver.dripplex.com
+          else
+            echo "Skipping driver.dripplex.com attach (attach_driver_redirect is not true)."
+          fi
+
           exit 0
 
       # Only probe when the deploy actually ran.
