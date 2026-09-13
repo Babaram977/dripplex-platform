@@ -55,6 +55,25 @@ const RESOLVED = {
   bankCode: '058',
 };
 
+/**
+ * Pick a bank the way a person now does: open the list, then choose.
+ *
+ * The picker used to be a native `<select>`, so a test could set its value
+ * directly. It is a searchable combobox now — several hundred Nigerian banks
+ * are not navigable by thumb — and its options exist only while the list is
+ * open. The assertions below are unchanged; only the gesture that reaches them
+ * is. What still matters is what these tests always checked: the request
+ * carries the bank's *code*, never a typed name.
+ */
+async function selectBank(name: string): Promise<void> {
+  // `findBy`, not `getBy`: the form appears only once the bank list has
+  // loaded, and the old `findByRole('option')` call these tests opened with
+  // was quietly serving as that wait. Replacing it with a synchronous query
+  // removed the wait and every one of them failed on an empty page.
+  fireEvent.focus(await screen.findByRole('combobox'));
+  fireEvent.mouseDown(await screen.findByRole('option', { name }));
+}
+
 describe('merchant settlement account', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -87,7 +106,10 @@ describe('merchant settlement account', () => {
     render(<BankAccountPage />);
 
     // The provider's own spelling, which nobody would type: this is the whole
-    // reason a picker exists rather than a text box.
+    // reason a picker exists rather than a text box. The list is searchable
+    // now, so it has to be opened before its options exist — that is the only
+    // change; what is being claimed is unchanged.
+    fireEvent.focus(await screen.findByRole('combobox'));
     expect(
       await screen.findByRole('option', { name: 'OPay Digital Services Limited (OPay)' }),
     ).toBeInTheDocument();
@@ -97,8 +119,7 @@ describe('merchant settlement account', () => {
   it('sends the bank’s answer, not anything typed, and includes the bank code', async () => {
     render(<BankAccountPage />);
 
-    await screen.findByRole('option', { name: 'Guaranty Trust Bank' });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN account number'), {
       target: { value: '0123456789' },
     });
@@ -127,8 +148,7 @@ describe('merchant settlement account', () => {
     resolveBankAccount.mockRejectedValue(new Error('Could not resolve account name'));
     render(<BankAccountPage />);
 
-    await screen.findByRole('option', { name: 'Guaranty Trust Bank' });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN account number'), {
       target: { value: '0000000000' },
     });
@@ -142,8 +162,7 @@ describe('merchant settlement account', () => {
   it('does not ask the bank until there are ten digits', async () => {
     render(<BankAccountPage />);
 
-    await screen.findByRole('option', { name: 'Guaranty Trust Bank' });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     // NUBAN is exactly ten. The old form accepted 8-20 and let the merchant
     // submit lengths the server always rejected.
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN account number'), {
@@ -156,7 +175,7 @@ describe('merchant settlement account', () => {
   it('caps the account number at ten digits', async () => {
     render(<BankAccountPage />);
 
-    await screen.findByRole('option', { name: 'Guaranty Trust Bank' });
+    await selectBank('Guaranty Trust Bank');
     const field = screen.getByPlaceholderText('10-digit NUBAN account number');
     fireEvent.change(field, { target: { value: '01234567890123' } });
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { BankPicker } from './bankPicker';
 
 import { DRIPPLEX_SUPPORT_EMAIL, DRIPPLEX_SUPPORT_WHATSAPP } from './shared';
 import { useNarrowViewport } from './useNarrowViewport';
@@ -4182,12 +4183,43 @@ export function BankAccountPage() {
                 </div>
               ) : (
                 <>
-                  <MxSelect
-                    label="Bank *"
-                    value={bankCode}
-                    onChange={setBankCode}
-                    options={banks.map((b) => ({ value: b.code, label: b.name }))}
-                  />
+                  {/* BankPicker rather than MxSelect for this one field:
+                      the bank list is several hundred entries and a plain
+                      select gives no way through it. MxSelect stays for the
+                      short, fixed dropdowns elsewhere on this screen. */}
+                  <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginBottom: 6 }}>
+                      Bank *
+                    </div>
+                    <BankPicker
+                      banks={banks}
+                      value={bankCode}
+                      onChange={setBankCode}
+                      loading={banks.length === 0}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        borderRadius: 10,
+                        padding: '11px 12px',
+                        background: 'rgba(255,255,255,.04)',
+                        border: '1px solid rgba(255,255,255,.12)',
+                        color: '#fff',
+                        fontFamily: IT,
+                        fontSize: 14,
+                        outline: 'none',
+                        colorScheme: 'dark',
+                      }}
+                      listStyle={{
+                        background: '#101F35',
+                        border: '1px solid rgba(255,255,255,.12)',
+                        borderRadius: 10,
+                        fontFamily: IT,
+                        fontSize: 14,
+                        color: '#fff',
+                      }}
+                      optionStyle={{ color: '#fff' }}
+                    />
+                  </div>
                   <MxInput
                     label="Account Number *"
                     value={accNo}

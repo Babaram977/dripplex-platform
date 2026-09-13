@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 
+import { BankPicker } from './bankPicker';
 import type {
   BankOptionDto,
   PartnerBankAccountDto,
@@ -321,35 +322,44 @@ export function PayoutPanel({
         >
           {label('Bank')}
           {/*
-            A picker, not a text box. What someone types never matches what the
-            provider calls a bank — OPay is "OPay Digital Services Limited
-            (OPay)" — and a name that fails to match is an account that cannot
-            be linked. Choosing from the list means the bank code travels with
-            the request and nothing has to be guessed from a display name.
-            Rendered as a native select so it opens as the platform's own
-            picker on a phone.
+            Still a picker, not a text box: what someone types never matches
+            what the provider calls a bank — OPay is "OPay Digital Services
+            Limited (OPay)" — so the bank code has to travel with the request
+            rather than being guessed from a display name. What changed is that
+            the list is now searchable. It was a native select, which opens the
+            platform's own picker, and on a list of several hundred mostly
+            microfinance banks that picker gives you nothing but your thumb.
+            BankPicker narrows as you type and still reports a code from the
+            list, never the text.
           */}
-          <select
-            value={bankCode}
-            onChange={(e) => setBankCode(e.target.value)}
-            aria-label="Bank"
-            className="mb-2 h-11 w-full rounded-xl px-3 text-[13px]"
-            style={{
-              background: 'rgba(255,255,255,.04)',
-              border: `1px solid ${BORDER}`,
-              color: bankCode === '' ? MUTED : '#fff',
-              fontFamily: IT,
-            }}
-          >
-            <option value="" style={{ color: '#000' }}>
-              {banks.length === 0 ? 'Loading banks…' : 'Choose your bank'}
-            </option>
-            {banks.map((bank) => (
-              <option key={bank.code} value={bank.code} style={{ color: '#000' }}>
-                {bank.name}
-              </option>
-            ))}
-          </select>
+          <div className="mb-2">
+            <BankPicker
+              banks={banks}
+              value={bankCode}
+              onChange={setBankCode}
+              loading={banks.length === 0}
+              style={{
+                height: 44,
+                width: '100%',
+                borderRadius: 12,
+                padding: '0 12px',
+                fontSize: 13,
+                background: 'rgba(255,255,255,.04)',
+                border: `1px solid ${BORDER}`,
+                color: '#fff',
+                fontFamily: IT,
+              }}
+              listStyle={{
+                background: SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 12,
+                fontSize: 13,
+                fontFamily: IT,
+                color: '#fff',
+              }}
+              optionStyle={{ color: '#fff' }}
+            />
+          </div>
           {label('Account number')}
           {input(accountNumber, setAccountNumber, '10 digits', {
             numeric: true,

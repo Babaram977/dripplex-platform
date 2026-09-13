@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { BankPicker } from './bankPicker';
 import { api } from '../lib/api';
 import { auth } from '../lib/auth';
 import { gatewayCallbackUrl, rememberGatewayReturn } from '../lib/gatewayReturn';
@@ -1937,14 +1938,19 @@ export function WithdrawScreen({
                     >
                       Bank
                     </span>
-                    <select
+                    {/* Searchable: the list runs to several hundred banks and
+                        a native picker offers no way through it but scrolling.
+                        Still reports a code from the list, never typed text. */}
+                    <BankPicker
+                      banks={banks}
                       value={addForm.bankCode}
-                      onChange={(e) => {
-                        const bankCode = e.target.value;
+                      onChange={(bankCode) => {
                         setAddForm((f) => ({ ...f, bankCode }));
                         setResolved(null);
                         setResolveError('');
                       }}
+                      placeholder="Select your bank…"
+                      loading={banks.length === 0}
                       style={{
                         background: NAVY_SURFACE,
                         border: `1px solid ${BORDER}`,
@@ -1958,14 +1964,16 @@ export function WithdrawScreen({
                         boxSizing: 'border-box',
                         colorScheme: 'dark',
                       }}
-                    >
-                      <option value="">Select your bank…</option>
-                      {banks.map((b) => (
-                        <option key={b.code} value={b.code}>
-                          {b.name}
-                        </option>
-                      ))}
-                    </select>
+                      listStyle={{
+                        background: NAVY_SURFACE,
+                        border: `1px solid ${BORDER}`,
+                        borderRadius: 10,
+                        fontFamily: IT,
+                        fontSize: 14,
+                        color: '#fff',
+                      }}
+                      optionStyle={{ color: '#fff' }}
+                    />
                   </div>
                   <InputField
                     label="Account number"
