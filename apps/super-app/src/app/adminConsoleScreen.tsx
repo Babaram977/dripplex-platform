@@ -12013,6 +12013,181 @@ function PromoterTable({
   );
 }
 
+/**
+ * One person, found by name or phone rather than pasted as a UUID.
+ *
+ * Which roster is searched follows the promoter class, because the id the
+ * enrolment needs differs by roster and picking the wrong one attaches the
+ * reward to the wrong entity:
+ *
+ *   - customers (and influencers, creators, ambassadors, who hold customer
+ *     accounts) come from /admin/customers, whose `id` IS the user id, and
+ *     which searches name, email and phone server-side.
+ *   - drivers and riders come from their review desks, where `id` is the
+ *     *profile* id and the user id is `driverId` / `riderId`. Their query DTOs
+ *     accept only page/limit — no search — and the global ValidationPipe runs
+ *     forbidNonWhitelisted, so sending one would be a 400 rather than a wider
+ *     result. A page is pulled and filtered here instead, and the UI says so.
+ */
+type PromoterCandidate = { userId: string; name: string; detail: string };
+
+const CUSTOMER_ROSTER: CampaignParticipantType[] = [
+  'CUSTOMER',
+  'INFLUENCER',
+  'CREATOR',
+  'AMBASSADOR',
+];
+const DRIVER_ROSTER: CampaignParticipantType[] = ['DRIVER', 'PIONEER_DRIVER'];
+
+/** How many rows are pulled for the client-filtered rosters. */
+const ROSTER_PAGE = 100;
+
+function rosterFor(t: CampaignParticipantType): 'customers' | 'drivers' | 'riders' {
+  if (DRIVER_ROSTER.includes(t)) return 'drivers';
+  if (t === 'RIDER') return 'riders';
+  return 'customers';
+}
+
+const contactOf = (row: { phone: string | null; email: string }): string => row.phone ?? row.email;
+
+function PromoterPicker({
+  participantType,
+  selected,
+  onSelect,
+}: {
+  participantType: CampaignParticipantType;
+  selected: PromoterCandidate | null;
+  onSelect: (candidate: PromoterCandidate | null) => void;
+}) {
+  const [term, setTerm] = useState('');
+  const [results, setResults] = useState<PromoterCandidate[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const roster = rosterFor(participantType);
+
+  const find = async () => {
+    const q = term.trim();
+    if (q === '') return;
+    setMessage(null);
+    setBusy(true);
+    try {
+      let found: PromoterCandidate[];
+      if (roster === 'customers') {
+        const res = await api.admin.listCustomers({ search: q, limit: 8 });
+        found = res.items.map((c) => ({
+          userId: c.id,
+          name: `${c.firstName} ${c.lastName}`.trim(),
+          detail: contactOf(c),
+        }));
+      } else if (roster === 'drivers') {
+        const res = await api.admin.listDrivers({ limit: ROSTER_PAGE });
+        found = matching(
+          res.items.map((d) => ({
+            userId: d.driverId,
+            name: `${d.firstName} ${d.lastName}`.trim(),
+            detail: contactOf(d),
+          })),
+          q,
+        );
+      } else {
+        const res = await api.admin.listRiders({ limit: ROSTER_PAGE });
+        found = matching(
+          res.items.map((r) => ({
+            userId: r.riderId,
+            name: `${r.firstName} ${r.lastName}`.trim(),
+            detail: contactOf(r),
+          })),
+          q,
+        );
+      }
+      setResults(found);
+      if (found.length === 0) {
+        setMessage(
+          roster === 'customers'
+            ? 'No account matches that. They must be registered on DrippleX first.'
+            : `No match in the first ${String(ROSTER_PAGE)} of that roster.`,
+        );
+      }
+    } catch (e: unknown) {
+      setMessage((e as { message?: string }).message ?? 'Could not search for that person.');
+      setResults(null);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (selected !== null) {
+    return (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 12.5, color: WHITE }}>{selected.name}</span>
+        <span style={{ fontSize: 11.5, color: MUTED }}>{selected.detail}</span>
+        <Btn small outline color={MUTED} label="Change" onClick={() => onSelect(null)} />
+      </span>
+    );
+  }
+
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 6 }}>
+      <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+        <input
+          className="dx-input"
+          placeholder="Name or phone"
+          aria-label="Find a promoter"
+          value={term}
+          onChange={(e) => setTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') void find();
+          }}
+          style={{ minWidth: 200 }}
+        />
+        <Btn
+          small
+          outline
+          color={G3}
+          label={busy ? 'Finding…' : 'Find'}
+          disabled={busy}
+          onClick={() => void find()}
+        />
+      </span>
+      {message !== null && <span style={{ fontSize: 11.5, color: C_WARN }}>{message}</span>}
+      {results !== null && results.length > 0 && (
+        <span style={{ display: 'inline-flex', flexDirection: 'column' }}>
+          {results.map((candidate) => (
+            <span
+              key={candidate.userId}
+              onClick={() => {
+                onSelect(candidate);
+                setResults(null);
+                setTerm('');
+              }}
+              style={{
+                display: 'flex',
+                gap: 8,
+                padding: '6px 8px',
+                cursor: 'pointer',
+                borderTop: `1px solid ${BORDER}`,
+                fontSize: 12,
+              }}
+            >
+              <span style={{ color: WHITE }}>{candidate.name}</span>
+              <span style={{ color: MUTED }}>{candidate.detail}</span>
+            </span>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Case-insensitive match over the fields an operator would type. */
+function matching(rows: PromoterCandidate[], term: string): PromoterCandidate[] {
+  const q = term.toLowerCase();
+  return rows
+    .filter((r) => r.name.toLowerCase().includes(q) || r.detail.toLowerCase().includes(q))
+    .slice(0, 8);
+}
+
 function AddPromoterForm({
   promotionId,
   onAdded,
@@ -12020,7 +12195,7 @@ function AddPromoterForm({
   promotionId: string;
   onAdded: (name: string) => void;
 }) {
-  const [userId, setUserId] = useState('');
+  const [person, setPerson] = useState<PromoterCandidate | null>(null);
   const [participantType, setParticipantType] = useState<CampaignParticipantType>('INFLUENCER');
   // Cash or points, never both — the server and a database CHECK both refuse
   // anything else, so the form offers a choice rather than two fields.
@@ -12032,8 +12207,12 @@ function AddPromoterForm({
   const submit = async () => {
     setError(null);
     const parsed = Number(amount);
-    if (userId.trim() === '' || !Number.isFinite(parsed) || parsed <= 0) {
-      setError('Enter a user ID and a reward greater than zero.');
+    if (person === null) {
+      setError('Find the person first.');
+      return;
+    }
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError('Enter a reward greater than zero.');
       return;
     }
     setBusy(true);
@@ -12041,12 +12220,12 @@ function AddPromoterForm({
       // The reward the operator typed is sent as typed. Whether it is legal is
       // the server's ruling, not this form's.
       const body: AddCampaignPromoterRequest = {
-        userId: userId.trim(),
+        userId: person.userId,
         participantType,
         ...(rewardKind === 'cash' ? { rewardAmountNgn: parsed } : { rewardPoints: parsed }),
       };
       const created = await api.admin.addCampaignPromoter(promotionId, body);
-      setUserId('');
+      setPerson(null);
       setAmount('');
       onAdded(created.name);
     } catch (e: unknown) {
@@ -12063,21 +12242,21 @@ function AddPromoterForm({
         paddingTop: 12,
         display: 'flex',
         gap: 8,
-        alignItems: 'center',
+        alignItems: 'flex-start',
         flexWrap: 'wrap',
       }}
     >
-      <input
-        className="dx-input"
-        placeholder="User ID"
-        value={userId}
-        onChange={(e) => setUserId(e.target.value)}
-        style={{ minWidth: 220 }}
-      />
       <select
         className="dx-input"
+        aria-label="Promoter class"
         value={participantType}
-        onChange={(e) => setParticipantType(e.target.value as CampaignParticipantType)}
+        onChange={(e) => {
+          // Changing the class changes which roster is searched, so a person
+          // picked from the old one is cleared rather than left attached to a
+          // class they were not found under.
+          setParticipantType(e.target.value as CampaignParticipantType);
+          setPerson(null);
+        }}
       >
         {PARTICIPANT_TYPES.map((t) => (
           <option key={t} value={t}>
@@ -12085,8 +12264,10 @@ function AddPromoterForm({
           </option>
         ))}
       </select>
+      <PromoterPicker participantType={participantType} selected={person} onSelect={setPerson} />
       <select
         className="dx-input"
+        aria-label="Reward kind"
         value={rewardKind}
         onChange={(e) => setRewardKind(e.target.value === 'points' ? 'points' : 'cash')}
       >

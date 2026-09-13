@@ -28,6 +28,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *    the server's 403 is the boundary.
  */
 
+const listCustomers = vi.fn();
+const listDrivers = vi.fn();
+const listRiders = vi.fn();
 const listPromotions = vi.fn();
 const createPromotion = vi.fn();
 const listCampaignPromotions = vi.fn();
@@ -40,6 +43,9 @@ let permissions: string[] = [];
 vi.mock('../lib/api', () => ({
   api: {
     admin: {
+      listCustomers: (q: unknown) => listCustomers(q),
+      listDrivers: (q: unknown) => listDrivers(q),
+      listRiders: (q: unknown) => listRiders(q),
       listPromotions: () => listPromotions(),
       createPromotion: (body: unknown) => createPromotion(body),
       listCampaignPromotions: () => listCampaignPromotions(),
@@ -154,6 +160,58 @@ const incentive = {
   totalDiscountNgn: 3400,
 };
 
+const customerRow = (over: Record<string, unknown> = {}) => ({
+  id: 'user-cust-1',
+  firstName: 'Ada',
+  lastName: 'Customer',
+  email: 'ada@dripplex.test',
+  phone: '+2348010000001',
+  status: 'ACTIVE',
+  tripsCount: 3,
+  totalSpent: 9000,
+  createdAt: '2026-09-01T00:00:00.000Z',
+  ...over,
+});
+
+/** `id` is the DRIVER PROFILE id; `driverId` is the user id the enrolment needs. */
+const driverRow = (over: Record<string, unknown> = {}) => ({
+  id: 'driver-profile-1',
+  driverId: 'user-driver-1',
+  firstName: 'Musa',
+  lastName: 'Driver',
+  email: 'musa@dripplex.test',
+  phone: '+2348020000002',
+  status: 'APPROVED',
+  isApproved: true,
+  createdAt: '2026-09-01T00:00:00.000Z',
+  updatedAt: '2026-09-01T00:00:00.000Z',
+  kyc: [],
+  ...over,
+});
+
+/** Same shape of trap: `id` is the rider profile, `riderId` is the user. */
+const riderRow = (over: Record<string, unknown> = {}) => ({
+  id: 'rider-profile-1',
+  riderId: 'user-rider-1',
+  firstName: 'Chidi',
+  lastName: 'Rider',
+  email: 'chidi@dripplex.test',
+  phone: '+2348030000003',
+  status: 'APPROVED',
+  companyName: null,
+  isApproved: true,
+  rejectedReason: null,
+  createdAt: '2026-09-01T00:00:00.000Z',
+  kyc: [],
+  ...over,
+});
+
+/** Search for someone and pick the first result. */
+async function pickPerson(term: string) {
+  fireEvent.change(screen.getByLabelText('Find a promoter'), { target: { value: term } });
+  fireEvent.click(screen.getByText('Find'));
+}
+
 async function renderPage() {
   const { AdminCampaignsScreen } = await import('./adminConsoleScreen');
   return render(<AdminCampaignsScreen />);
@@ -172,6 +230,9 @@ beforeEach(() => {
   listCampaignPromotions.mockResolvedValue([summary()]);
   getCampaignPromotion.mockResolvedValue(detail());
   getAcquisitionIncentive.mockResolvedValue(incentive);
+  listCustomers.mockResolvedValue({ items: [customerRow()], meta: { total: 1 } });
+  listDrivers.mockResolvedValue({ items: [driverRow()], meta: { total: 1 } });
+  listRiders.mockResolvedValue({ items: [riderRow()], meta: { total: 1 } });
 });
 
 describe('Referral Campaigns — a campaign can actually be run', () => {
@@ -203,7 +264,9 @@ describe('Referral Campaigns — a campaign can actually be run', () => {
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
 
-    fireEvent.change(screen.getByPlaceholderText('User ID'), { target: { value: 'user-9' } });
+    await pickPerson('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+    fireEvent.click(screen.getByText('Ada Customer'));
     fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '750' } });
     fireEvent.click(screen.getByText('Add promoter'));
 
@@ -213,7 +276,126 @@ describe('Referral Campaigns — a campaign can actually be run', () => {
       Record<string, unknown>,
     ];
     expect(promotionId).toBe('c1');
+    expect(body.userId).toBe('user-cust-1');
     expect(body.rewardAmountNgn).toBe(750);
+  });
+
+  it('finds a promoter by name instead of asking for a UUID', async () => {
+    permissions = [READ, MANAGE];
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+
+    // The field the operator types into is a search, not an id box.
+    expect(screen.queryByPlaceholderText('User ID')).toBeNull();
+    await pickPerson('Ada');
+    await waitFor(() => expect(listCustomers).toHaveBeenCalledTimes(1));
+    expect((listCustomers.mock.calls[0][0] as { search: string }).search).toBe('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+  });
+
+  it('enrols a DRIVER by their user id, not their driver-profile id', async () => {
+    // The trap: /admin/drivers returns `id` = DriverProfile.id and
+    // `driverId` = User.id. Sending `id` would attach the reward to a row that
+    // is not a user at all.
+    permissions = [READ, MANAGE];
+    addCampaignPromoter.mockResolvedValue(promoter({ name: 'Musa Driver' }));
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'DRIVER' } });
+    await pickPerson('Musa');
+    await waitFor(() => expect(screen.getByText('Musa Driver')).toBeTruthy());
+    fireEvent.click(screen.getByText('Musa Driver'));
+    fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '500' } });
+    fireEvent.click(screen.getByText('Add promoter'));
+
+    await waitFor(() => expect(addCampaignPromoter).toHaveBeenCalledTimes(1));
+    const [, body] = addCampaignPromoter.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.userId).toBe('user-driver-1');
+    expect(body.userId).not.toBe('driver-profile-1');
+    expect(body.participantType).toBe('DRIVER');
+    // Drivers have no server-side search; the roster is pulled and filtered.
+    expect(listCustomers).not.toHaveBeenCalled();
+  });
+
+  it('enrols a RIDER by their user id, not their rider-profile id', async () => {
+    permissions = [READ, MANAGE];
+    addCampaignPromoter.mockResolvedValue(promoter({ name: 'Chidi Rider' }));
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+
+    fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'RIDER' } });
+    await pickPerson('Chidi');
+    await waitFor(() => expect(screen.getByText('Chidi Rider')).toBeTruthy());
+    fireEvent.click(screen.getByText('Chidi Rider'));
+    fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '500' } });
+    fireEvent.click(screen.getByText('Add promoter'));
+
+    await waitFor(() => expect(addCampaignPromoter).toHaveBeenCalledTimes(1));
+    const [, body] = addCampaignPromoter.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.userId).toBe('user-rider-1');
+    expect(body.userId).not.toBe('rider-profile-1');
+  });
+
+  it('never sends `search` to the driver roster, which would be a 400', async () => {
+    // ListDriversQueryDto accepts page/limit only, and the global
+    // ValidationPipe runs forbidNonWhitelisted.
+    permissions = [READ, MANAGE];
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'DRIVER' } });
+    await pickPerson('Musa');
+    // The sidebar badge loader also calls listDrivers, so assert across every
+    // call rather than assuming the picker's is the only one.
+    await waitFor(() => expect(listDrivers.mock.calls.length).toBeGreaterThan(0));
+    for (const [query] of listDrivers.mock.calls as [Record<string, unknown> | undefined][]) {
+      expect(query ?? {}).not.toHaveProperty('search');
+    }
+  });
+
+  it('clears the person when the promoter class changes rosters', async () => {
+    // A person found in one roster must not stay attached to a class they were
+    // not found under — that is how a rider id ends up sent as a driver.
+    permissions = [READ, MANAGE];
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+    await pickPerson('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+    fireEvent.click(screen.getByText('Ada Customer'));
+    expect(screen.getByText('Change')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'DRIVER' } });
+    expect(screen.queryByText('Change')).toBeNull();
+  });
+
+  it('refuses to enrol before a person is chosen', async () => {
+    permissions = [READ, MANAGE];
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+    fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '500' } });
+    fireEvent.click(screen.getByText('Add promoter'));
+    await waitFor(() => expect(screen.getByText('Find the person first.')).toBeTruthy());
+    expect(addCampaignPromoter).not.toHaveBeenCalled();
+  });
+
+  it('says so plainly when nobody matches', async () => {
+    permissions = [READ, MANAGE];
+    listCustomers.mockResolvedValue({ items: [], meta: { total: 0 } });
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+    await pickPerson('Nobody');
+    await waitFor(() =>
+      expect(
+        screen.getByText('No account matches that. They must be registered on DrippleX first.'),
+      ).toBeTruthy(),
+    );
   });
 
   it('offers every promoter class the server supports, not just influencers', async () => {
@@ -459,7 +641,9 @@ describe('Referral Campaigns — manage flows send exactly what the operator typ
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
 
-    fireEvent.change(screen.getByPlaceholderText('User ID'), { target: { value: 'user-9' } });
+    await pickPerson('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+    fireEvent.click(screen.getByText('Ada Customer'));
     fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '750' } });
     fireEvent.click(screen.getByText('Add promoter'));
 
@@ -474,13 +658,13 @@ describe('Referral Campaigns — manage flows send exactly what the operator typ
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
 
-    fireEvent.change(screen.getByPlaceholderText('User ID'), { target: { value: 'user-9' } });
+    await pickPerson('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+    fireEvent.click(screen.getByText('Ada Customer'));
     fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '0' } });
     fireEvent.click(screen.getByText('Add promoter'));
 
-    await waitFor(() =>
-      expect(screen.getByText('Enter a user ID and a reward greater than zero.')).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByText('Enter a reward greater than zero.')).toBeTruthy());
     expect(addCampaignPromoter).not.toHaveBeenCalled();
   });
 
@@ -490,7 +674,9 @@ describe('Referral Campaigns — manage flows send exactly what the operator typ
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
 
-    fireEvent.change(screen.getByPlaceholderText('User ID'), { target: { value: 'user-9' } });
+    await pickPerson('Ada');
+    await waitFor(() => expect(screen.getByText('Ada Customer')).toBeTruthy());
+    fireEvent.click(screen.getByText('Ada Customer'));
     fireEvent.change(screen.getByPlaceholderText('Amount in ₦'), { target: { value: '999999' } });
     fireEvent.click(screen.getByText('Add promoter'));
 

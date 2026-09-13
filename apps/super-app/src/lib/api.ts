@@ -4040,12 +4040,20 @@ export const api = {
 
     // Drivers. The list embeds each driver's KYC documents (kyc[]). Pass a
     // status to scope (e.g. 'UNDER_REVIEW' for the KYC review queue).
-    listDrivers: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
+    // page/limit are accepted by ListDriversQueryDto; `search` is not, and the
+    // global ValidationPipe runs forbidNonWhitelisted, so sending one would be
+    // a 400 rather than a wider result. Callers that need to find a driver by
+    // name pull a page and filter it.
+    listDrivers: (params?: {
+      status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+      page?: number;
+      limit?: number;
+    }) =>
       dx<{ items: AdminDriverDto[]; meta: { total: number } }>(
         'GET',
         '/admin/drivers',
         undefined,
-        status ? { status } : undefined,
+        params,
       ),
     getDriver: (driverId: string) => dx<AdminDriverDto>('GET', `/admin/driver/${driverId}`),
     // Driver lifecycle actions (driverId = the driver's user id).
@@ -4475,12 +4483,17 @@ export const api = {
       dx<unknown>('PATCH', `/admin/merchant/${id}/category`, { category }),
 
     // Riders review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
-    listRiders: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
+    // Same as drivers: page/limit are accepted, `search` is not.
+    listRiders: (params?: {
+      status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+      page?: number;
+      limit?: number;
+    }) =>
       dx<{ items: AdminRiderDto[]; meta: { total: number } }>(
         'GET',
         '/admin/riders',
         undefined,
-        status ? { status } : undefined,
+        params,
       ),
     approveRider: (id: string) => dx<unknown>('POST', `/admin/rider/${id}/approve`),
     rejectRider: (id: string, reason: string) =>
