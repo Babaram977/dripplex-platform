@@ -4040,14 +4040,14 @@ export const api = {
 
     // Drivers. The list embeds each driver's KYC documents (kyc[]). Pass a
     // status to scope (e.g. 'UNDER_REVIEW' for the KYC review queue).
-    // page/limit are accepted by ListDriversQueryDto; `search` is not, and the
-    // global ValidationPipe runs forbidNonWhitelisted, so sending one would be
-    // a 400 rather than a wider result. Callers that need to find a driver by
-    // name pull a page and filter it.
+    // `search` matches the driver's name, email and phone through the user
+    // relation, the same fields and the same case-insensitive contains as the
+    // customer roster.
     listDrivers: (params?: {
       status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
       page?: number;
       limit?: number;
+      search?: string;
     }) =>
       dx<{ items: AdminDriverDto[]; meta: { total: number } }>(
         'GET',
@@ -4483,11 +4483,12 @@ export const api = {
       dx<unknown>('PATCH', `/admin/merchant/${id}/category`, { category }),
 
     // Riders review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
-    // Same as drivers: page/limit are accepted, `search` is not.
+    // `search` behaves exactly as it does on the driver and customer rosters.
     listRiders: (params?: {
       status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
       page?: number;
       limit?: number;
+      search?: string;
     }) =>
       dx<{ items: AdminRiderDto[]; meta: { total: number } }>(
         'GET',

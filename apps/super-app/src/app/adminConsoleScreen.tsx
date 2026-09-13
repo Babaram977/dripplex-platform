@@ -12024,10 +12024,13 @@ function PromoterTable({
  *     accounts) come from /admin/customers, whose `id` IS the user id, and
  *     which searches name, email and phone server-side.
  *   - drivers and riders come from their review desks, where `id` is the
- *     *profile* id and the user id is `driverId` / `riderId`. Their query DTOs
- *     accept only page/limit — no search — and the global ValidationPipe runs
- *     forbidNonWhitelisted, so sending one would be a 400 rather than a wider
- *     result. A page is pulled and filtered here instead, and the UI says so.
+ *     *profile* id and the user id is `driverId` / `riderId`. Their rosters
+ *     now search server-side too, through the user relation.
+ *
+ * All three match the same fields the same way, so the same typing behaves the
+ * same on every class. Nothing is filtered in the browser any more: doing that
+ * only worked while a roster was small, and quietly stopped finding people
+ * once it was not.
  */
 type PromoterCandidate = { userId: string; name: string; detail: string };
 
@@ -12039,8 +12042,9 @@ const CUSTOMER_ROSTER: CampaignParticipantType[] = [
 ];
 const DRIVER_ROSTER: CampaignParticipantType[] = ['DRIVER', 'PIONEER_DRIVER'];
 
-/** How many rows are pulled for the client-filtered rosters. */
-const ROSTER_PAGE = 100;
+/** How many matches to offer. Every roster searches server-side, so this caps
+ *  the list an operator reads rather than the window that is searched. */
+const RESULT_LIMIT = 8;
 
 function rosterFor(t: CampaignParticipantType): 'customers' | 'drivers' | 'riders' {
   if (DRIVER_ROSTER.includes(t)) return 'drivers';
@@ -12081,33 +12085,25 @@ function PromoterPicker({
           detail: contactOf(c),
         }));
       } else if (roster === 'drivers') {
-        const res = await api.admin.listDrivers({ limit: ROSTER_PAGE });
-        found = matching(
-          res.items.map((d) => ({
-            userId: d.driverId,
-            name: `${d.firstName} ${d.lastName}`.trim(),
-            detail: contactOf(d),
-          })),
-          q,
-        );
+        const res = await api.admin.listDrivers({ search: q, limit: RESULT_LIMIT });
+        found = res.items.map((d) => ({
+          // `d.id` is the DriverProfile id. The enrolment needs the user.
+          userId: d.driverId,
+          name: `${d.firstName} ${d.lastName}`.trim(),
+          detail: contactOf(d),
+        }));
       } else {
-        const res = await api.admin.listRiders({ limit: ROSTER_PAGE });
-        found = matching(
-          res.items.map((r) => ({
-            userId: r.riderId,
-            name: `${r.firstName} ${r.lastName}`.trim(),
-            detail: contactOf(r),
-          })),
-          q,
-        );
+        const res = await api.admin.listRiders({ search: q, limit: RESULT_LIMIT });
+        found = res.items.map((r) => ({
+          // Likewise: `r.id` is the RiderProfile id, `r.riderId` is the user.
+          userId: r.riderId,
+          name: `${r.firstName} ${r.lastName}`.trim(),
+          detail: contactOf(r),
+        }));
       }
       setResults(found);
       if (found.length === 0) {
-        setMessage(
-          roster === 'customers'
-            ? 'No account matches that. They must be registered on DrippleX first.'
-            : `No match in the first ${String(ROSTER_PAGE)} of that roster.`,
-        );
+        setMessage('No account matches that. They must be registered on DrippleX first.');
       }
     } catch (e: unknown) {
       setMessage((e as { message?: string }).message ?? 'Could not search for that person.');
@@ -12178,14 +12174,6 @@ function PromoterPicker({
       )}
     </span>
   );
-}
-
-/** Case-insensitive match over the fields an operator would type. */
-function matching(rows: PromoterCandidate[], term: string): PromoterCandidate[] {
-  const q = term.toLowerCase();
-  return rows
-    .filter((r) => r.name.toLowerCase().includes(q) || r.detail.toLowerCase().includes(q))
-    .slice(0, 8);
 }
 
 function AddPromoterForm({

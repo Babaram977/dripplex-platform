@@ -222,6 +222,54 @@ describe('RidersService', () => {
     expect(result.meta).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
   });
 
+  /**
+   * The Operations Console enrols campaign promoters by name. The searchable
+   * fields are on the user, not the rider profile, so the match has to be
+   * nested through the relation — and a `where` that matches nothing still
+   * returns 200, so getting it wrong fails silently.
+   */
+  it('matches name, email and phone through the user relation, case-insensitively', async () => {
+    (prisma.riderProfile.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.riderProfile.count as jest.Mock).mockResolvedValue(0);
+
+    await service.listRiders({ page: 1, limit: 20, search: 'chidi' });
+
+    const where = (prisma.riderProfile.findMany as jest.Mock).mock.calls[0][0].where as {
+      user?: { OR?: unknown[] };
+    };
+    expect(where.user?.OR).toEqual([
+      { firstName: { contains: 'chidi', mode: 'insensitive' } },
+      { lastName: { contains: 'chidi', mode: 'insensitive' } },
+      { email: { contains: 'chidi', mode: 'insensitive' } },
+      { phone: { contains: 'chidi', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('narrows the count with the rows, so pagination does not lie', async () => {
+    (prisma.riderProfile.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.riderProfile.count as jest.Mock).mockResolvedValue(0);
+
+    await service.listRiders({ page: 1, limit: 20, search: 'chidi' });
+
+    const listWhere = (prisma.riderProfile.findMany as jest.Mock).mock.calls[0][0].where;
+    const countWhere = (prisma.riderProfile.count as jest.Mock).mock.calls[0][0].where;
+    expect(countWhere).toEqual(listWhere);
+  });
+
+  it('adds no user clause at all when nothing is searched for', async () => {
+    (prisma.riderProfile.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.riderProfile.count as jest.Mock).mockResolvedValue(0);
+
+    await service.listRiders({ page: 1, limit: 20 });
+
+    const where = (prisma.riderProfile.findMany as jest.Mock).mock.calls[0][0].where as {
+      user?: unknown;
+      deletedAt: unknown;
+    };
+    expect(where.user).toBeUndefined();
+    expect(where.deletedAt).toBeNull();
+  });
+
   // DPX-RIDER-002 — self-service KYC + company name.
   it('submits a rider KYC document with an ownership assertion and audit entry', async () => {
     (prisma.riderProfile.findUnique as jest.Mock).mockResolvedValue(profileWith({}));

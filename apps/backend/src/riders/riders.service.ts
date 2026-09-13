@@ -60,6 +60,21 @@ export class RidersService {
     const where: Prisma.RiderProfileWhereInput = {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
+      // Searchable fields live on the user, not the profile, so the match is
+      // nested through the relation — same fields and same case-insensitive
+      // `contains` as the customer and driver rosters.
+      ...(query.search
+        ? {
+            user: {
+              OR: [
+                { firstName: { contains: query.search, mode: 'insensitive' as const } },
+                { lastName: { contains: query.search, mode: 'insensitive' as const } },
+                { email: { contains: query.search, mode: 'insensitive' as const } },
+                { phone: { contains: query.search, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
     };
     const [profiles, total] = await Promise.all([
       this.prisma.riderProfile.findMany({
