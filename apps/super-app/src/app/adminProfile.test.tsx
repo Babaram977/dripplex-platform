@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * My Profile, in the Operations Console.
@@ -102,6 +102,24 @@ beforeEach(() => {
   vi.clearAllMocks();
   me.mockResolvedValue(operator());
   listSessions.mockResolvedValue({ items: [session({ current: true, sessionId: 'self' })] });
+});
+
+/**
+ * Load the console module once, before the clock starts on any test.
+ *
+ * adminConsoleScreen.tsx is ~13,000 lines, and importing it costs well over a
+ * second — transform, module init, then the first mount of a very large tree.
+ * Every test after the first pays about 100ms; the first paid all of it, which
+ * made the whole one-time cost look like the cost of that one test and put it
+ * within a few hundred milliseconds of the 5s limit on CI. Adding one await to
+ * the console's mount path was then enough to time it out, which is what
+ * happened on d7d63f7c: the failing test was simply whichever ran first.
+ *
+ * Hooks have their own budget, so paying it here bills setup to setup and
+ * leaves each test's reported time as its own work.
+ */
+beforeAll(async () => {
+  await import('./adminConsoleScreen');
 });
 
 describe('My Profile — the operator is read from the server', () => {
