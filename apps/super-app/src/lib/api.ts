@@ -2160,6 +2160,124 @@ export interface AdminPromotionDto {
   createdAt: string;
 }
 
+// ── DPX-PROMO-REF-001 — referral campaign promoters ─────────────────────────
+// Mirrors packages/types `operations/index.ts`. Restated here because this app
+// reads the backend through `dx()` rather than the SDK; the shapes must not
+// drift from the server contract.
+
+/** What a promoter is, which decides their reward ceiling and which wallet a
+ *  reward can reach. */
+export type CampaignParticipantType =
+  'CUSTOMER' | 'RIDER' | 'DRIVER' | 'PIONEER_DRIVER' | 'INFLUENCER' | 'CREATOR' | 'AMBASSADOR';
+
+/** A promoter is deactivated, never deleted — their attributions must survive. */
+export type CampaignPromoterStatus = 'ACTIVE' | 'REMOVED';
+
+/** One rollup, for a whole campaign or a single promoter. Server-computed. */
+export interface CampaignPerformanceDto {
+  totalReferrals: number;
+  qualifiedReferrals: number;
+  firstCompletedRides: number;
+  /** Qualified over total, 0-1. Null when nothing has been referred yet — no
+   *  referrals is not a 0% conversion rate. */
+  conversionRate: number | null;
+  rewardsEarnedNgn: number;
+  rewardsPendingNgn: number;
+  rewardsPaidNgn: number;
+  /** DX Points, kept apart from every naira field above. */
+  rewardsEarnedPoints: number;
+  /**
+   * What those points were worth when each was granted, in naira, summed
+   * per redemption at that redemption's own snapshotted rate.
+   *
+   * Display this rather than dividing `rewardsEarnedPoints` by today's rate:
+   * the rate moved 200 -> 100 on 2026-09-12, so converting the aggregate
+   * reports double what a historical grant actually cost. Null when any grant
+   * in the set carries no rate — a partial total would read as a complete one.
+   */
+  rewardsEarnedPointsValueNgn: number | null;
+}
+
+export interface CampaignPromoterDto {
+  id: string;
+  userId: string;
+  name: string;
+  participantType: CampaignParticipantType;
+  /** The promoter's private campaign token. It is what earns the money, so the
+   *  UI treats it as a credential, not a label. */
+  token: string;
+  status: CampaignPromoterStatus;
+  addedAt: string;
+  removedAt: string | null;
+  /** Exactly one of these is non-null — enforced by a database CHECK. */
+  rewardAmountNgn: number | null;
+  rewardPoints: number | null;
+  /** What this promoter's points reward is worth today. Today's rate is right
+   *  here and wrong for `rewardsEarnedPointsValueNgn`: this is what the next
+   *  acquisition will pay, not what a past one did. */
+  rewardPointsValueNgn: number | null;
+  performance: CampaignPerformanceDto;
+}
+
+export interface CampaignSummaryDto {
+  id: string;
+  name: string;
+  status: PromotionStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  promoterCount: number;
+  performance: CampaignPerformanceDto;
+}
+
+export interface CampaignDetailDto {
+  id: string;
+  name: string;
+  status: PromotionStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  /** The canonical DX Points rate, stated by the server so no client needs to
+   *  know it. Null when it cannot be read — show points without a value. */
+  pointsPerNaira: number | null;
+  performance: CampaignPerformanceDto;
+  promoters: CampaignPromoterDto[];
+}
+
+/**
+ * The universal new-customer acquisition incentive: its terms, and its cost.
+ *
+ * The terms come from the server rather than the client on purpose. A screen
+ * that hardcoded "20% off 3 rides" would keep saying so after the promotion
+ * was repriced, and one that hardcoded ₦150 would keep saying so after the
+ * programme changed — both show a number nobody will honour.
+ */
+export interface AcquisitionIncentiveDto {
+  promotionId: string;
+  status: PromotionStatus | null;
+  percentOff: number | null;
+  maxDiscountedRides: number;
+  /** What the new customer is paid for signing up — a different thing from the
+   *  discount above and from the promoter's reward. */
+  refereeRewardNgn: number | null;
+  discountedRides: number;
+  customersBenefiting: number;
+  totalDiscountNgn: number;
+}
+
+/** Exactly one of `rewardAmountNgn` / `rewardPoints`; the server and the
+ *  database both refuse anything else. */
+export interface AddCampaignPromoterRequest {
+  userId: string;
+  participantType: CampaignParticipantType;
+  rewardAmountNgn?: number;
+  rewardPoints?: number;
+}
+
+export interface RemoveCampaignPromoterResultDto {
+  id: string;
+  status: CampaignPromoterStatus;
+  removedAt: string | null;
+}
+
 export interface CreatePromotionRequest {
   code?: string;
   name: string;
@@ -4114,6 +4232,39 @@ export const api = {
       dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/resume`),
     expirePromotion: (id: string) =>
       dx<AdminPromotionDto>('POST', `/admin/promotions/${id}/force-expire`),
+
+    // ── DPX-PROMO-REF-001 — referral campaign promoters ─────────────────────
+    // A different surface from the /admin/promotions marketing promos above,
+    // sharing only the word "promotion": these are the people who bring
+    // customers in, their private tokens, and what they have earned.
+    //
+    // Read and manage are separate server permissions
+    // (operations:promotions:read / :manage) and nothing here anticipates
+    // which the operator holds — hiding a control is a courtesy, the 403 from
+    // the route is the refusal that counts.
+    //
+    // No figure below is computed here. Every naira and point total arrives
+    // already summed by the server, at the rate in force when it was granted.
+    listCampaignPromotions: () =>
+      dx<CampaignSummaryDto[]>('GET', '/operations/promotions/campaigns'),
+    getCampaignPromotion: (promotionId: string) =>
+      dx<CampaignDetailDto>(
+        'GET',
+        `/operations/promotions/campaigns/${encodeURIComponent(promotionId)}`,
+      ),
+    addCampaignPromoter: (promotionId: string, body: AddCampaignPromoterRequest) =>
+      dx<CampaignPromoterDto>(
+        'POST',
+        `/operations/promotions/campaigns/${encodeURIComponent(promotionId)}/promoters`,
+        body,
+      ),
+    removeCampaignPromoter: (promoterId: string) =>
+      dx<RemoveCampaignPromoterResultDto>(
+        'DELETE',
+        `/operations/promotions/promoters/${encodeURIComponent(promoterId)}`,
+      ),
+    getAcquisitionIncentive: () =>
+      dx<AcquisitionIncentiveDto>('GET', '/operations/promotions/acquisition-incentive'),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>

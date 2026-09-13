@@ -138,6 +138,7 @@ import {
   AdminKYCScreen,
   AdminVehiclesScreen,
   AdminCustomersScreen,
+  AdminCampaignsScreen,
   AdminPricingScreen,
   AdminIncidentsScreen,
   AdminSupportScreen,
@@ -445,6 +446,7 @@ type Screen =
   | 'adminkyc'
   | 'adminvehicles'
   | 'admincustomers'
+  | 'admincampaigns'
   | 'adminpricing'
   | 'adminincidents'
   | 'adminsupport'
@@ -1941,6 +1943,7 @@ function AppShell() {
     adminkyc: <AdminKYCScreen />,
     adminvehicles: <AdminVehiclesScreen />,
     admincustomers: <AdminCustomersScreen />,
+    admincampaigns: <AdminCampaignsScreen />,
     adminpricing: <AdminPricingScreen />,
     adminincidents: <AdminIncidentsScreen />,
     adminsupport: <AdminSupportScreen />,
@@ -2408,6 +2411,7 @@ function AppShell() {
     'adminkyc',
     'adminvehicles',
     'admincustomers',
+    'admincampaigns',
     'adminpricing',
     'adminincidents',
     'adminsupport',

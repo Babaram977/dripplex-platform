@@ -8,6 +8,7 @@ export {
   AdminKYCScreen,
   AdminVehiclesScreen,
   AdminCustomersScreen,
+  AdminCampaignsScreen,
   AdminPricingScreen,
   AdminIncidentsScreen,
   AdminSupportScreen,

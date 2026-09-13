@@ -4,6 +4,13 @@ import { useNarrowViewport } from './useNarrowViewport';
 import {
   api,
   type AdminPromotionDto,
+  type AcquisitionIncentiveDto,
+  type AddCampaignPromoterRequest,
+  type CampaignDetailDto,
+  type CampaignParticipantType,
+  type CampaignPerformanceDto,
+  type CampaignPromoterDto,
+  type CampaignSummaryDto,
   type CreatePromotionRequest,
   type PromotionDomain,
   type PromotionType,
@@ -101,6 +108,7 @@ export type AdminPage =
   | 'customers'
   | 'pricing'
   | 'commissions'
+  | 'campaigns'
   | 'billpayments'
   | 'incidents'
   | 'support'
@@ -597,6 +605,15 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
   { page: 'commissions', icon: '🧾', label: 'Commissions' },
+  // "Referral Campaigns", not "Promotions": the Pricing page already carries a
+  // promotions editor for marketing promos, and two menu entries called the
+  // same thing would send an operator to the wrong desk.
+  {
+    page: 'campaigns',
+    icon: '📣',
+    label: 'Referral Campaigns',
+    requires: 'operations:promotions:read',
+  },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -793,6 +810,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   customers: 'Customers',
   pricing: 'Pricing & Fares',
   commissions: 'Commission Accounts',
+  campaigns: 'Referral Campaigns',
   billpayments: 'Bill Payments',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -11338,6 +11356,569 @@ function PageProfile() {
 }
 
 // ─── Page router ──────────────────────────────────────────────────────────────
+// ─── Referral Campaigns (DPX-PROMO-REF-001) ──────────────────────────────────
+// A management and read surface over the operations promotions API. It holds
+// no reward economics of its own: every naira and every point total below was
+// summed by the server, and `addPromoter` sends what the operator typed and
+// lets the server rule on it.
+
+/** Whether the session holds a permission. The sidebar already hid what this
+ *  account cannot open; this decides whether a *control* is offered. Hiding a
+ *  button is a courtesy — the 403 from the route is the refusal that counts. */
+function hasPerm(permission: string): boolean {
+  return auth.getUser()?.permissions.includes(permission) ?? false;
+}
+
+const PARTICIPANT_LABEL: Record<CampaignParticipantType, string> = {
+  CUSTOMER: 'Customer',
+  RIDER: 'Rider',
+  DRIVER: 'Driver',
+  PIONEER_DRIVER: 'Pioneer driver',
+  INFLUENCER: 'Influencer',
+  CREATOR: 'Creator',
+  AMBASSADOR: 'Ambassador',
+};
+
+const PARTICIPANT_TYPES = Object.keys(PARTICIPANT_LABEL) as CampaignParticipantType[];
+
+/** No referrals is not a 0% conversion rate, so a null rate reads as "—". */
+const conversion = (rate: number | null): string =>
+  rate === null ? '—' : `${(rate * 100).toFixed(1)}%`;
+
+/**
+ * DX Points, and separately what the server says they were worth.
+ *
+ * Never "10,000 points = ₦10,000", and never points divided by today's rate:
+ * the value shown is the server's per-grant sum at each grant's own rate.
+ */
+function PointsValue({ points, valueNgn }: { points: number; valueNgn: number | null }) {
+  return (
+    <span style={{ fontFamily: 'Inter, sans-serif' }}>
+      {points.toLocaleString()} DX
+      <span style={{ color: MUTED, marginLeft: 6 }}>
+        {valueNgn === null ? '(value unavailable)' : `(${naira(valueNgn)} when granted)`}
+      </span>
+    </span>
+  );
+}
+
+/** A promoter's token is what earns the money, so it is treated as a
+ *  credential: masked until the operator asks for it. */
+function PromoterToken({ token }: { token: string }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <code style={{ fontSize: 11.5, color: shown ? WHITE : MUTED, letterSpacing: 0.4 }}>
+        {shown ? token : '•'.repeat(Math.min(token.length, 12))}
+      </code>
+      <Btn
+        small
+        outline
+        color={G3}
+        label={shown ? 'Hide' : 'Reveal'}
+        onClick={() => setShown((v) => !v)}
+      />
+    </span>
+  );
+}
+
+function PerformanceTiles({ p }: { p: CampaignPerformanceDto }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 12,
+      }}
+    >
+      <KpiCard
+        label="Referrals"
+        value={String(p.totalReferrals)}
+        sub={`${String(p.qualifiedReferrals)} qualified`}
+        color={G3}
+        icon="👥"
+      />
+      <KpiCard
+        label="Conversion"
+        value={conversion(p.conversionRate)}
+        sub="Qualified of referred"
+        color={G3}
+        icon="📈"
+      />
+      <KpiCard
+        label="First rides"
+        value={String(p.firstCompletedRides)}
+        sub="Referees who rode"
+        color={G3}
+        icon="🚗"
+      />
+      <KpiCard
+        label="Cash earned"
+        value={naira(p.rewardsEarnedNgn)}
+        sub={`${naira(p.rewardsPaidNgn)} paid · ${naira(p.rewardsPendingNgn)} pending`}
+        color={G3}
+        icon="💰"
+      />
+      <KpiCard
+        label="Points earned"
+        value={`${p.rewardsEarnedPoints.toLocaleString()} DX`}
+        sub={
+          p.rewardsEarnedPointsValueNgn === null
+            ? 'Value unavailable'
+            : `${naira(p.rewardsEarnedPointsValueNgn)} when granted`
+        }
+        color={C_WARN}
+        icon="⭐"
+      />
+    </div>
+  );
+}
+
+function PageCampaigns() {
+  const [campaigns, setCampaigns] = useState<CampaignSummaryDto[] | null>(null);
+  const [incentive, setIncentive] = useState<AcquisitionIncentiveDto | null>(null);
+  const [incentiveError, setIncentiveError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<CampaignDetailDto | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
+
+  const canManage = hasPerm('operations:promotions:manage');
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setCampaigns(await api.admin.listCampaignPromotions());
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load referral campaigns.');
+      setCampaigns(null);
+    }
+  }, []);
+
+  // The incentive panel fails independently: one universal promotion being
+  // unreadable must not blank the campaign list beside it.
+  const loadIncentive = useCallback(async () => {
+    setIncentiveError(null);
+    try {
+      setIncentive(await api.admin.getAcquisitionIncentive());
+    } catch (e: unknown) {
+      setIncentiveError(
+        (e as { message?: string }).message ?? 'Could not load the acquisition incentive.',
+      );
+      setIncentive(null);
+    }
+  }, []);
+
+  const loadDetail = useCallback(async (promotionId: string) => {
+    setDetailError(null);
+    setDetail(null);
+    try {
+      setDetail(await api.admin.getCampaignPromotion(promotionId));
+    } catch (e: unknown) {
+      setDetailError((e as { message?: string }).message ?? 'Could not load that campaign.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+    void loadIncentive();
+  }, [load, loadIncentive]);
+
+  useEffect(() => {
+    if (openId !== null) void loadDetail(openId);
+  }, [openId, loadDetail]);
+
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+
+  if (campaigns === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
+        </Card>
+      )}
+
+      <AcquisitionIncentivePanel incentive={incentive} error={incentiveError} />
+
+      {campaigns.length === 0 ? (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            No campaigns with promoters yet.
+          </div>
+        </Card>
+      ) : (
+        campaigns.map((c) => (
+          <Card key={c.id} style={{ padding: 0 }}>
+            <div
+              onClick={() => setOpenId(openId === c.id ? null : c.id)}
+              style={{
+                padding: '14px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                cursor: 'pointer',
+                flexWrap: 'wrap',
+              }}
+            >
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>{c.name}</span>
+              <StatusChip status={c.status} />
+              <span style={{ fontSize: 12, color: MUTED }}>
+                {c.promoterCount === 1 ? '1 promoter' : `${String(c.promoterCount)} promoters`}
+              </span>
+              <span style={{ marginLeft: 'auto', fontSize: 12, color: MUTED }}>
+                {openId === c.id ? 'Hide' : 'View'}
+              </span>
+            </div>
+
+            {openId === c.id && (
+              <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${BORDER}` }}>
+                <div style={{ height: 12 }} />
+                <PerformanceTiles p={c.performance} />
+                <div style={{ height: 12 }} />
+                {detailError !== null && (
+                  <div style={{ fontSize: 12.5, color: C_ERR }}>{detailError}</div>
+                )}
+                {detailError === null && detail === null && (
+                  <div style={{ fontSize: 12.5, color: MUTED }}>Loading promoters…</div>
+                )}
+                {detail !== null && detail.id === c.id && (
+                  <PromoterTable
+                    detail={detail}
+                    canManage={canManage}
+                    onChanged={(message) => {
+                      setBanner(message);
+                      void loadDetail(c.id);
+                      void load();
+                    }}
+                  />
+                )}
+              </div>
+            )}
+          </Card>
+        ))
+      )}
+    </div>
+  );
+}
+
+function AcquisitionIncentivePanel({
+  incentive,
+  error,
+}: {
+  incentive: AcquisitionIncentiveDto | null;
+  error: string | null;
+}) {
+  if (error !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      </Card>
+    );
+  }
+  if (incentive === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading the acquisition incentive…
+        </div>
+      </Card>
+    );
+  }
+  // Every term here is the server's. Nothing is stated as a constant, so a
+  // reprice shows up on this screen instead of being contradicted by it.
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          marginBottom: 12,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>
+          Universal acquisition incentive
+        </span>
+        {incentive.status !== null && <StatusChip status={incentive.status} />}
+        <span style={{ fontSize: 12, color: MUTED }}>
+          Every qualifying new customer, whatever brought them in
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+          gap: 12,
+        }}
+      >
+        <KpiCard
+          label="Discount"
+          value={incentive.percentOff === null ? '—' : `${String(incentive.percentOff)}%`}
+          sub={`First ${String(incentive.maxDiscountedRides)} rides`}
+          color={G3}
+          icon="🏷️"
+        />
+        <KpiCard
+          label="New-customer reward"
+          value={incentive.refereeRewardNgn === null ? '—' : naira(incentive.refereeRewardNgn)}
+          sub="Paid on qualifying"
+          color={G3}
+          icon="🎁"
+        />
+        <KpiCard
+          label="Discounted rides"
+          value={String(incentive.discountedRides)}
+          sub={`${String(incentive.customersBenefiting)} customers`}
+          color={G3}
+          icon="🚗"
+        />
+        <KpiCard
+          label="Discount given"
+          value={naira(incentive.totalDiscountNgn)}
+          sub="Funded by DrippleX"
+          color={C_WARN}
+          icon="💸"
+        />
+      </div>
+    </Card>
+  );
+}
+
+function PromoterTable({
+  detail,
+  canManage,
+  onChanged,
+}: {
+  detail: CampaignDetailDto;
+  canManage: boolean;
+  onChanged: (message: string) => void;
+}) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  // A removed promoter keeps their attributions and their earnings, so they
+  // stay on the page — but never in the active list, and never with controls
+  // that imply they are still running.
+  const active = detail.promoters.filter((p) => p.status === 'ACTIVE');
+  const removed = detail.promoters.filter((p) => p.status !== 'ACTIVE');
+
+  const remove = async (promoterId: string) => {
+    setRowError(null);
+    setBusyId(promoterId);
+    try {
+      const result = await api.admin.removeCampaignPromoter(promoterId);
+      onChanged(`Promoter removed. Their status is now ${result.status}.`);
+    } catch (e: unknown) {
+      setRowError((e as { message?: string }).message ?? 'Could not remove that promoter.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const row = (p: CampaignPromoterDto) => (
+    <div
+      key={p.id}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 0',
+        borderTop: `1px solid ${BORDER}`,
+        flexWrap: 'wrap',
+        opacity: p.status === 'ACTIVE' ? 1 : 0.55,
+      }}
+    >
+      <span style={{ fontSize: 12.5, color: WHITE, minWidth: 140 }}>{p.name}</span>
+      <span style={{ fontSize: 12, color: MUTED, minWidth: 100 }}>
+        {PARTICIPANT_LABEL[p.participantType]}
+      </span>
+      <PromoterToken token={p.token} />
+      <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
+        {p.rewardAmountNgn !== null ? (
+          naira(p.rewardAmountNgn)
+        ) : p.rewardPoints !== null ? (
+          <PointsValue points={p.rewardPoints} valueNgn={p.rewardPointsValueNgn} />
+        ) : (
+          '—'
+        )}
+      </span>
+      <span style={{ fontSize: 12, color: MUTED, minWidth: 110 }}>
+        {String(p.performance.qualifiedReferrals)}/{String(p.performance.totalReferrals)} ·{' '}
+        {conversion(p.performance.conversionRate)}
+      </span>
+      <span style={{ fontSize: 12, color: WHITE, minWidth: 90 }}>
+        {naira(p.performance.rewardsEarnedNgn)}
+      </span>
+      <StatusChip status={p.status} />
+      {canManage && p.status === 'ACTIVE' && (
+        <span style={{ marginLeft: 'auto' }}>
+          <Btn
+            small
+            outline
+            color={C_ERR}
+            label={busyId === p.id ? 'Removing…' : 'Remove'}
+            disabled={busyId === p.id}
+            onClick={() => void remove(p.id)}
+          />
+        </span>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {rowError !== null && <div style={{ fontSize: 12.5, color: C_ERR }}>{rowError}</div>}
+
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+        Promoters
+        <span style={{ color: MUTED, fontWeight: 400, marginLeft: 8 }}>
+          {detail.pointsPerNaira === null
+            ? 'DX Points rate unavailable'
+            : `${String(detail.pointsPerNaira)} DX Points to ₦1`}
+        </span>
+      </div>
+
+      {active.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: MUTED }}>No active promoters on this campaign.</div>
+      ) : (
+        active.map(row)
+      )}
+
+      {removed.length > 0 && (
+        <>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+            Removed — kept because their attributions and earnings stand
+          </div>
+          {removed.map(row)}
+        </>
+      )}
+
+      {canManage && (
+        <AddPromoterForm
+          promotionId={detail.id}
+          onAdded={(name) => onChanged(`${name} added to ${detail.name}.`)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddPromoterForm({
+  promotionId,
+  onAdded,
+}: {
+  promotionId: string;
+  onAdded: (name: string) => void;
+}) {
+  const [userId, setUserId] = useState('');
+  const [participantType, setParticipantType] = useState<CampaignParticipantType>('INFLUENCER');
+  // Cash or points, never both — the server and a database CHECK both refuse
+  // anything else, so the form offers a choice rather than two fields.
+  const [rewardKind, setRewardKind] = useState<'cash' | 'points'>('cash');
+  const [amount, setAmount] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    const parsed = Number(amount);
+    if (userId.trim() === '' || !Number.isFinite(parsed) || parsed <= 0) {
+      setError('Enter a user ID and a reward greater than zero.');
+      return;
+    }
+    setBusy(true);
+    try {
+      // The reward the operator typed is sent as typed. Whether it is legal is
+      // the server's ruling, not this form's.
+      const body: AddCampaignPromoterRequest = {
+        userId: userId.trim(),
+        participantType,
+        ...(rewardKind === 'cash' ? { rewardAmountNgn: parsed } : { rewardPoints: parsed }),
+      };
+      const created = await api.admin.addCampaignPromoter(promotionId, body);
+      setUserId('');
+      setAmount('');
+      onAdded(created.name);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not add that promoter.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        borderTop: `1px solid ${BORDER}`,
+        paddingTop: 12,
+        display: 'flex',
+        gap: 8,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+      }}
+    >
+      <input
+        className="dx-input"
+        placeholder="User ID"
+        value={userId}
+        onChange={(e) => setUserId(e.target.value)}
+        style={{ minWidth: 220 }}
+      />
+      <select
+        className="dx-input"
+        value={participantType}
+        onChange={(e) => setParticipantType(e.target.value as CampaignParticipantType)}
+      >
+        {PARTICIPANT_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {PARTICIPANT_LABEL[t]}
+          </option>
+        ))}
+      </select>
+      <select
+        className="dx-input"
+        value={rewardKind}
+        onChange={(e) => setRewardKind(e.target.value === 'points' ? 'points' : 'cash')}
+      >
+        <option value="cash">Cash (₦)</option>
+        <option value="points">DX Points</option>
+      </select>
+      <input
+        className="dx-input"
+        placeholder={rewardKind === 'cash' ? 'Amount in ₦' : 'Points'}
+        value={amount}
+        onChange={(e) => setAmount(e.target.value)}
+        style={{ maxWidth: 140 }}
+      />
+      <Btn
+        small
+        label={busy ? 'Adding…' : 'Add promoter'}
+        disabled={busy}
+        onClick={() => void submit()}
+      />
+      {error !== null && <span style={{ fontSize: 12, color: C_ERR }}>{error}</span>}
+    </div>
+  );
+}
+
 function renderPage(page: AdminPage) {
   // The sidebar already hides what a session may not open, but the page can
   // also be reached from restored state, so the same check is made here rather
@@ -11384,6 +11965,8 @@ function renderPage(page: AdminPage) {
       return <PagePricing />;
     case 'commissions':
       return <PageCommissions />;
+    case 'campaigns':
+      return <PageCampaigns />;
     case 'billpayments':
       return <PageBillPayments />;
     case 'incidents':
@@ -11637,6 +12220,7 @@ export const AdminCustomersScreen = () => <AdminConsoleScreen initialPage="custo
 export const AdminPricingScreen = () => <AdminConsoleScreen initialPage="pricing" />;
 export const AdminIncidentsScreen = () => <AdminConsoleScreen initialPage="incidents" />;
 export const AdminSupportScreen = () => <AdminConsoleScreen initialPage="support" />;
+export const AdminCampaignsScreen = () => <AdminConsoleScreen initialPage="campaigns" />;
 export const AdminAnalyticsScreen = () => <AdminConsoleScreen initialPage="analytics" />;
 export const AdminReportsScreen = () => <AdminConsoleScreen initialPage="reports" />;
 export const AdminSettingsScreen = () => <AdminConsoleScreen initialPage="settings" />;
