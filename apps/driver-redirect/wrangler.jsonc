@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dripplex-driver-redirect",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-13",
+  // No `nodejs_compat`, no `assets`, no `services`, no `images`, no `vars`.
+  //
+  // The other four Workers are OpenNext builds of real Next.js applications and
+  // need all of that. This one constructs a single Response and has no origin
+  // to reach, so every binding omitted here is a capability it cannot be talked
+  // into using. Adding one back would be the first step towards this hostname
+  // serving an app again, which is the thing the 2026-08-30 decision retired.
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+  },
+}
