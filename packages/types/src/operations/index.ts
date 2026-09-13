@@ -12,6 +12,7 @@ import type {
   OrderStatus,
   PaymentStatus,
 } from '../order/index.js';
+import type { PromotionStatus } from '../platform/index.js';
 import type {
   RideCancelledBy,
   RideOfferDto,
@@ -967,4 +968,150 @@ export interface OrderHistoryDto {
 export interface UtilityPurchaseHistoryDto {
   items: UtilityPurchaseHistoryItemDto[];
   meta: HistoryPageMetaDto;
+}
+
+/* ------------------------------------------------------------------------- *
+ * DPX-PROMO-REF-001 — Operations Promotions
+ *
+ * Mirrors `OperationsPromotionsController` exactly. Every amount below is
+ * decided and computed on the server; nothing here is a rate the client may
+ * apply itself. Naira and DX Points are separate fields throughout, never one
+ * summed figure, because they are not the same money and 100 points is ₦1.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * What kind of person is promoting. The distinction is commercial, not
+ * cosmetic: it is what the founder priced (customer ₦150, driver ₦200,
+ * pioneer driver ₦350) and what decides which wallet a reward can reach.
+ */
+export type CampaignParticipantType =
+  'CUSTOMER' | 'RIDER' | 'DRIVER' | 'PIONEER_DRIVER' | 'INFLUENCER' | 'CREATOR' | 'AMBASSADOR';
+
+/** A promoter is deactivated, never deleted — their attributions must survive. */
+export type CampaignPromoterStatus = 'ACTIVE' | 'REMOVED';
+
+/** One rollup, for a whole campaign or a single promoter. Server-computed. */
+export interface CampaignPerformanceDto {
+  totalReferrals: number;
+  qualifiedReferrals: number;
+  /**
+   * Referees who have completed a ride. Counted from rides, not inferred from
+   * redemption status — qualification also accepts a completed marketplace
+   * order, so these are genuinely different numbers.
+   */
+  firstCompletedRides: number;
+  /** Qualified over total, 0-1. Null when nothing has been referred yet — no
+   *  referrals is not a 0% conversion rate. */
+  conversionRate: number | null;
+  rewardsEarnedNgn: number;
+  rewardsPendingNgn: number;
+  rewardsPaidNgn: number;
+  /** DX Points, kept apart from every naira field above. */
+  rewardsEarnedPoints: number;
+  /**
+   * What those points were worth when each was granted, in naira.
+   *
+   * Summed per redemption at that redemption's own snapshotted rate, on the
+   * server. Clients must display this rather than dividing
+   * `rewardsEarnedPoints` by the current rate: the rate moved 200 -> 100 on
+   * 2026-09-12, so converting the aggregate reports double what a historical
+   * grant cost. Null when any grant in the set carries no rate — a partial
+   * total would read as a complete one.
+   */
+  rewardsEarnedPointsValueNgn: number | null;
+}
+
+export interface CampaignPromoterDto {
+  id: string;
+  userId: string;
+  name: string;
+  participantType: CampaignParticipantType;
+  /**
+   * The promoter's private campaign token. Returned only by the
+   * `operations:promotions:read` campaign-detail route; no promoter-facing API
+   * returns anybody else's. It is what earns the money, so a UI showing it
+   * must treat it as a credential, not a label.
+   */
+  token: string;
+  status: CampaignPromoterStatus;
+  addedAt: string;
+  removedAt: string | null;
+  /** Exactly one of these is non-null — enforced by a database CHECK. */
+  rewardAmountNgn: number | null;
+  rewardPoints: number | null;
+  /**
+   * What this promoter's points reward is worth today, in naira, computed on
+   * the server. Today's rate is correct here and wrong for
+   * `rewardsEarnedPointsValueNgn`: this is what the next acquisition will pay,
+   * not what a past one did. Null for a cash reward, and null when the rate
+   * cannot be read — never a fallback constant.
+   */
+  rewardPointsValueNgn: number | null;
+  performance: CampaignPerformanceDto;
+}
+
+export interface CampaignSummaryDto {
+  id: string;
+  name: string;
+  status: PromotionStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  promoterCount: number;
+  performance: CampaignPerformanceDto;
+}
+
+export interface CampaignDetailDto {
+  id: string;
+  name: string;
+  status: PromotionStatus;
+  startsAt: string | null;
+  endsAt: string | null;
+  /** The canonical DX Points rate, stated by the server so no client needs to
+   *  know it. Null when it cannot be read — show points without a value. */
+  pointsPerNaira: number | null;
+  performance: CampaignPerformanceDto;
+  promoters: CampaignPromoterDto[];
+}
+
+/**
+ * The universal new-customer acquisition incentive: its terms, and what it has
+ * cost.
+ *
+ * `percentOff`, `maxDiscountedRides` and `refereeRewardNgn` are stated by the
+ * server rather than known by the client on purpose. A screen that hardcoded
+ * "20% off 3 rides" would keep saying so after the promotion row was repriced,
+ * and a screen that hardcoded ₦150 would keep saying so after the programme
+ * changed — both are ways of showing a customer a number nobody will honour.
+ */
+export interface AcquisitionIncentiveDto {
+  promotionId: string;
+  status: PromotionStatus | null;
+  /** The discount itself, from the promotion row. */
+  percentOff: number | null;
+  /** The hard ceiling on discounted rides, concurrent requests included. */
+  maxDiscountedRides: number;
+  /**
+   * What the new customer is paid for signing up — a different thing from the
+   * discount above and from the promoter's reward, and the one most often
+   * confused with them. From the CUSTOMER referral programme row.
+   */
+  refereeRewardNgn: number | null;
+  discountedRides: number;
+  customersBenefiting: number;
+  totalDiscountNgn: number;
+}
+
+/** Exactly one of `rewardAmountNgn` / `rewardPoints`; the server and the
+ *  database both refuse anything else. */
+export interface AddCampaignPromoterRequest {
+  userId: string;
+  participantType: CampaignParticipantType;
+  rewardAmountNgn?: number;
+  rewardPoints?: number;
+}
+
+export interface RemoveCampaignPromoterResultDto {
+  id: string;
+  status: CampaignPromoterStatus;
+  removedAt: string | null;
 }

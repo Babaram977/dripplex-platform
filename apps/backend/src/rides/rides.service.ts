@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  Prisma,
   CommissionOwnerType,
   DriverStatus,
   PromotionDomain,
@@ -24,6 +25,10 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { PromotionsService } from '../promotions/promotions.service';
 
+import {
+  UNIVERSAL_ACQUISITION_INCENTIVE_ID,
+  UNIVERSAL_ACQUISITION_INCENTIVE_MAX_RIDES,
+} from './acquisition-incentive.constants';
 import { RideDispatchService } from './ride-dispatch.service';
 import { RIDE_EVENTS_PUBLISHER, type RideEventsPublisher } from './ride-events.publisher';
 import {
@@ -63,6 +68,19 @@ import type {
   RideTypeCatalogEntryDto,
 } from '@dripplex/types';
 import type { Ride, RideType } from '@prisma/client';
+
+/**
+ * What the promotions engine is told about a customer when a ride is priced.
+ *
+ * Gathered once per request and used for BOTH the quote and the redemption.
+ * They must be judged on the same facts: a redemption re-evaluates the rules,
+ * and a thinner context there means a promotion that previews and then refuses.
+ */
+interface AcquisitionContext {
+  isReferral: boolean;
+  isNewUser: boolean;
+  completedRides: number;
+}
 
 @Injectable()
 export class RidesService {
@@ -235,46 +253,75 @@ export class RidesService {
       { lat: dto.pickupLatitude, lng: dto.pickupLongitude },
       { lat: dto.dropoffLatitude, lng: dto.dropoffLongitude },
     );
-    const { promotionId, promoDiscount } = await this.previewCoupon(
+    const { promotionId, promoDiscount, acquisition } = await this.previewCoupon(
       customerId,
       dto.rideType,
       estimate.totalFare,
       dto.couponCode,
     );
-    const finalFare = this.roundFare(Math.max(0, estimate.totalFare - promoDiscount));
-
-    const ride = await this.prisma.ride.create({
-      data: {
-        customerId,
-        rideType: dto.rideType,
-        pickupLatitude: dto.pickupLatitude,
-        pickupLongitude: dto.pickupLongitude,
-        ...(dto.pickupAddress !== undefined ? { pickupAddress: dto.pickupAddress } : {}),
-        dropoffLatitude: dto.dropoffLatitude,
-        dropoffLongitude: dto.dropoffLongitude,
-        ...(dto.dropoffAddress !== undefined ? { dropoffAddress: dto.dropoffAddress } : {}),
-        estimatedDistanceMeters: estimate.distanceMeters,
-        estimatedDurationSeconds: estimate.durationSeconds,
-        baseFare: estimate.baseFare,
-        distanceFare: estimate.distanceFare,
-        timeFare: estimate.timeFare,
-        // Snapshotted, not looked up later: editing a rate or a zone in the
-        // pricing console must never re-price a trip that has already
-        // happened, and the zone name has to survive the zone being renamed
-        // or deactivated so the receipt keeps explaining itself.
-        surchargeAmount: estimate.surchargeAmount,
-        ...(estimate.surchargeZoneId !== null ? { surchargeZoneId: estimate.surchargeZoneId } : {}),
-        ...(estimate.surchargeZoneName !== null
-          ? { surchargeZoneName: estimate.surchargeZoneName }
-          : {}),
-        totalFare: finalFare,
-        ...(promotionId !== null ? { promotionId } : {}),
-        promoDiscount,
-      },
+    // DPX-PROMO-REF-001 — the acquisition incentive is capped at three
+    // discounted rides, and that cap has to survive simultaneous requests.
+    //
+    // The eligibility rule (`maxPriorCompletedRides`) reads COMPLETED rides,
+    // and a ride being priced is not completed — so three requests made at once
+    // by a customer with two completed rides all price as eligible, and all
+    // three would carry 20%. Founder ruling: never more than three, concurrency
+    // included.
+    //
+    // This is NOT a second COUNT. A count would race exactly as the first one
+    // does. The grant is decided inside a transaction that first takes a row
+    // lock on the customer's acquisition record, which every concurrent request
+    // for that customer must queue behind, and the ride row created in the same
+    // transaction IS the reservation.
+    const granted = await this.prisma.$transaction(async (tx) => {
+      const keepsIncentive = await this.reserveAcquisitionSlot(tx, customerId, promotionId);
+      const grantedPromotionId = keepsIncentive ? promotionId : null;
+      const grantedDiscount = keepsIncentive ? promoDiscount : 0;
+      const finalFare = this.roundFare(Math.max(0, estimate.totalFare - grantedDiscount));
+      const created = await tx.ride.create({
+        data: {
+          customerId,
+          rideType: dto.rideType,
+          pickupLatitude: dto.pickupLatitude,
+          pickupLongitude: dto.pickupLongitude,
+          ...(dto.pickupAddress !== undefined ? { pickupAddress: dto.pickupAddress } : {}),
+          dropoffLatitude: dto.dropoffLatitude,
+          dropoffLongitude: dto.dropoffLongitude,
+          ...(dto.dropoffAddress !== undefined ? { dropoffAddress: dto.dropoffAddress } : {}),
+          estimatedDistanceMeters: estimate.distanceMeters,
+          estimatedDurationSeconds: estimate.durationSeconds,
+          baseFare: estimate.baseFare,
+          distanceFare: estimate.distanceFare,
+          timeFare: estimate.timeFare,
+          // Snapshotted, not looked up later: editing a rate or a zone in the
+          // pricing console must never re-price a trip that has already
+          // happened, and the zone name has to survive the zone being renamed
+          // or deactivated so the receipt keeps explaining itself.
+          surchargeAmount: estimate.surchargeAmount,
+          ...(estimate.surchargeZoneId !== null
+            ? { surchargeZoneId: estimate.surchargeZoneId }
+            : {}),
+          ...(estimate.surchargeZoneName !== null
+            ? { surchargeZoneName: estimate.surchargeZoneName }
+            : {}),
+          totalFare: finalFare,
+          ...(grantedPromotionId !== null ? { promotionId: grantedPromotionId } : {}),
+          promoDiscount: grantedDiscount,
+        },
+      });
+      return { ride: created, promotionId: grantedPromotionId };
     });
+    const ride = granted.ride;
 
-    if (promotionId !== null) {
-      await this.redeemRidePromotion(ride, promotionId, estimate.totalFare, dto.rideType, context);
+    if (granted.promotionId !== null) {
+      await this.redeemRidePromotion(
+        ride,
+        granted.promotionId,
+        estimate.totalFare,
+        dto.rideType,
+        acquisition,
+        context,
+      );
     }
 
     await this.auditService.record(
@@ -284,6 +331,136 @@ export class RidesService {
     );
 
     return await this.dispatchService.dispatchRide(ride.id);
+  }
+
+  /**
+   * Take one of the three acquisition-discount slots, atomically.
+   *
+   * Returns true if this ride may carry the universal incentive. Only ever
+   * consulted for that one promotion: every other promotion keeps its existing
+   * behaviour untouched.
+   *
+   * **The reservation is the ride row itself.** No separate reservation table
+   * exists, and none is needed: `Ride.promotionId` is already durable state
+   * written in this same transaction, and it already follows the ride's
+   * lifecycle. A cancelled ride stops counting because its status changes, and
+   * a completed one keeps its slot because its status does not. A dedicated
+   * reservation record would have to be kept in step with that lifecycle by
+   * hand, and the day it drifted somebody would be charged full price for a
+   * ride they were promised at 20% off.
+   *
+   * **The serialization point is the customer's acquisition row.**
+   * `referral_redemptions.referee_user_id` is unique platform-wide, so one
+   * customer has exactly one, and eligibility already requires it to exist.
+   * `FOR UPDATE` on it makes every concurrent request by that customer queue,
+   * so the count below is taken by one request at a time. Counting without the
+   * lock — however carefully — is the race this exists to close.
+   *
+   * Crash safety falls out of the transaction: a process that dies between
+   * taking the lock and creating the ride rolls back and leaks nothing, because
+   * there is no reservation to orphan. Retrying is simply the next request.
+   */
+  private async reserveAcquisitionSlot(
+    tx: Prisma.TransactionClient,
+    customerId: string,
+    promotionId: string | null,
+  ): Promise<boolean> {
+    if (promotionId !== UNIVERSAL_ACQUISITION_INCENTIVE_ID) {
+      return promotionId !== null;
+    }
+
+    // Both acquisition records, locked in a fixed order.
+    //
+    // The lock is the serialisation point: every concurrent request for this
+    // customer queues behind it, so the count below and the ride created in the
+    // same transaction cannot interleave. Two statements rather than one
+    // because `FOR UPDATE` cannot be applied to a UNION, and always in this
+    // order so two requests can never take them in opposite orders and
+    // deadlock.
+    const lockedRedemptions = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM referral_redemptions
+      WHERE referee_user_id = ${customerId}::uuid
+      FOR UPDATE
+    `;
+    const lockedPassengerReferrals = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM passenger_referrals
+      WHERE referee_user_id = ${customerId}::uuid
+      FOR UPDATE
+    `;
+    if (lockedRedemptions.length === 0 && lockedPassengerReferrals.length === 0) {
+      // No acquisition of either kind, no incentive.
+      //
+      // Unreachable today and deliberately kept: `referralOnly` means the quote
+      // cannot name this promotion unless one of these rows exists, so nothing
+      // can drive this branch — a mutation removing it survives the whole
+      // suite, and that is stated rather than papered over with a test that
+      // fakes a path into it. It is a fail-closed backstop for the day the
+      // rules and this method stop agreeing, and refusing a discount is the
+      // safe side of that disagreement.
+      return false;
+    }
+
+    // Counted inside the lock, on rides that still hold a slot. CANCELLED and
+    // NO_DRIVERS_FOUND release theirs: a ride that never happened must not
+    // consume a benefit the customer was promised.
+    const consumed = await tx.ride.count({
+      where: {
+        customerId,
+        promotionId: UNIVERSAL_ACQUISITION_INCENTIVE_ID,
+        status: { notIn: [RideStatus.CANCELLED, RideStatus.NO_DRIVERS_FOUND] },
+      },
+    });
+    return consumed < UNIVERSAL_ACQUISITION_INCENTIVE_MAX_RIDES;
+  }
+
+  /**
+   * What the promotions engine needs to know about this customer, gathered
+   * once per pricing call.
+   *
+   * `completedRides` is counted from the rides table rather than from
+   * promotion redemptions, which is the whole point: the founder's rule is the
+   * first three completed rides *ever*, so declining the discount must not
+   * leave a slot unused for later. When ride N is priced the customer has
+   * exactly N-1 completed rides, so ride #1 sees 0 and ride #4 sees 3.
+   *
+   * `isReferral` is true when somebody was acquired through a referral at all —
+   * a self-serve code or a campaign token alike, because the acquisition
+   * incentive is universal and does not care who brought them.
+   */
+  /**
+   * Was this customer acquired through a referral, and how far into their first
+   * rides are they?
+   *
+   * Founder ruling 2026-09-13: the universal incentive applies to every
+   * qualifying new customer regardless of *which* mechanism acquired them. The
+   * platform has two that record an acquisition — `referral_redemptions` (the
+   * standing programme and campaign promoters) and `passenger_referrals` (the
+   * Driver Growth Campaign) — and this used to read only the first. A customer
+   * a driver brought in through their growth campaign was told the referral
+   * discount did not apply to them, which is the opposite of the ruling.
+   *
+   * Either source counts. The incentive itself stays one platform-wide
+   * promotion; this widens who qualifies for it, never how many exist.
+   */
+  private async acquisitionContext(customerId: string): Promise<AcquisitionContext> {
+    const [completedRides, redemption, passengerReferral] = await Promise.all([
+      this.prisma.ride.count({
+        where: { customerId, status: RideStatus.COMPLETED },
+      }),
+      this.prisma.referralRedemption.findUnique({
+        where: { refereeUserId: customerId },
+        select: { id: true },
+      }),
+      this.prisma.passengerReferral.findUnique({
+        where: { refereeUserId: customerId },
+        select: { id: true },
+      }),
+    ]);
+    return {
+      isReferral: redemption !== null || passengerReferral !== null,
+      isNewUser: completedRides === 0,
+      completedRides,
+    };
   }
 
   /** Locks and redeems the promotion previewed in `requestRide`, using the
@@ -300,6 +477,7 @@ export class RidesService {
     promotionId: string,
     subtotal: RideFareEstimate['totalFare'],
     rideType: RequestRideDto['rideType'],
+    acquisition: AcquisitionContext,
     context: AuditContext,
   ): Promise<void> {
     try {
@@ -311,7 +489,13 @@ export class RidesService {
           promotionId,
           referenceType: RIDE_PROMOTION_REFERENCE_TYPE,
           referenceId: ride.id,
-          eligibility: { rideType },
+          // The SAME context the quote was judged on, not a thinner one.
+          // Redemption re-evaluates the rules, so passing only `rideType` here
+          // made every acquisition-incentive redemption fail `referralOnly` and
+          // be swallowed by the catch below: the customer was quoted 20% off
+          // and then charged full price, silently. Preview and redemption must
+          // be given the same facts or they will disagree.
+          eligibility: { rideType, ...acquisition },
         },
         context,
       );
@@ -332,17 +516,33 @@ export class RidesService {
     rideType: RequestRideDto['rideType'],
     subtotal: number,
     couponCode: string | undefined,
-  ): Promise<{ promotionId: string | null; promoDiscount: number }> {
+  ): Promise<{
+    promotionId: string | null;
+    promoDiscount: number;
+    acquisition: AcquisitionContext;
+  }> {
     // No coupon typed → fall back to automatic (codeless) RIDE promotions, the
     // same way the marketplace already does via PricingService.evaluateForCart.
     // This is what makes an automatic campaign such as "Free First Ride"
     // (perUserLimit: 1) apply without the rider having to know a code.
+    // DPX-PROMO-REF-001 — the eligibility context the rules engine has always
+    // read and nobody ever supplied.
+    //
+    // `newUsersOnly`, `returningUsersOnly`, `referralOnly` and `inviteOnly` are
+    // implemented in the evaluator and were dead in production: no caller set
+    // `isNewUser`, `isReferral` or `isInvited`, so a `newUsersOnly` campaign
+    // configured in Ops refused everybody and said nothing. Their unit tests
+    // passed because they handed the evaluator a context directly. Supplying it
+    // here is what makes those rules real, and what the universal acquisition
+    // incentive needs.
+    const acquisition = await this.acquisitionContext(customerId);
+
     if (!couponCode) {
       const auto = await this.promotionsService.previewPromotion({
         userId: customerId,
         domain: PromotionDomain.RIDE,
         subtotal,
-        eligibility: { rideType },
+        eligibility: { rideType, ...acquisition },
       });
       // A ride records ONE promotionId, so only a single promotion may be
       // attached. Take the best (selectDiscounts orders by priority) and use
@@ -350,21 +550,28 @@ export class RidesService {
       // credit one promotion with another's savings at redemption time.
       const best = auto.discounts[0];
       if (!best || best.discountAmount <= 0) {
-        return { promotionId: null, promoDiscount: 0 };
+        return { promotionId: null, promoDiscount: 0, acquisition };
       }
-      return { promotionId: best.promotionId, promoDiscount: best.discountAmount };
+      return { promotionId: best.promotionId, promoDiscount: best.discountAmount, acquisition };
     }
     const preview = await this.promotionsService.previewSinglePromotion({
       userId: customerId,
       domain: PromotionDomain.RIDE,
       subtotal,
       couponCode,
-      eligibility: { rideType },
+      // The same context as the codeless branch. A typed coupon must be judged
+      // by the same rules as an automatic one, or a `newUsersOnly` code would
+      // behave differently from a `newUsersOnly` campaign.
+      eligibility: { rideType, ...acquisition },
     });
     if (!preview || preview.discountAmount <= 0) {
-      return { promotionId: null, promoDiscount: 0 };
+      return { promotionId: null, promoDiscount: 0, acquisition };
     }
-    return { promotionId: preview.promotion.id, promoDiscount: preview.discountAmount };
+    return {
+      promotionId: preview.promotion.id,
+      promoDiscount: preview.discountAmount,
+      acquisition,
+    };
   }
 
   private roundFare(amount: number): number {

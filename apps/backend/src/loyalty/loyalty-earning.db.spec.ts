@@ -359,8 +359,9 @@ describe('partner DX Points earning', () => {
       }
 
       expect(drivers.worstCaseDailyPoints).toBe(drivers.eligiblePartners * 2000);
-      // 200 points to the naira, so 2,000 points is ₦10 per driver per day.
-      expect(drivers.worstCaseDailyNaira).toBe((drivers.eligiblePartners * 2000) / 200);
+      // 100 points to the naira, so 2,000 points is ₦20 per driver per day —
+      // the ruling doubled what a partner-earning programme costs the platform.
+      expect(drivers.worstCaseDailyNaira).toBe((drivers.eligiblePartners * 2000) / 100);
     });
 
     it('reports no ceiling at all when the programme is uncapped', async () => {

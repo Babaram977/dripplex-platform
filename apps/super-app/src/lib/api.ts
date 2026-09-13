@@ -2205,7 +2205,8 @@ export interface LoyaltyOverviewDto {
 }
 
 // What the balance is worth and when it lapses. Every figure is computed by the
-// backend from the loyalty ledger — the rate (200 points = ₦1), the thresholds
+// backend from the loyalty ledger — the rate (100 points = ₦1 since 2026-09-12),
+// the thresholds
 // and the expiry dates all live server-side, so the app never states a number
 // the backend would disagree with.
 export interface LoyaltyPointsSummaryDto {

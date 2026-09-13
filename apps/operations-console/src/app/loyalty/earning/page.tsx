@@ -60,12 +60,24 @@ function naira(value: number): string {
   return `₦${value.toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
 }
 
-/** Points are meaningless without their value. 20 points at 200:1 is 10 kobo. */
-function pointsWithValue(points: number, pointsPerNaira: number): string {
+/**
+ * Points are meaningless without their value — but a wrong value is worse than
+ * none.
+ *
+ * The rate comes from the server or not at all. It used to fall back to a
+ * hardcoded 100, which would have gone on quoting the old valuation had the
+ * founder repriced again; the rate has already moved once, 200 -> 100 on
+ * 2026-09-12. With no rate loaded this shows the points alone.
+ */
+function pointsWithValue(points: number, pointsPerNaira: number | null): string {
   if (points === 0) {
     return '0 points';
   }
-  return `${points.toLocaleString('en-NG')} points (${naira(points / pointsPerNaira)})`;
+  const label = `${points.toLocaleString('en-NG')} points`;
+  if (pointsPerNaira === null || pointsPerNaira <= 0) {
+    return `${label} (value unavailable)`;
+  }
+  return `${label} (${naira(points / pointsPerNaira)})`;
 }
 
 interface Draft {
@@ -181,7 +193,9 @@ function ProgrammeCard({
   const update = useUpdateLoyaltyEarningProgramme();
   const [draft, setDraft] = React.useState<Draft>(() => toDraft(programme));
   const [confirming, setConfirming] = React.useState(false);
-  const pointsPerNaira = impact?.pointsPerNaira ?? 200;
+  // Null until the server states it. No fallback constant: the console must
+  // never carry its own copy of a founder-set rate.
+  const pointsPerNaira = impact?.pointsPerNaira ?? null;
 
   // The server is the source of truth — a value changed in another tab, or one
   // the server refused, must win over what is sitting in this form.

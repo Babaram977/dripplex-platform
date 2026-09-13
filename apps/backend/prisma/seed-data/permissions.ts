@@ -328,6 +328,14 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
       'View the settlements and payout-request queue across every persona, and referral performance',
   },
   {
+    code: 'operations:promotions:read',
+    description: 'View referral campaigns, promoters and their performance',
+  },
+  {
+    code: 'operations:promotions:manage',
+    description: 'Create and run referral campaigns, and add or remove promoters',
+  },
+  {
     code: 'messaging:use',
     description:
       'Read and send messages on a delivery or ride the caller is a party to (DPX-CHAT-001)',

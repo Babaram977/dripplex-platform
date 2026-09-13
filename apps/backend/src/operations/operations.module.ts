@@ -12,6 +12,7 @@ import { OperationsDashboardController } from './controllers/operations-dashboar
 import { OperationsFinanceController } from './controllers/operations-finance.controller';
 import { OperationsFleetController } from './controllers/operations-fleet.controller';
 import { OperationsHistoryController } from './controllers/operations-history.controller';
+import { OperationsPromotionsController } from './controllers/operations-promotions.controller';
 import { OperationsQueuesController } from './controllers/operations-queues.controller';
 import { OperationsRidesController } from './controllers/operations-rides.controller';
 import { OperationsStaffController } from './controllers/operations-staff.controller';
@@ -23,6 +24,7 @@ import { OperationsEligibilityService } from './operations-eligibility.service';
 import { OperationsFleetService } from './operations-fleet.service';
 import { OperationsHistoryService } from './operations-history.service';
 import { OperationsPayoutsService } from './operations-payouts.service';
+import { OperationsPromotionsService } from './operations-promotions.service';
 import { OperationsReferralsService } from './operations-referrals.service';
 import { OperationsRideDetailService } from './operations-ride-detail.service';
 import { OperationsRideQueueService } from './operations-ride-queue.service';
@@ -88,6 +90,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsRidesController,
     OperationsQueuesController,
     OperationsCasesController,
+    OperationsPromotionsController,
     OperationsDashboardController,
     OperationsStaffController,
     OperationsAnalyticsController,
@@ -102,6 +105,7 @@ import { OperationsRideQueueService } from './operations-ride-queue.service';
     OperationsRideDetailService,
     OperationsDispatchSupportService,
     OperationsCasesService,
+    OperationsPromotionsService,
     OperationsDashboardService,
     OperationsAnalyticsService,
     OperationsHistoryService,

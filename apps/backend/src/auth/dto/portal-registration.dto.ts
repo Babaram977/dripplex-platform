@@ -39,10 +39,21 @@ export class PortalRegistrationDto {
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   public phone?: string;
 
+  /**
+   * A standing referral code, a driver campaign code, or a campaign promoter
+   * token — one field, resolved in that order of precedence by the referral
+   * resolver (DPX-PROMO-REF-001, founder ruling).
+   *
+   * The ceiling is 32 rather than 16 because a campaign token is 32 characters.
+   * It was 16, which rejected every campaign token with a 422 before any
+   * service saw it — the field that was supposed to carry them could not.
+   * Widening admits the new class without adding a second customer-facing
+   * field; existing 8-character codes are unaffected.
+   */
   @IsOptional()
   @IsString()
   @MinLength(4)
-  @MaxLength(16)
+  @MaxLength(32)
   @Matches(/^[A-Za-z0-9]+$/, { message: 'referralCode must be alphanumeric' })
   @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.trim().toUpperCase() : value,

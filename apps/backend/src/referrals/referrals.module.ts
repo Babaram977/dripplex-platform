@@ -2,11 +2,14 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { EventsModule } from '../events/events.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { WalletModule } from '../wallet/wallet.module';
 
 import { AdminDriverCampaignController } from './admin-driver-campaign.controller';
 import { AdminReferralsController } from './admin-referrals.controller';
+import { CampaignAttributionService } from './campaign-attribution.service';
+import { CampaignPromoterService } from './campaign-promoter.service';
 import { CustomerReferralsController } from './customer-referrals.controller';
 import { DriverCampaignSweepService } from './driver-campaign-sweep.service';
 import { DriverCampaignTripSubscriber } from './driver-campaign-trip.subscriber';
@@ -24,7 +27,7 @@ import { ReferralsService } from './referrals.service';
 import { RiderReferralsController } from './rider-referrals.controller';
 
 @Module({
-  imports: [PrismaModule, AuditModule, EventsModule, WalletModule],
+  imports: [PrismaModule, AuditModule, EventsModule, WalletModule, LoyaltyModule],
   controllers: [
     CustomerReferralsController,
     DriverReferralsController,
@@ -45,7 +48,15 @@ import { RiderReferralsController } from './rider-referrals.controller';
     DriverCampaignService,
     DriverCampaignTripSubscriber,
     DriverCampaignSweepService,
+    CampaignPromoterService,
+    CampaignAttributionService,
   ],
-  exports: [ReferralsService, ReferralLifecycleService, DriverCampaignService],
+  exports: [
+    ReferralsService,
+    ReferralLifecycleService,
+    DriverCampaignService,
+    CampaignPromoterService,
+    CampaignAttributionService,
+  ],
 })
 export class ReferralsModule {}

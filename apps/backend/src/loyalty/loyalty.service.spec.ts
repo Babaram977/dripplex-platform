@@ -25,6 +25,7 @@ interface LoyaltyPrismaMock {
   };
   loyaltyLedgerEntry: {
     create: jest.Mock;
+    findFirst: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
     aggregate: jest.Mock;
@@ -86,6 +87,9 @@ describe('LoyaltyService', () => {
       },
       loyaltyLedgerEntry: {
         create: jest.fn(),
+        // No prior award under this reference, so the replay guard falls
+        // through to the award itself — the case these tests are about.
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         count: jest.fn().mockResolvedValue(0),
         aggregate: jest.fn().mockResolvedValue({ _sum: { points: null } }),
@@ -119,12 +123,14 @@ describe('LoyaltyService', () => {
       walletService as unknown as WalletService,
       {
         // The seeded defaults, stated here because this suite has no database
-        // to read the real row from. They are the figures that shipped.
+        // to read the real row from. 100 since the founder ruling of
+        // 2026-09-12; `loyalty-settings.db.spec.ts` is what proves the migrated
+        // row actually carries it.
         getEffective: jest.fn().mockResolvedValue({
-          pointsPerNaira: 200,
+          pointsPerNaira: 100,
           walletRedemptionEnabled: true,
           storeRedemptionEnabled: true,
-          minRedemptionPoints: 200,
+          minRedemptionPoints: 100,
           dailyRedemptionPointsCap: null,
         }),
       } as unknown as LoyaltySettingsService,
@@ -191,7 +197,7 @@ describe('LoyaltyService', () => {
     );
   });
 
-  it('redeems points into the wallet at 200 points to the naira', async () => {
+  it('redeems points into the wallet at the rate Operations holds', async () => {
     const before = account({ pointsBalance: 500, lifetimePoints: 500 });
     const after = account({ pointsBalance: 100, lifetimePoints: 500 });
     prisma.loyaltyAccount.upsert.mockResolvedValueOnce(before).mockResolvedValueOnce(after);
@@ -210,19 +216,19 @@ describe('LoyaltyService', () => {
     expect(prisma.loyaltyLedgerEntry.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ points: -400, referenceType: 'REDEMPTION' }),
     });
-    // 400 points is NGN 2 — the whole point of the change: redemption used to
-    // burn the points and pay nothing at all.
+    // 400 points is NGN 4 at the ruled 100 to the naira — the whole point of the
+    // change: redemption used to burn the points and pay nothing at all.
     expect(walletService.creditWithin).toHaveBeenCalledWith(
       prisma,
       expect.objectContaining({
         ownerType: 'CUSTOMER',
         ownerId: userId,
-        amount: 2,
+        amount: 4,
         referenceType: 'LOYALTY_REDEMPTION',
         referenceId: redemptionEntryId,
       }),
     );
-    expect(result.amountCredited).toBe(2);
+    expect(result.amountCredited).toBe(4);
     expect(result.pointsRedeemed).toBe(400);
     expect(result.overview.account.pointsBalance).toBe(100);
   });
@@ -395,10 +401,11 @@ describe('LoyaltyService', () => {
 
     const { points } = await service.getCustomerOverview(userId);
 
-    expect(points.pointsPerNaira).toBe(200);
-    // 10,450 points is NGN 52.25 — NGN 52 payable, 50 points short of the next
-    // whole naira, so 10,400 is what can actually be redeemed.
-    expect(points.balanceValue).toBe(52);
+    expect(points.pointsPerNaira).toBe(100);
+    // 10,450 points is NGN 104.50 — NGN 104 payable, 50 points short of the next
+    // whole naira, so 10,400 is what can actually be redeemed. The remainder
+    // still strands 50 points; the ruling doubled the value, not the precision.
+    expect(points.balanceValue).toBe(104);
     expect(points.redeemablePoints).toBe(10_400);
     expect(points.benefits.deliveryFeeDiscount).toEqual({
       threshold: 10_000,

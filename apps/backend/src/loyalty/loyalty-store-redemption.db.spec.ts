@@ -123,11 +123,11 @@ describe('Loyalty store redemption (database)', () => {
     if (!databaseAvailable) return;
 
     const issued = await redemptions.issueCode(holderId, { points: 4_000 });
-    expect(issued.amount).toBe(20);
+    expect(issued.amount).toBe(40);
 
     const result = await redemptions.redeem(merchantId, issued.code);
 
-    expect(result.amount).toBe(20);
+    expect(result.amount).toBe(40);
     expect(result.points).toBe(4_000);
 
     const account = await prisma.loyaltyAccount.findUniqueOrThrow({ where: { userId: holderId } });
@@ -136,7 +136,7 @@ describe('Loyalty store redemption (database)', () => {
     const wallet = await prisma.wallet.findFirstOrThrow({
       where: { ownerType: WalletOwnerType.MERCHANT, ownerId: merchantId },
     });
-    expect(Number(wallet.availableBalance)).toBeGreaterThanOrEqual(20);
+    expect(Number(wallet.availableBalance)).toBeGreaterThanOrEqual(40);
 
     // The holder is told somebody spent their balance.
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ userId: holderId }));
@@ -247,8 +247,10 @@ describe('Loyalty store redemption (database)', () => {
   it('refuses points that are not whole naira', async () => {
     if (!databaseAvailable) return;
 
+    // 250 is still not a whole naira at 100 to the naira, so this still refuses —
+    // only the figure quoted back to the holder moves.
     await expect(redemptions.issueCode(holderId, { points: 250 })).rejects.toThrow(
-      'multiples of 200',
+      'multiples of 100',
     );
   });
 
@@ -299,10 +301,10 @@ describe('Loyalty store redemption (database)', () => {
     const issued = await redemptions.issueCode(holderId, { points: 2_000, couponCode: 'BOTH' });
     const result = await redemptions.redeem(merchantId, issued.code, { billAmount: 3_000 });
 
-    // ₦10 of points plus a ₦200 discount DrippleX is covering.
-    expect(result.amount).toBe(10);
+    // ₦20 of points plus a ₦200 discount DrippleX is covering.
+    expect(result.amount).toBe(20);
     expect(result.couponDiscount).toBe(200);
-    expect(result.totalCredited).toBe(210);
+    expect(result.totalCredited).toBe(220);
   });
 
   it('refuses a coupon code without a bill to take it off', async () => {
@@ -363,6 +365,6 @@ describe('Loyalty store redemption (database)', () => {
     const credit = await prisma.walletLedgerEntry.findFirstOrThrow({
       where: { referenceType: 'LOYALTY_STORE_REDEMPTION', referenceId: debit.id },
     });
-    expect(Number(credit.amount)).toBe(10);
+    expect(Number(credit.amount)).toBe(20);
   });
 });

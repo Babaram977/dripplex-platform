@@ -579,6 +579,7 @@ model User {
   notificationPreferences     NotificationPreference[]
   deviceTokens                DeviceToken[]
   referral                    Referral?
+  campaignPromoters           CampaignPromoter[]
   referralRedemption          ReferralRedemption?
   driverReferrals             DriverReferral[]
   passengerReferral           PassengerReferral?
@@ -1165,16 +1166,16 @@ model DriverOnboarding {
 }
 
 model Category {
-  id          String     @id @default(uuid()) @db.Uuid
-  name        String     @db.VarChar(120)
-  slug        String     @unique @db.VarChar(140)
-  description String?    @db.VarChar(1000)
-  parentId    String?    @map("parent_id") @db.Uuid
-  isActive    Boolean    @default(true) @map("is_active")
-  createdAt   DateTime   @default(now()) @map("created_at")
-  updatedAt   DateTime   @updatedAt @map("updated_at")
-  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children    Category[] @relation("CategoryHierarchy")
+  id          String            @id @default(uuid()) @db.Uuid
+  name        String            @db.VarChar(120)
+  slug        String            @unique @db.VarChar(140)
+  description String?           @db.VarChar(1000)
+  parentId    String?           @map("parent_id") @db.Uuid
+  isActive    Boolean           @default(true) @map("is_active")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+  parent      Category?         @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[]        @relation("CategoryHierarchy")
   products    Product[]
   posMappings CategoryMapping[]
 
@@ -1204,10 +1205,10 @@ model CategoryMapping {
   /// RESTRICT delete: a mapping records how a catalogue was interpreted.
   /// Disconnecting an integration must not erase it, consistent with every
   /// other child of MerchantIntegration.
-  integration          MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
+  integration MerchantIntegration @relation(fields: [integrationId], references: [id], onDelete: Restrict)
   /// RESTRICT delete: removing a mapped Category would silently unmap a live
   /// catalogue, so the mapping must be removed first.
-  category             Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category    Category            @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   @@unique([integrationId, externalCategoryName])
   @@index([categoryId])
@@ -3435,6 +3436,40 @@ enum PromotionDomain {
   MERCHANT
 }
 
+/// DPX-PROMO-REF-001 — which class of promoter a campaign participant is.
+///
+/// This decides **eligibility and rate**, never where money lands. The wallet a
+/// reward is paid into comes from `Referral.ownerType` through
+/// `REFERRER_WALLETS`, and deliberately so: an influencer's reward is their own
+/// marketing income and reaches the personal wallet they can withdraw from,
+/// exactly as a fleet owner's referral reward already does.
+///
+/// These members must NOT be added to `ReferralOwnerType`. That enum routes
+/// money, and every class here routes to a wallet that already exists — putting
+/// them there would encode a price in a field whose job is a destination, and
+/// `REFERRER_WALLETS` is an exhaustive map that would no longer compile.
+enum CampaignParticipantType {
+  CUSTOMER
+  RIDER
+  DRIVER
+  /// Founder decision: a pioneer driver earns ₦350 where an ordinary driver
+  /// earns ₦200. A different rate, not a different wallet.
+  PIONEER_DRIVER
+  INFLUENCER
+  CREATOR
+  AMBASSADOR
+}
+
+/// Whether a promoter may still attract new referrals under a campaign.
+///
+/// REMOVED never deletes. Founder ruling: removing somebody stops future
+/// participation and leaves every historical referral and reward record intact,
+/// which is why this is a status rather than a `DELETE`.
+enum CampaignPromoterStatus {
+  ACTIVE
+  REMOVED
+}
+
 enum PromotionStatus {
   DRAFT
   SCHEDULED
@@ -3920,32 +3955,33 @@ model Promotion {
   /// incremented inside the same locked transaction that records the
   /// redemption, so two simultaneous checkouts cannot both spend the last of
   /// the budget.
-  budgetSpent    Decimal                   @default(0) @map("budget_spent") @db.Decimal(14, 2)
-  buyQty         Int?                      @map("buy_qty")
-  getQty         Int?                      @map("get_qty")
-  priority       Int                       @default(0)
-  stackable      Boolean                   @default(false)
-  usageLimit     Int?                      @map("usage_limit")
-  usageCount     Int                       @default(0) @map("usage_count")
-  perUserLimit   Int?                      @map("per_user_limit")
-  perDeviceLimit Int?                      @map("per_device_limit")
-  minOrderAmount Decimal?                  @map("min_order_amount") @db.Decimal(12, 2)
-  rules          Json?
-  startsAt       DateTime?                 @map("starts_at")
-  endsAt         DateTime?                 @map("ends_at")
-  pausedAt       DateTime?                 @map("paused_at")
-  archivedAt     DateTime?                 @map("archived_at")
-  merchantId     String?                   @map("merchant_id") @db.Uuid
-  clonedFromId   String?                   @map("cloned_from_id") @db.Uuid
-  createdBy      String?                   @map("created_by") @db.Uuid
-  metadata       Json?
-  createdAt      DateTime                  @default(now()) @map("created_at")
-  updatedAt      DateTime                  @updatedAt @map("updated_at")
-  deletedAt      DateTime?                 @map("deleted_at")
-  redemptions    PromotionRedemption[]
-  loyaltyRewards LoyaltyRewardRedemption[]
-  clonedFrom     Promotion?                @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
-  clones         Promotion[]               @relation("PromotionClone")
+  budgetSpent       Decimal                   @default(0) @map("budget_spent") @db.Decimal(14, 2)
+  buyQty            Int?                      @map("buy_qty")
+  getQty            Int?                      @map("get_qty")
+  priority          Int                       @default(0)
+  stackable         Boolean                   @default(false)
+  usageLimit        Int?                      @map("usage_limit")
+  usageCount        Int                       @default(0) @map("usage_count")
+  perUserLimit      Int?                      @map("per_user_limit")
+  perDeviceLimit    Int?                      @map("per_device_limit")
+  minOrderAmount    Decimal?                  @map("min_order_amount") @db.Decimal(12, 2)
+  rules             Json?
+  startsAt          DateTime?                 @map("starts_at")
+  endsAt            DateTime?                 @map("ends_at")
+  pausedAt          DateTime?                 @map("paused_at")
+  archivedAt        DateTime?                 @map("archived_at")
+  merchantId        String?                   @map("merchant_id") @db.Uuid
+  clonedFromId      String?                   @map("cloned_from_id") @db.Uuid
+  createdBy         String?                   @map("created_by") @db.Uuid
+  metadata          Json?
+  createdAt         DateTime                  @default(now()) @map("created_at")
+  updatedAt         DateTime                  @updatedAt @map("updated_at")
+  deletedAt         DateTime?                 @map("deleted_at")
+  redemptions       PromotionRedemption[]
+  loyaltyRewards    LoyaltyRewardRedemption[]
+  campaignPromoters CampaignPromoter[]
+  clonedFrom        Promotion?                @relation("PromotionClone", fields: [clonedFromId], references: [id], onDelete: SetNull)
+  clones            Promotion[]               @relation("PromotionClone")
 
   @@index([status])
   @@index([type])
@@ -3987,7 +4023,8 @@ model PromotionRedemption {
 /// DPX-LOYALTY-005 — what DX Points convert to, and whether they may.
 ///
 /// Founder decision 2026-09-11: "let it be as shipped but can be controlled."
-/// Redeeming points for wallet cash at 200:1 stays exactly as it shipped; what
+/// Redeeming points for wallet cash stays exactly as it shipped (at 200:1 then,
+/// 100:1 since the 2026-09-12 ruling); what
 /// changes is that every number behind it becomes a row an operator edits
 /// rather than a constant that needs a deployment. Nora's §7 concern — that
 /// points must not become a cash instrument — is answered by the switch rather
@@ -3999,13 +4036,18 @@ model PromotionRedemption {
 model LoyaltySetting {
   id String @id @db.Uuid
 
-  /// How many points buy one naira. Founder decision: 200.
+  /// How many points buy one naira. Founder ruling 2026-09-12: **100**,
+  /// superseding the 200 this table shipped with the day before.
   ///
   /// The most consequential number on this table — it re-prices every unspent
   /// balance on the platform at once — so it is validated hard and every change
   /// is audited with the figure before and after. A redemption snapshots the
   /// rate it used, so re-pricing never rewrites one that already happened.
-  pointsPerNaira Int @default(200) @map("points_per_naira")
+  ///
+  /// Halving it doubled the naira value of every outstanding balance. That was
+  /// the point of the ruling, not a side effect: the founder's economics are
+  /// ₦150 = 15,000 points and ₦350 = 35,000 points, which only holds at 100:1.
+  pointsPerNaira Int @default(100) @map("points_per_naira")
 
   /// Whether points may be turned into withdrawable wallet cash at all.
   ///
@@ -4019,9 +4061,14 @@ model LoyaltySetting {
   /// that starts on changes nothing.
   storeRedemptionEnabled Boolean @default(true) @map("store_redemption_enabled")
 
-  /// The smallest cash-out allowed, in points. Seeded at one naira's worth,
-  /// which is the floor the conversion already implied.
-  minRedemptionPoints Int @default(200) @map("min_redemption_points")
+  /// The smallest cash-out allowed, in points. One naira's worth, which is the
+  /// floor the conversion already implied.
+  ///
+  /// Moved 200 -> 100 with the rate, deliberately. It is only validated as a
+  /// whole multiple of `pointsPerNaira`, and 200 is a whole multiple of 100 —
+  /// so leaving it would have passed every check while silently doubling the
+  /// minimum cash-out from ₦1 to ₦2. Its meaning is "one naira", not "200".
+  minRedemptionPoints Int @default(100) @map("min_redemption_points")
 
   /// The most a holder may cash out in a rolling 24 hours, in points. Null is
   /// uncapped, which is what shipped. A cap is the middle setting between
@@ -4158,6 +4205,21 @@ model LoyaltyLedgerEntry {
   createdAt     DateTime       @default(now()) @map("created_at")
   account       LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
+  /// DPX-PROMO-REF-001 — one entry per account, per reference, per kind.
+  ///
+  /// The wallet has had `@@unique([walletId, referenceType, referenceId])`
+  /// since it shipped; the points ledger had only an index, so a referral
+  /// payout that crashed between awarding points and marking the redemption
+  /// PAID was awarded again in full by the next sweep. The wallet refused the
+  /// second credit. Points did not.
+  ///
+  /// `type` is in the key rather than left out because a reversal is written
+  /// against the same reference as the award it undoes — REVERSED beside
+  /// BONUS — and a three-column key would forbid ever taking a reward back.
+  /// Rows with a null `referenceId` (an Operations adjustment, a redemption)
+  /// are unconstrained: Postgres treats nulls in a unique tuple as distinct,
+  /// which is the behaviour those rows need.
+  @@unique([accountId, referenceType, referenceId, type], map: "loyalty_ledger_entries_account_reference_kind_key")
   @@index([accountId])
   @@index([accountId, createdAt])
   @@index([referenceType, referenceId])
@@ -4732,6 +4794,89 @@ model ReferralProgramme {
 /// One row per referred user (a referee can only be referred once — see
 /// the unique constraint on refereeUserId).
 ///
+
+/// DPX-PROMO-REF-001 — one promoter's participation in one campaign, and the
+/// private token that attributes a referral to them.
+///
+/// This is the join the platform did not have. `Promotion` says what a campaign
+/// is and what it may spend; `ReferralRedemption` says whether a referral
+/// qualified and what it paid. Neither could say *who promoted it under which
+/// campaign*, which is the question every figure on the Ops Promotions tab is a
+/// grouping of.
+///
+/// It is deliberately NOT modelled on `DriverReferral`, which is the same idea
+/// scoped to one driver-growth campaign per calendar month: that table's parent
+/// carries `@@unique([periodStart, periodEnd])` and so forbids simultaneous
+/// campaigns, which the founder ruled must be possible.
+model CampaignPromoter {
+  id String @id @default(uuid()) @db.Uuid
+
+  promotionId String @map("promotion_id") @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+
+  /// The promoter's class, which sets their rate. See the enum: it is not a
+  /// wallet destination and must never become one.
+  participantType CampaignParticipantType @map("participant_type")
+
+  /// The private, campaign-specific attribution token.
+  ///
+  /// Never a public code. `Referral.code` is the user's own public referral code
+  /// and `Promotion.code` is the public campaign coupon; this is a third,
+  /// private namespace, and resolution looks in exactly one table rather than
+  /// guessing which namespace a string belongs to. Cryptographically generated
+  /// over the existing unambiguous alphabet, normalised upper-case on write and
+  /// on lookup, and unique here at the database level rather than by convention.
+  token String @unique @db.VarChar(32)
+
+  /// What this promoter earns per qualified acquisition, in naira OR in DX
+  /// Points — exactly one, enforced by a CHECK constraint the migration adds
+  /// because Prisma cannot express it.
+  ///
+  /// Configuration, not a constant: the founder's ₦150 / ₦200 / ₦350 are what
+  /// Operations sets per campaign, and a campaign may instead pay points. The
+  /// naira equivalent of a points reward is always computed from
+  /// `loyalty_settings.points_per_naira`, never from a second hardcoded rate.
+  rewardAmount Decimal? @map("reward_amount") @db.Decimal(12, 2)
+  rewardPoints Int?     @map("reward_points")
+
+  status CampaignPromoterStatus @default(ACTIVE)
+
+  addedBy   String?   @map("added_by") @db.Uuid
+  addedAt   DateTime  @default(now()) @map("added_at")
+  removedBy String?   @map("removed_by") @db.Uuid
+  removedAt DateTime? @map("removed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  /// Restrict, not Cascade, on both parents.
+  ///
+  /// `DriverReferral` cascades from its campaign, which is right for rows
+  /// derived from a monthly programme. It is wrong here: deleting a campaign or
+  /// a user would delete the promoter row that paid reward history points at,
+  /// and the founder ruled that removing a promoter must never destroy
+  /// historical attribution. Both are latent today — promotions are soft-deleted
+  /// via `deletedAt` and users are soft-deleted by `AccountDeletionService`, so
+  /// neither cascade fires in practice — but a Restrict here means a future hard
+  /// delete fails loudly instead of quietly erasing who was paid for what.
+  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Restrict)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  redemptions ReferralRedemption[]
+
+  /// One participation per campaign per user. A promoter may hold several
+  /// participations across simultaneous campaigns, each with its own token —
+  /// founder ruling — and this constraint permits exactly that while stopping
+  /// the same person being added to one campaign twice.
+  @@unique([promotionId, userId])
+  /// No `@@index([token])`: `token @unique` already builds the btree that
+  /// resolution reads, and a second index on the same column would be paid for
+  /// on every write and never used. Prisma emitting both is what made it
+  /// visible.
+  @@index([promotionId, status])
+  @@map("campaign_promoters")
+}
+
 /// Reward crediting is deferred until the referee reaches the milestone their
 /// programme sets, and then held for the programme's hold period, rather than
 /// paid at signup — a signup-only trigger is free money for anyone willing to
@@ -4752,11 +4897,35 @@ model ReferralRedemption {
   programmeId String?            @map("programme_id") @db.Uuid
   programme   ReferralProgramme? @relation(fields: [programmeId], references: [id])
 
+  /// Which campaign participation attributed this acquisition, if any.
+  ///
+  /// Nullable for exactly the reason `programmeId` is: every referral that
+  /// predates campaigns, and every ordinary self-serve referral that never
+  /// involved one, is a valid row with nothing here. Once written it is never
+  /// rewritten, which is what makes campaign -> promoter -> token -> referred
+  /// customer -> qualification -> reward answerable for a promoter who has since
+  /// been removed from the campaign.
+  ///
+  /// Restrict on delete: this row is the reward's audit trail and must outlive
+  /// any attempt to tidy up the promoter.
+  campaignPromoterId String?           @map("campaign_promoter_id") @db.Uuid
+  campaignPromoter   CampaignPromoter? @relation(fields: [campaignPromoterId], references: [id], onDelete: Restrict)
+
   /// The amounts snapshotted when the referral qualified. Operations re-pricing
   /// a programme must never rewrite what somebody already earned — the same
   /// rule every settled row on this platform follows. Null until qualification.
   referrerRewardAmount Decimal? @map("referrer_reward_amount") @db.Decimal(12, 2)
   refereeRewardAmount  Decimal? @map("referee_reward_amount") @db.Decimal(12, 2)
+
+  /// A points-denominated promoter reward, and the rate that priced it.
+  ///
+  /// Both null for a cash reward. `pointsPerNairaAtGrant` is not optional
+  /// bookkeeping: DX Points were repriced from 200 to 100 per naira on
+  /// 2026-09-12, and without the rate in force at qualification a paid points
+  /// reward would later report a naira cost it never had. It is the same
+  /// snapshot discipline the wallet redemption path already applies.
+  referrerRewardPoints  Int? @map("referrer_reward_points")
+  pointsPerNairaAtGrant Int? @map("points_per_naira_at_grant")
 
   /// The milestone was met and screening passed. The hold runs from here.
   qualifiedAt DateTime? @map("qualified_at")
@@ -4797,6 +4966,13 @@ model ReferralRedemption {
 
   @@index([referralId])
   @@index([status])
+  /// Trace 2, DPX-PROMO-REF-001. The Ops Promotions tab groups by promoter and
+  /// filters by status ("pending rewards for this promoter"), and there was no
+  /// existing group-by on this table to inherit an index from. The composite is
+  /// not redundant with the single: a leading-column-only index would scan every
+  /// redemption for that promoter to answer the filtered question.
+  @@index([campaignPromoterId])
+  @@index([campaignPromoterId, status])
   /// The sweep's two queries: what is waiting to qualify, and what has finished
   /// its hold.
   @@index([status, expiresAt])
@@ -5772,14 +5948,14 @@ model MerchantIntegration {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
-  credential             IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
-  logs                   IntegrationLog[]
-  conflicts              IntegrationConflict[]
-  catalogSyncJobs        CatalogSyncJob[]
-  productSyncs           ProductSync[]
-  inventoryUpdates       InventoryUpdate[]
-  orderStatusUpdates     OrderStatusUpdate[]
-  categoryMappings       CategoryMapping[]
+  credential         IntegrationCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull)
+  logs               IntegrationLog[]
+  conflicts          IntegrationConflict[]
+  catalogSyncJobs    CatalogSyncJob[]
+  productSyncs       ProductSync[]
+  inventoryUpdates   InventoryUpdate[]
+  orderStatusUpdates OrderStatusUpdate[]
+  categoryMappings   CategoryMapping[]
 
   @@index([merchantId])
   @@index([status])
@@ -5854,12 +6030,12 @@ model IntegrationLog {
 /// MKT-INT-001 — Reconciliation conflicts that require manual review.
 /// Records catalog mismatches, inventory discrepancies, order state conflicts.
 model IntegrationConflict {
-  id               String    @id @default(uuid()) @db.Uuid
-  integrationId    String    @map("integration_id") @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  integrationId String    @map("integration_id") @db.Uuid
   /// Type of conflict: CATALOG_PRICE_DIFF, CATALOG_NAME_DIFF, INVENTORY_MISMATCH,
   /// ORDER_STATE_MISMATCH, PRODUCT_ARCHIVED, PRODUCT_ABSENT, CATEGORY_UNMAPPED,
   /// CATEGORY_INACTIVE, CURRENCY_UNSUPPORTED, NEGATIVE_QUANTITY, SKU_COLLISION.
-  conflictType     String    @map("conflict_type") @db.VarChar(100)
+  conflictType  String    @map("conflict_type") @db.VarChar(100)
   /// ID of the source item (product, order, etc.)
   sourceId      String?   @map("source_id") @db.Uuid
   /// External identifier from POS system
@@ -5890,29 +6066,29 @@ model IntegrationConflict {
 /// MKT-INT-001 — Catalog synchronization job tracking.
 /// Tracks batches of product syncs, their status, and outcomes.
 model CatalogSyncJob {
-  id            String    @id @default(uuid()) @db.Uuid
-  integrationId String    @map("integration_id") @db.Uuid
+  id             String    @id @default(uuid()) @db.Uuid
+  integrationId  String    @map("integration_id") @db.Uuid
   /// Job status: PENDING, IN_PROGRESS, COMPLETED, PARTIAL, FAILED.
   /// PARTIAL means the job ran to completion but some items were rejected —
   /// per-item detail is in IntegrationLog, correlated by this job's id.
-  jobStatus     String    @default("PENDING") @map("job_status") @db.VarChar(50)
+  jobStatus      String    @default("PENDING") @map("job_status") @db.VarChar(50)
   /// Direction: POS_TO_DRIPPLEX (import) or DRIPPLEX_TO_POS (export)
-  syncDirection String    @map("sync_direction") @db.VarChar(50)
+  syncDirection  String    @map("sync_direction") @db.VarChar(50)
   /// Idempotency key supplied by the external system. Replaying a batch with a
   /// key already seen for this integration returns the original job instead of
   /// re-running it. Nullable so the column is additive over existing rows, and
   /// because a job DrippleX starts itself has no external key.
   /// Mirrors InventoryUpdate.idempotencyKey. Decision #3 of the Phase 1 contract.
-  idempotencyKey String?  @map("idempotency_key") @db.VarChar(100)
+  idempotencyKey String?   @map("idempotency_key") @db.VarChar(100)
   /// When the job started processing
-  startedAt     DateTime? @map("started_at")
+  startedAt      DateTime? @map("started_at")
   /// When the job completed (null if still in progress)
-  completedAt   DateTime? @map("completed_at")
+  completedAt    DateTime? @map("completed_at")
   /// Number of products processed
-  productCount  Int       @default(0) @map("product_count")
+  productCount   Int       @default(0) @map("product_count")
   /// Why the job failed (if applicable)
-  failureReason String?   @map("failure_reason") @db.VarChar(500)
-  createdAt     DateTime  @default(now()) @map("created_at")
+  failureReason  String?   @map("failure_reason") @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   /// RESTRICT delete: sync job history documents what was synchronized and when.
   /// Disconnecting an integration must not erase this historical record.

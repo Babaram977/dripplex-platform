@@ -27,10 +27,11 @@ export interface LoyaltySettingDto {
  *
  * Founder decision, 2026-09-11: "let it be as shipped but can be controlled."
  *
- * Nothing about today's behaviour changes. 200 points still buy ₦1, cash-out is
- * still on, in-store spending is still on, there is still no daily cap. What
- * changes is that each of those stops being a constant only a deployment can
- * move.
+ * When this shipped nothing about that day's behaviour changed: cash-out was
+ * still on, in-store spending still on, still no daily cap. What changed is that
+ * each of those stopped being a constant only a deployment can move — which is
+ * exactly what let the founder's 2026-09-12 ruling reprice DX Points from 200 to
+ * 100 per naira through this table instead of through code.
  *
  * That is also the answer to Nora's §7 — that DX Points must not be treated as
  * cash — without removing a feature the founder shipped deliberately. The cash

@@ -61,6 +61,7 @@ describe('OperationsReferralsService', () => {
         new WalletService(prisma, auditService, new DomainEventBus()),
         new ReferralQualificationService(prisma),
         new ReferralAntiAbuseService(prisma),
+        { awardPoints: () => Promise.resolve(undefined) } as never,
       ),
     );
   });

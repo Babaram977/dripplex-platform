@@ -44,8 +44,9 @@ export interface LoyaltyAccountOverview {
  */
 export interface LoyaltyPointsSummary {
   balance: number;
-  /** Founder decision: 200 points = ₦1 — now an Ops setting rather than a
-   *  constant, so a screen quoting it must read it from here. */
+  /** Founder ruling 2026-09-12: 100 points = ₦1 — an Ops setting rather than a
+   *  constant, so a screen quoting it must read it from here and never restate
+   *  the number, which has already moved once. */
   pointsPerNaira: number;
   /** Naira the current balance is worth, rounded down to whole naira. */
   balanceValue: number;
@@ -289,12 +290,114 @@ export class LoyaltyService {
     this.assertPositivePoints(input.points);
     const expiresAt = input.expiresAt === undefined ? this.defaultExpiryDate() : input.expiresAt;
 
-    const account = await this.prisma.$transaction(async (tx) => {
+    const outcome = await this.awardOnce(input, expiresAt);
+    if (!outcome.applied) {
+      return await this.getCustomerOverview(input.userId);
+    }
+    const account = outcome.account;
+
+    await this.auditService.record(
+      LOYALTY_AUDIT_ACTIONS.POINTS_AWARDED,
+      { ...(input.context ?? {}), userId: input.userId },
+      {
+        resource: 'loyalty_account',
+        resourceId: account.id,
+        metadata: {
+          points: input.points,
+          reason: input.reason,
+          referenceType: input.referenceType ?? null,
+          referenceId: input.referenceId ?? null,
+        },
+      },
+    );
+
+    await this.evaluateMilestones(input.userId);
+    return await this.getCustomerOverview(input.userId);
+  }
+
+  /**
+   * The award itself, and the two ways it can already have happened.
+   *
+   * The in-transaction check catches a sequential replay — the sweep re-running
+   * a payout whose status update was lost. It cannot see a concurrent one, so
+   * the unique index catches that instead and arrives here as P2002. Both mean
+   * the same thing and must reach the caller the same way: the points are
+   * already on the account, and the work that follows the award (marking the
+   * redemption PAID) still has to complete. Throwing would strand that row
+   * APPROVED forever, re-entering this path on every sweep.
+   */
+  private async awardOnce(
+    input: AwardPointsInput,
+    expiresAt: Date | null,
+  ): Promise<{ account: LoyaltyAccount; applied: boolean }> {
+    try {
+      return await this.awardWithinTransaction(input, expiresAt);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002' &&
+        this.isLedgerReferenceConflict(error)
+      ) {
+        const account = await this.prisma.loyaltyAccount.findUniqueOrThrow({
+          where: { userId: input.userId },
+        });
+        return { account, applied: false };
+      }
+      throw error;
+    }
+  }
+
+  /** Only the reference-uniqueness conflict means "already awarded". Any other
+   *  P2002 on this path is a different problem and must not be swallowed. */
+  private isLedgerReferenceConflict(error: Prisma.PrismaClientKnownRequestError): boolean {
+    const target: unknown = error.meta?.['target'];
+    const fields = Array.isArray(target)
+      ? target.filter((value): value is string => typeof value === 'string')
+      : typeof target === 'string'
+        ? [target]
+        : [];
+    return fields.some(
+      (field) =>
+        field.includes('loyalty_ledger_entries_account_reference_kind_key') ||
+        field.includes('reference_id'),
+    );
+  }
+
+  private async awardWithinTransaction(
+    input: AwardPointsInput,
+    expiresAt: Date | null,
+  ): Promise<{ account: LoyaltyAccount; applied: boolean }> {
+    return await this.prisma.$transaction(async (tx) => {
       const existing = await tx.loyaltyAccount.upsert({
         where: { userId: input.userId },
         update: { deletedAt: null },
         create: { userId: input.userId },
       });
+
+      // DPX-PROMO-REF-001 — an award keyed on a reference happens once.
+      //
+      // The same shape the wallet has used since it shipped: check inside the
+      // transaction, and let the partial unique index on
+      // (account_id, reference_type, reference_id) WHERE points > 0 settle the
+      // concurrent case this check cannot see. Without both, a referral payout
+      // that crashed between crediting and marking the row PAID was re-awarded
+      // in full by the next sweep — the wallet refused the second credit, the
+      // points ledger did not.
+      if (input.referenceType !== undefined && input.referenceId !== undefined) {
+        const alreadyAwarded = await tx.loyaltyLedgerEntry.findFirst({
+          where: {
+            accountId: existing.id,
+            referenceType: input.referenceType,
+            referenceId: input.referenceId,
+            points: { gt: 0 },
+          },
+          select: { id: true },
+        });
+        if (alreadyAwarded !== null) {
+          // A replay announces nothing: the first attempt already did.
+          return { account: existing, applied: false };
+        }
+      }
 
       const nextLifetimePoints = existing.lifetimePoints + input.points;
       const updated = await tx.loyaltyAccount.update({
@@ -318,26 +421,8 @@ export class LoyaltyService {
         },
       });
 
-      return updated;
+      return { account: updated, applied: true };
     });
-
-    await this.auditService.record(
-      LOYALTY_AUDIT_ACTIONS.POINTS_AWARDED,
-      { ...(input.context ?? {}), userId: input.userId },
-      {
-        resource: 'loyalty_account',
-        resourceId: account.id,
-        metadata: {
-          points: input.points,
-          reason: input.reason,
-          referenceType: input.referenceType ?? null,
-          referenceId: input.referenceId ?? null,
-        },
-      },
-    );
-
-    await this.evaluateMilestones(input.userId);
-    return await this.getCustomerOverview(input.userId);
   }
 
   public async awardCashbackPoints(
@@ -362,7 +447,8 @@ export class LoyaltyService {
    * Redemption used to burn the points and pay nothing — the ledger said
    * "Redeemed loyalty points for discount" and no discount existed anywhere in
    * the platform. Now it credits the customer's wallet at the founder-set rate
-   * of 200 points to the naira, which makes a point worth something real in
+   * Operations holds in `loyalty_settings`, which makes a point worth something
+   * real in
    * every place the wallet already works: rides, deliveries, orders, transfers
    * and payouts.
    *

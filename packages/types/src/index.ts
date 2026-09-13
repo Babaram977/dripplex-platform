@@ -365,6 +365,15 @@ export type {
   DeliveryHistoryDto,
   OrderHistoryDto,
   UtilityPurchaseHistoryDto,
+  CampaignParticipantType,
+  CampaignPromoterStatus,
+  CampaignPerformanceDto,
+  CampaignPromoterDto,
+  CampaignSummaryDto,
+  CampaignDetailDto,
+  AcquisitionIncentiveDto,
+  AddCampaignPromoterRequest,
+  RemoveCampaignPromoterResultDto,
 } from './operations/index.js';
 
 export type {

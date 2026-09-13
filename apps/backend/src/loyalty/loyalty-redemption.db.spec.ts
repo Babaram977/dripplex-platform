@@ -92,19 +92,19 @@ describe('Loyalty redemption (database)', () => {
 
     const result = await service.redeemPoints(userId, 4_000);
 
-    // 4,000 points at 200 to the naira is NGN 20.
-    expect(result.amountCredited).toBe(20);
+    // 4,000 points at the ruled 100 to the naira is NGN 40.
+    expect(result.amountCredited).toBe(40);
     expect(result.overview.account.pointsBalance).toBe(1_000);
 
     const wallet = await prisma.wallet.findFirstOrThrow({
       where: { ownerType: WalletOwnerType.CUSTOMER, ownerId: userId },
     });
-    expect(Number(wallet.availableBalance)).toBe(20);
+    expect(Number(wallet.availableBalance)).toBe(40);
 
     const credit = await prisma.walletLedgerEntry.findFirstOrThrow({
       where: { walletId: wallet.id, referenceType: 'LOYALTY_REDEMPTION' },
     });
-    expect(Number(credit.amount)).toBe(20);
+    expect(Number(credit.amount)).toBe(40);
 
     // The wallet credit points back at the loyalty ledger row that paid for it,
     // so either ledger can be audited against the other.

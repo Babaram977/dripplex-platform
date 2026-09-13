@@ -156,7 +156,12 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // 152 -> 153: `support:tickets:ai-handoff` (DPX-SUPPORT-002 B2). Seeded and
     // granted to no role — see support-conversation.permissions.spec.ts, which
     // asserts that stays true.
-    expect(PERMISSION_SEEDS).toHaveLength(153);
+    // 153 -> 155: `operations:promotions:read` and
+    // `operations:promotions:manage` (DPX-PROMO-REF-001). Split because reading
+    // a campaign's numbers and issuing a private token that earns real money
+    // are different acts, and one permission covering both would let anybody
+    // who can see the performance enrol themselves on the campaign.
+    expect(PERMISSION_SEEDS).toHaveLength(155);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

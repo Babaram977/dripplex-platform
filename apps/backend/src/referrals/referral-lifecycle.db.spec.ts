@@ -69,6 +69,7 @@ describe('ReferralLifecycleService', () => {
       walletService,
       new ReferralQualificationService(prisma),
       new ReferralAntiAbuseService(prisma),
+      { awardPoints: () => Promise.resolve(undefined) } as never,
     );
   });
 
@@ -228,20 +229,33 @@ describe('ReferralLifecycleService', () => {
     await completeARide(refereeId);
     await service.advance(redemptionId);
 
-    await prisma.referralProgramme.update({
+    // Restored in `finally`, and captured rather than assumed.
+    //
+    // This used to re-price to 9999, assert, then restore on the happy path
+    // only — so when the assertion failed the shared CUSTOMER singleton was
+    // stranded at 9999 and the next four tests in this file failed against a
+    // rate this test had set. One wrong expectation read as five defects. The
+    // restore now runs whatever happens, and puts back what was actually
+    // there instead of a literal that can drift from the migration.
+    const before = await prisma.referralProgramme.findUniqueOrThrow({
       where: { refereeType: ReferralRefereeType.CUSTOMER },
-      data: { referrerRewardAmount: 9999 },
     });
+    try {
+      await prisma.referralProgramme.update({
+        where: { refereeType: ReferralRefereeType.CUSTOMER },
+        data: { referrerRewardAmount: 9999 },
+      });
 
-    const stored = await prisma.referralRedemption.findUniqueOrThrow({
-      where: { id: redemptionId },
-    });
-    expect(Number(stored.referrerRewardAmount)).toBe(350);
-
-    await prisma.referralProgramme.update({
-      where: { refereeType: ReferralRefereeType.CUSTOMER },
-      data: { referrerRewardAmount: 350 },
-    });
+      const stored = await prisma.referralRedemption.findUniqueOrThrow({
+        where: { id: redemptionId },
+      });
+      expect(Number(stored.referrerRewardAmount)).toBe(150);
+    } finally {
+      await prisma.referralProgramme.update({
+        where: { refereeType: ReferralRefereeType.CUSTOMER },
+        data: { referrerRewardAmount: before.referrerRewardAmount },
+      });
+    }
   });
 
   it('pays both wallets once the hold is zero, and pays exactly once however often it is asked', async () => {
@@ -253,14 +267,14 @@ describe('ReferralLifecycleService', () => {
     expect(await service.advance(redemptionId)).toBe(ReferralRedemptionStatus.PAID);
     // Replaying is the realistic failure — a sweep overlapping a ride event.
     // Both credits are keyed on the redemption id, so the second pass is a
-    // no-op at the wallet rather than a second ₦350.
+    // no-op at the wallet rather than a second ₦150.
     await service.advance(redemptionId);
     await service.advance(redemptionId);
 
     const referrerWallet = await walletService.getWallet(WalletOwnerType.CUSTOMER, referrerId);
     const refereeWallet = await walletService.getWallet(WalletOwnerType.CUSTOMER, refereeId);
-    expect(referrerWallet.availableBalance).toBe(350);
-    expect(refereeWallet.availableBalance).toBe(350);
+    expect(referrerWallet.availableBalance).toBe(150);
+    expect(refereeWallet.availableBalance).toBe(150);
   });
 
   it('refuses a referral whose two accounts share a phone line written differently', async () => {
@@ -352,7 +366,7 @@ describe('ReferralLifecycleService', () => {
     );
 
     const referrerWallet = await walletService.getWallet(WalletOwnerType.CUSTOMER, referrerId);
-    expect(referrerWallet.availableBalance).toBe(350);
+    expect(referrerWallet.availableBalance).toBe(150);
   });
 
   it('expires a referral whose window closed before the referee ever transacted', async () => {
@@ -431,7 +445,7 @@ describe('ReferralLifecycleService', () => {
     expect(await service.advance(redemptionId)).toBe(ReferralRedemptionStatus.PAID);
 
     const referrerWallet = await walletService.getWallet(WalletOwnerType.CUSTOMER, referrerId);
-    expect(referrerWallet.availableBalance).toBe(350);
+    expect(referrerWallet.availableBalance).toBe(150);
   });
 
   it('holds a merchant referral until verification, a bank account and a first order are all true', async () => {
@@ -500,10 +514,10 @@ describe('ReferralLifecycleService', () => {
     expect(Number(fleetProgramme.referrerRewardAmount)).toBe(2500);
     expect(Number(fleetProgramme.refereeRewardAmount)).toBe(0);
     // And 2,500 is naira, not a points threshold: it is a reward amount on a
-    // wallet-crediting programme, the same column the ₦350 customer reward uses.
+    // wallet-crediting programme, the same column the ₦150 customer reward uses.
     const customerProgramme = await prisma.referralProgramme.findUniqueOrThrow({
       where: { refereeType: ReferralRefereeType.CUSTOMER },
     });
-    expect(Number(customerProgramme.referrerRewardAmount)).toBe(350);
+    expect(Number(customerProgramme.referrerRewardAmount)).toBe(150);
   });
 });
