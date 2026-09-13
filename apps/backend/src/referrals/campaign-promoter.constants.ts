@@ -1,4 +1,4 @@
-import { CampaignParticipantType, ReferralOwnerType } from '@prisma/client';
+import { CampaignParticipantType, PromotionStatus, ReferralOwnerType } from '@prisma/client';
 
 /**
  * DPX-PROMO-REF-001 — the campaign promoter vocabulary.
@@ -66,3 +66,24 @@ export const CAMPAIGN_PROMOTER_AUDIT_ACTIONS = {
   ADDED: 'campaign.promoter.added',
   REMOVED: 'campaign.promoter.removed',
 } as const;
+
+/**
+ * Whether a campaign may still take on new acquisitions.
+ *
+ * Exported so the two paths that can attribute one — the private campaign
+ * token, and a promoter's own referral code — cannot disagree about what
+ * "live" means. A campaign that is closed for one must be closed for both, or
+ * the same acquisition pays differently depending on which string the customer
+ * happened to arrive with.
+ */
+export function isCampaignAttributable(promotion: {
+  status: PromotionStatus;
+  deletedAt: Date | null;
+}): boolean {
+  if (promotion.deletedAt !== null) {
+    return false;
+  }
+  return (
+    promotion.status === PromotionStatus.ACTIVE || promotion.status === PromotionStatus.SCHEDULED
+  );
+}

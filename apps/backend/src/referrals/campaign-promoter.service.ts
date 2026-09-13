@@ -17,6 +17,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 import { generateCampaignToken } from './campaign-promoter-token.util';
 import {
+  isCampaignAttributable,
   CAMPAIGN_PROMOTER_AUDIT_ACTIONS,
   CAMPAIGN_TOKEN_MAX_GENERATION_ATTEMPTS,
   PARTICIPANT_OWNER_TYPE,
@@ -85,6 +86,18 @@ export class CampaignPromoterService {
     if (existing) {
       return await this.reinstate(existing, input, reward, adminUserId, context);
     }
+
+    // Founder ruling, 2026-09-13: one campaign at a time.
+    //
+    // A promoter shares their own referral code and nothing else, so that one
+    // code has to mean exactly one rate. Two live participations would make
+    // "what does this code pay?" unanswerable — the code belongs to the person,
+    // not to a campaign, and nothing in the string says which one was intended.
+    //
+    // Refused by name rather than silently, because an operator who sees
+    // "already on Pioneer Drivers" can go and remove them; one that just fails
+    // tells them nothing about what to do next.
+    await this.refuseIfAlreadyOnALiveCampaign(input.userId);
 
     for (let attempt = 0; attempt < CAMPAIGN_TOKEN_MAX_GENERATION_ATTEMPTS; attempt += 1) {
       try {
@@ -229,6 +242,35 @@ export class CampaignPromoterService {
    * sentence rather than a constraint name, and so a request carrying both is
    * refused before a row is attempted.
    */
+  /**
+   * Refuse an enrolment for somebody already promoting a live campaign.
+   *
+   * "Live" is `isCampaignAttributable`, the same predicate attribution uses, so
+   * a campaign that can no longer take acquisitions also no longer blocks a new
+   * enrolment. A REMOVED participation never blocks: removing somebody is how
+   * an operator frees them to be enrolled elsewhere.
+   */
+  private async refuseIfAlreadyOnALiveCampaign(userId: string): Promise<void> {
+    // No need to exclude the campaign being enrolled: this only runs when the
+    // promoter has no row on it at all — an existing row, active or removed, is
+    // handled by `reinstate` above and returns before reaching here. A first
+    // version took an `excludingPromotionId` for safety; a mutation deleting it
+    // changed nothing, which is how the parameter was found to be unreachable
+    // rather than defensive.
+    const held = await this.prisma.campaignPromoter.findMany({
+      where: { userId, status: CampaignPromoterStatus.ACTIVE },
+      select: {
+        promotion: { select: { name: true, status: true, deletedAt: true } },
+      },
+    });
+    const live = held.find((row) => isCampaignAttributable(row.promotion));
+    if (live !== undefined) {
+      throw new ConflictDomainException(
+        `Already promoting "${live.promotion.name}". A promoter shares one referral code, so it can only carry one campaign's rate — remove them from that campaign first.`,
+      );
+    }
+  }
+
   private validateReward(reward: PromoterReward): PromoterReward {
     const { amountNgn, points } = reward;
     if ((amountNgn === undefined) === (points === undefined)) {

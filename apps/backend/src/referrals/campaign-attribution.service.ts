@@ -11,7 +11,10 @@ import { AuditService, type AuditContext } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { normalizeCampaignToken } from './campaign-promoter-token.util';
-import { CAMPAIGN_ATTRIBUTION_AUDIT_ACTIONS } from './campaign-promoter.constants';
+import {
+  isCampaignAttributable,
+  CAMPAIGN_ATTRIBUTION_AUDIT_ACTIONS,
+} from './campaign-promoter.constants';
 import { ReferralLifecycleService } from './referral-lifecycle.service';
 
 /**
@@ -221,13 +224,9 @@ export class CampaignAttributionService {
    * owing rewards for everything that arrived afterwards — the pause has to
    * stop the thing that costs money, not just the thing that is visible.
    */
+  /** Shared with the referral-code path — see isCampaignAttributable. */
   private isAttributable(promotion: { status: PromotionStatus; deletedAt: Date | null }): boolean {
-    if (promotion.deletedAt !== null) {
-      return false;
-    }
-    return (
-      promotion.status === PromotionStatus.ACTIVE || promotion.status === PromotionStatus.SCHEDULED
-    );
+    return isCampaignAttributable(promotion);
   }
 
   private isRefereeAlreadyAcquired(error: unknown): boolean {

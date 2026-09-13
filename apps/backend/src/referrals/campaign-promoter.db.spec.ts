@@ -11,7 +11,7 @@ import {
   ReferralRefereeType,
 } from '@prisma/client';
 
-import { PARTICIPANT_OWNER_TYPE } from './campaign-promoter.constants';
+import { PARTICIPANT_OWNER_TYPE, CAMPAIGN_TOKEN_LENGTH } from './campaign-promoter.constants';
 import { CampaignPromoterService } from './campaign-promoter.service';
 import { ReferralsService } from './referrals.service';
 
@@ -192,13 +192,24 @@ describe('CampaignPromoterService', () => {
     await expect(service.addPromoter(input, ADMIN)).rejects.toThrow(/already an active promoter/i);
   });
 
-  it('lets one promoter hold separate tokens across simultaneous campaigns', async () => {
+  it('refuses a second simultaneous campaign, and names the first', async () => {
     if (!databaseAvailable) return;
-    // Founder ruling 4. Two live campaigns, one person, two private tokens —
-    // and no period-uniqueness stopping the campaigns overlapping, which is
-    // exactly why Promotion is the campaign layer and ReferralCampaign is not.
+    // SUPERSEDES founder ruling 4. Until 2026-09-13 one person could hold live
+    // participations on several campaigns at once, each with its own private
+    // token — this test asserted exactly that.
+    //
+    // The founder then ruled that a promoter shares their own referral code and
+    // nothing else, and that enrolling them raises what that one code pays.
+    // One code cannot carry two rates: nothing in the string says which
+    // campaign was meant. So simultaneous participations are now refused, and
+    // the schema's per-campaign token becomes a backend identifier rather than
+    // something anybody hands out.
+    //
+    // Removing somebody from the first campaign frees them for the next; that
+    // is covered in referral-code-campaign-rate.db.spec.
     const userId = await aUser();
-    const [campaignA, campaignB] = [await aCampaign(), await aCampaign()];
+    const campaignA = await aCampaign();
+    const campaignB = await aCampaign();
 
     const a = await service.addPromoter(
       {
@@ -209,18 +220,19 @@ describe('CampaignPromoterService', () => {
       },
       ADMIN,
     );
-    const b = await service.addPromoter(
-      {
-        promotionId: campaignB,
-        userId,
-        participantType: CampaignParticipantType.AMBASSADOR,
-        reward: { amountNgn: 150 },
-      },
-      ADMIN,
-    );
+    expect(a.token).toHaveLength(CAMPAIGN_TOKEN_LENGTH);
 
-    expect(a.token).not.toBe(b.token);
-    expect(a.id).not.toBe(b.id);
+    await expect(
+      service.addPromoter(
+        {
+          promotionId: campaignB,
+          userId,
+          participantType: CampaignParticipantType.AMBASSADOR,
+          reward: { amountNgn: 150 },
+        },
+        ADMIN,
+      ),
+    ).rejects.toThrow(/already promoting/i);
   });
 
   it('survives concurrent enrolment of the same person: one wins, the rest are told why', async () => {

@@ -36,7 +36,13 @@ describe('CampaignPromoterService P2002 discrimination', () => {
   } {
     const prisma = {
       promotion: { findFirst: jest.fn().mockResolvedValue({ id: 'promo-1', status: 'ACTIVE' }) },
-      campaignPromoter: { findUnique: jest.fn().mockResolvedValue(null), create: createImpl },
+      campaignPromoter: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        // One campaign at a time is checked before the create, so this unit
+        // needs the lookup even when the promoter is on nothing.
+        findMany: jest.fn().mockResolvedValue([]),
+        create: createImpl,
+      },
     } as unknown as PrismaService;
     const referrals = {
       getOrCreateMyCode: jest.fn().mockResolvedValue({ id: 'ref-1' }),
