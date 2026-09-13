@@ -91,7 +91,28 @@ export class CatalogueIngestionService {
       };
     }
 
-    const job = await this.openJob(integration.id, dto.idempotencyKey);
+    const opened = await this.openJob(integration.id, dto.idempotencyKey);
+    if (opened.lostTheRace) {
+      // Another request for this exact idempotency key won the insert while we
+      // were between the read above and this write, and is applying the batch
+      // right now. Returning its job here is not enough: falling through would
+      // apply every item a second time, concurrently with it, and two
+      // simultaneous `applyItem` calls both find `mapping.productId` still null
+      // and both create a product. That is a duplicate in a live merchant
+      // catalogue, made legal by the slug de-duplicator, from nothing worse
+      // than a POS retrying inside the same instant.
+      //
+      // Same answer as the replay branch above, for the same reason: the work
+      // is already being done, so do not do it again.
+      return {
+        jobId: opened.job.id,
+        jobStatus: opened.job.jobStatus,
+        productCount: opened.job.productCount,
+        failedCount: 0,
+        replayed: true,
+      };
+    }
+    const job = opened.job;
     await this.auditService.record(CATALOGUE_SYNC_AUDIT_ACTIONS.JOB_STARTED, context, {
       resource: 'catalog_sync_job',
       resourceId: job.id,
@@ -165,9 +186,20 @@ export class CatalogueIngestionService {
     });
   }
 
-  private async openJob(integrationId: string, idempotencyKey: string): Promise<CatalogSyncJob> {
+  /**
+   * Claim this idempotency key, or report that somebody else already has.
+   *
+   * `lostTheRace` is the whole point of the return shape. An earlier version
+   * returned the winner's job and nothing else, and the caller could not tell a
+   * job it had just opened from one it had merely been handed — so it ran the
+   * batch either way, which is how one retry became two products.
+   */
+  private async openJob(
+    integrationId: string,
+    idempotencyKey: string,
+  ): Promise<{ job: CatalogSyncJob; lostTheRace: boolean }> {
     try {
-      return await this.prisma.catalogSyncJob.create({
+      const job = await this.prisma.catalogSyncJob.create({
         data: {
           integrationId,
           idempotencyKey,
@@ -176,14 +208,15 @@ export class CatalogueIngestionService {
           startedAt: new Date(),
         },
       });
+      return { job, lostTheRace: false };
     } catch (error) {
       // Two identical batches racing each other. The unique index is the
-      // authority, not the read above it, so the loser returns the winner's
-      // job rather than starting a second run of the same work.
+      // authority, not the read above it, so the loser takes the winner's job
+      // rather than starting a second run of the same work.
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const existing = await this.findReplayedJob(integrationId, idempotencyKey);
         if (existing) {
-          return existing;
+          return { job: existing, lostTheRace: true };
         }
       }
       throw error;
