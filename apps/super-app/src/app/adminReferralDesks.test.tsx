@@ -260,16 +260,41 @@ describe('Referral Programmes', () => {
     await renderScreen('AdminReferralProgrammesScreen');
     await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
     fireEvent.click(screen.getByText('Edit'));
-    fireEvent.change(screen.getByLabelText('Referrer reward'), { target: { value: '275' } });
+    fireEvent.change(screen.getByLabelText('Referrer ₦'), { target: { value: '275' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(updateReferralProgramme).toHaveBeenCalledTimes(1));
     const [refereeType, body] = updateReferralProgramme.mock.calls[0] as [
       string,
-      Record<string, number>,
+      Record<string, unknown>,
     ];
     expect(refereeType).toBe('CUSTOMER');
     expect(body.referrerRewardAmount).toBe(275);
     expect(body.refereeRewardAmount).toBe(150);
+  });
+
+  it('makes the hold, the window, the KYC gate and active editable too', async () => {
+    // These were displayed as fixed text while the server accepted changes to
+    // all four. A control that shows a value the operator cannot change reads
+    // as policy when it is really an unfinished form.
+    permissions = ['operations:finance:read', 'admin:referrals:manage'];
+    referralProgrammes.mockResolvedValue([programme()]);
+    updateReferralProgramme.mockResolvedValue(programme());
+    await renderScreen('AdminReferralProgrammesScreen');
+    await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+    fireEvent.click(screen.getByText('Edit'));
+
+    fireEvent.change(screen.getByLabelText('Hold days'), { target: { value: '14' } });
+    fireEvent.change(screen.getByLabelText('Window days'), { target: { value: '45' } });
+    fireEvent.click(screen.getByLabelText('KYC required'));
+    fireEvent.click(screen.getByLabelText('Active'));
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => expect(updateReferralProgramme).toHaveBeenCalledTimes(1));
+    const [, body] = updateReferralProgramme.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.holdDays).toBe(14);
+    expect(body.qualificationWindowDays).toBe(45);
+    expect(body.requireKycVerified).toBe(false);
+    expect(body.active).toBe(false);
   });
 
   it('refuses to send a negative amount', async () => {
@@ -278,10 +303,12 @@ describe('Referral Programmes', () => {
     await renderScreen('AdminReferralProgrammesScreen');
     await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
     fireEvent.click(screen.getByText('Edit'));
-    fireEvent.change(screen.getByLabelText('Referrer reward'), { target: { value: '-5' } });
+    fireEvent.change(screen.getByLabelText('Referrer ₦'), { target: { value: '-5' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() =>
-      expect(screen.getByText('Both amounts must be numbers of zero or more.')).toBeTruthy(),
+      expect(
+        screen.getByText('Amounts must be zero or more; hold and window must be whole days.'),
+      ).toBeTruthy(),
     );
     expect(updateReferralProgramme).not.toHaveBeenCalled();
   });
@@ -353,16 +380,58 @@ describe('DX Points Earning', () => {
     await renderScreen('AdminDxPointsScreen');
     await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
     fireEvent.click(screen.getByText('Edit'));
-    fireEvent.change(screen.getByLabelText('Points per completed job'), {
-      target: { value: '25' },
-    });
+    fireEvent.change(screen.getByLabelText('DX per job'), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText('DX per review'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Min rating'), { target: { value: '3' } });
     fireEvent.click(screen.getByText('Save'));
     await waitFor(() => expect(updateLoyaltyEarningProgramme).toHaveBeenCalledTimes(1));
     const [persona, body] = updateLoyaltyEarningProgramme.mock.calls[0] as [
       string,
-      Record<string, number>,
+      Record<string, unknown>,
     ];
     expect(persona).toBe('DRIVER');
     expect(body.pointsPerCompletedJob).toBe(25);
+    expect(body.pointsPerQualifyingReview).toBe(8);
+    expect(body.minReviewRating).toBe(3);
+  });
+
+  it('sends null — not zero — when the daily cap is switched off', async () => {
+    // Uncapped is the absence of a ceiling. A zero cap would pay nobody, so
+    // conflating the two is how a control silently switches a programme off.
+    permissions = ['admin:loyalty:manage'];
+    loyaltyEarningProgrammes.mockResolvedValue([prog()]);
+    updateLoyaltyEarningProgramme.mockResolvedValue(prog({ dailyPointsCap: null }));
+    await renderScreen('AdminDxPointsScreen');
+    await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.click(screen.getByLabelText('Daily cap'));
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => expect(updateLoyaltyEarningProgramme).toHaveBeenCalledTimes(1));
+    const [, body] = updateLoyaltyEarningProgramme.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(body.dailyPointsCap).toBeNull();
+    expect(body.dailyPointsCap).not.toBe(0);
+  });
+
+  it('refuses a zero daily cap rather than silently paying nobody', async () => {
+    permissions = ['admin:loyalty:manage'];
+    loyaltyEarningProgrammes.mockResolvedValue([prog()]);
+    await renderScreen('AdminDxPointsScreen');
+    await waitFor(() => expect(screen.getByText('Edit')).toBeTruthy());
+    fireEvent.click(screen.getByText('Edit'));
+    fireEvent.change(screen.getByLabelText('DX per day'), { target: { value: '0' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'A daily cap must be greater than zero. Untick it to leave the programme uncapped.',
+        ),
+      ).toBeTruthy(),
+    );
+    expect(updateLoyaltyEarningProgramme).not.toHaveBeenCalled();
   });
 });

@@ -11514,8 +11514,17 @@ function PerformanceTiles({ p }: { p: CampaignPerformanceDto }) {
   );
 }
 
+/** Promotion types that can carry promoters. A campaign is a Promotion row;
+ *  the reward economics live on each promoter, not on the promotion. */
+const CAMPAIGN_TYPES: PromotionType[] = ['REFERRAL', 'PLATFORM_CAMPAIGN'];
+
 function PageCampaigns() {
-  const [campaigns, setCampaigns] = useState<CampaignSummaryDto[] | null>(null);
+  // Every promotion that can carry promoters — not only those that already do.
+  // The operations list is keyed by promoter presence, so on its own it can
+  // never show a campaign waiting for its first promoter, and there would be
+  // no way to enrol one. This page reads both and merges them.
+  const [promotions, setPromotions] = useState<AdminPromotionDto[] | null>(null);
+  const [summaries, setSummaries] = useState<CampaignSummaryDto[]>([]);
   const [incentive, setIncentive] = useState<AcquisitionIncentiveDto | null>(null);
   const [incentiveError, setIncentiveError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -11525,14 +11534,20 @@ function PageCampaigns() {
   const [banner, setBanner] = useState<string | null>(null);
 
   const canManage = hasPerm('operations:promotions:manage');
+  const canCreate = hasPerm('promotions:admin:manage');
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setCampaigns(await api.admin.listCampaignPromotions());
+      const [all, withPromoters] = await Promise.all([
+        api.admin.listPromotions(),
+        api.admin.listCampaignPromotions(),
+      ]);
+      setPromotions(all.filter((p) => CAMPAIGN_TYPES.includes(p.type as PromotionType)));
+      setSummaries(withPromoters);
     } catch (e: unknown) {
       setError((e as { message?: string }).message ?? 'Could not load referral campaigns.');
-      setCampaigns(null);
+      setPromotions(null);
     }
   }, []);
 
@@ -11577,7 +11592,7 @@ function PageCampaigns() {
     );
   }
 
-  if (campaigns === null) {
+  if (promotions === null) {
     return (
       <Card style={{ padding: '14px 16px' }}>
         <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
@@ -11586,6 +11601,9 @@ function PageCampaigns() {
       </Card>
     );
   }
+
+  const summaryFor = (id: string): CampaignSummaryDto | null =>
+    summaries.find((s) => s.id === id) ?? null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -11597,64 +11615,198 @@ function PageCampaigns() {
 
       <AcquisitionIncentivePanel incentive={incentive} error={incentiveError} />
 
-      {campaigns.length === 0 ? (
+      {canCreate && (
+        <CreateCampaignForm
+          onCreated={(name) => {
+            setBanner(`Campaign "${name}" created. Add promoters to it below.`);
+            void load();
+          }}
+        />
+      )}
+
+      {promotions.length === 0 ? (
         <Card style={{ padding: '14px 16px' }}>
           <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-            No campaigns with promoters yet.
+            No referral campaigns exist yet.
+            {canCreate ? ' Create one above to start enrolling promoters.' : ''}
           </div>
         </Card>
       ) : (
-        campaigns.map((c) => (
-          <Card key={c.id} style={{ padding: 0 }}>
-            <div
-              onClick={() => setOpenId(openId === c.id ? null : c.id)}
-              style={{
-                padding: '14px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                cursor: 'pointer',
-                flexWrap: 'wrap',
-              }}
-            >
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>{c.name}</span>
-              <StatusChip status={c.status} />
-              <span style={{ fontSize: 12, color: MUTED }}>
-                {c.promoterCount === 1 ? '1 promoter' : `${String(c.promoterCount)} promoters`}
-              </span>
-              <span style={{ marginLeft: 'auto', fontSize: 12, color: MUTED }}>
-                {openId === c.id ? 'Hide' : 'View'}
-              </span>
-            </div>
-
-            {openId === c.id && (
-              <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${BORDER}` }}>
-                <div style={{ height: 12 }} />
-                <PerformanceTiles p={c.performance} />
-                <div style={{ height: 12 }} />
-                {detailError !== null && (
-                  <div style={{ fontSize: 12.5, color: C_ERR }}>{detailError}</div>
-                )}
-                {detailError === null && detail === null && (
-                  <div style={{ fontSize: 12.5, color: MUTED }}>Loading promoters…</div>
-                )}
-                {detail !== null && detail.id === c.id && (
-                  <PromoterTable
-                    detail={detail}
-                    canManage={canManage}
-                    onChanged={(message) => {
-                      setBanner(message);
-                      void loadDetail(c.id);
-                      void load();
-                    }}
-                  />
-                )}
+        promotions.map((p) => {
+          const summary = summaryFor(p.id);
+          const promoterCount = summary?.promoterCount ?? 0;
+          return (
+            <Card key={p.id} style={{ padding: 0 }}>
+              <div
+                onClick={() => setOpenId(openId === p.id ? null : p.id)}
+                style={{
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  cursor: 'pointer',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>{p.name}</span>
+                <StatusChip status={p.status} />
+                {/* A campaign with no promoters is a normal, working state — it
+                    is waiting for its first one, not broken. Saying so is what
+                    tells the operator there is something to do here. */}
+                <span style={{ fontSize: 12, color: promoterCount === 0 ? C_WARN : MUTED }}>
+                  {promoterCount === 0
+                    ? 'No promoters yet'
+                    : promoterCount === 1
+                      ? '1 promoter'
+                      : `${String(promoterCount)} promoters`}
+                </span>
+                <span style={{ marginLeft: 'auto', fontSize: 12, color: MUTED }}>
+                  {openId === p.id ? 'Hide' : 'Open'}
+                </span>
               </div>
-            )}
-          </Card>
-        ))
+
+              {openId === p.id && (
+                <div style={{ padding: '0 16px 16px', borderTop: `1px solid ${BORDER}` }}>
+                  <div style={{ height: 12 }} />
+                  {summary !== null && <PerformanceTiles p={summary.performance} />}
+                  <div style={{ height: 12 }} />
+
+                  {detailError !== null && (
+                    <div style={{ fontSize: 12.5, color: C_ERR }}>{detailError}</div>
+                  )}
+                  {detailError === null && detail === null && promoterCount > 0 && (
+                    <div style={{ fontSize: 12.5, color: MUTED }}>Loading promoters…</div>
+                  )}
+
+                  {/* One path, always. A campaign with no promoters still has
+                      a detail to fetch — the promotion exists — so PromoterTable
+                      renders with an empty roster and supplies the enrolment
+                      form. An earlier version carried a second, parallel form
+                      for the promoter-less case; it could never render, and a
+                      mutation test proved it by deleting it without turning
+                      anything red. */}
+                  {detail !== null && detail.id === p.id && (
+                    <PromoterTable
+                      detail={detail}
+                      canManage={canManage}
+                      onChanged={(message) => {
+                        setBanner(message);
+                        void loadDetail(p.id);
+                        void load();
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+            </Card>
+          );
+        })
       )}
     </div>
+  );
+}
+
+/**
+ * Start a campaign.
+ *
+ * A campaign is a Promotion row of type REFERRAL; what each promoter earns is
+ * set per promoter when they are enrolled, not here. That is why this form
+ * asks for so little: the money lives on the promoter, and the server rules on
+ * it there.
+ */
+function CreateCampaignForm({ onCreated }: { onCreated: (name: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    if (name.trim() === '') {
+      setError('Give the campaign a name.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await api.admin.createPromotion({
+        name: name.trim(),
+        type: 'REFERRAL',
+        status: 'ACTIVE',
+        ...(startsAt !== '' ? { startsAt: new Date(startsAt).toISOString() } : {}),
+        ...(endsAt !== '' ? { endsAt: new Date(endsAt).toISOString() } : {}),
+      });
+      setName('');
+      setStartsAt('');
+      setEndsAt('');
+      setOpen(false);
+      onCreated(created.name);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not create that campaign.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12.5, color: WHITE }}>Run a campaign with named promoters</span>
+          <span style={{ fontSize: 12, color: MUTED }}>
+            Influencers, creators, ambassadors, or any driver, rider, merchant or customer — each
+            paid per qualified acquisition
+          </span>
+          <span style={{ marginLeft: 'auto' }}>
+            <Btn small label="New campaign" onClick={() => setOpen(true)} />
+          </span>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>
+        New campaign
+      </div>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
+        What each promoter earns is set per promoter when you enrol them, not here.
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input
+          className="dx-input"
+          placeholder="Campaign name"
+          aria-label="Campaign name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ minWidth: 220 }}
+        />
+        <input
+          className="dx-input"
+          type="date"
+          aria-label="Starts at"
+          value={startsAt}
+          onChange={(e) => setStartsAt(e.target.value)}
+        />
+        <input
+          className="dx-input"
+          type="date"
+          aria-label="Ends at"
+          value={endsAt}
+          onChange={(e) => setEndsAt(e.target.value)}
+        />
+        <Btn
+          small
+          label={busy ? 'Creating…' : 'Create campaign'}
+          disabled={busy}
+          onClick={() => void submit()}
+        />
+        <Btn small outline color={MUTED} label="Cancel" onClick={() => setOpen(false)} />
+        {error !== null && <span style={{ fontSize: 12, color: C_ERR }}>{error}</span>}
+      </div>
+    </Card>
   );
 }
 
@@ -12329,8 +12481,17 @@ function PageReferralProgrammes() {
   const [programmes, setProgrammes] = useState<ReferralProgrammeDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ReferralRefereeType | null>(null);
-  const [referrer, setReferrer] = useState('');
-  const [referee, setReferee] = useState('');
+  // Every field the server will accept is editable here. A control that shows
+  // a number the operator cannot change is worse than no control: it reads as
+  // policy when it is really just a form that was never finished.
+  const [draft, setDraft] = useState({
+    referrer: '',
+    referee: '',
+    holdDays: '',
+    windowDays: '',
+    requireKyc: false,
+    active: true,
+  });
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -12354,25 +12515,41 @@ function PageReferralProgrammes() {
   const beginEdit = (p: ReferralProgrammeDto) => {
     setRowError(null);
     setEditing(p.refereeType);
-    setReferrer(String(p.referrerRewardAmount));
-    setReferee(String(p.refereeRewardAmount));
+    setDraft({
+      referrer: String(p.referrerRewardAmount),
+      referee: String(p.refereeRewardAmount),
+      holdDays: String(p.holdDays),
+      windowDays: String(p.qualificationWindowDays),
+      requireKyc: p.requireKycVerified,
+      active: p.active,
+    });
   };
 
   const save = async (refereeType: ReferralRefereeType) => {
     setRowError(null);
-    const a = Number(referrer);
-    const b = Number(referee);
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b < 0) {
-      setRowError('Both amounts must be numbers of zero or more.');
+    const referrer = Number(draft.referrer);
+    const referee = Number(draft.referee);
+    const holdDays = Number(draft.holdDays);
+    const windowDays = Number(draft.windowDays);
+    if (
+      ![referrer, referee, holdDays, windowDays].every((n) => Number.isFinite(n) && n >= 0) ||
+      !Number.isInteger(holdDays) ||
+      !Number.isInteger(windowDays)
+    ) {
+      setRowError('Amounts must be zero or more; hold and window must be whole days.');
       return;
     }
     setBusy(true);
     try {
-      // Sent as typed. What a programme may legally pay is the server's
-      // ruling; this desk does not decide it and does not pre-empt it.
+      // Sent as typed. What a programme may legally pay is the server's ruling;
+      // this desk does not decide it and does not pre-empt it.
       await api.admin.updateReferralProgramme(refereeType, {
-        referrerRewardAmount: a,
-        refereeRewardAmount: b,
+        referrerRewardAmount: referrer,
+        refereeRewardAmount: referee,
+        holdDays,
+        qualificationWindowDays: windowDays,
+        requireKycVerified: draft.requireKyc,
+        active: draft.active,
       });
       setBanner(`${personaLabel(refereeType)} programme updated.`);
       setEditing(null);
@@ -12430,26 +12607,41 @@ function PageReferralProgrammes() {
               key={p.refereeType}
               style={{ padding: '10px 0', borderTop: `1px solid ${BORDER}` }}
             >
-              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
-                  {personaLabel(p.refereeType)}
-                </span>
-                <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
-                {editing === p.refereeType ? (
-                  <>
-                    <input
-                      className="dx-input"
-                      aria-label="Referrer reward"
-                      value={referrer}
-                      onChange={(e) => setReferrer(e.target.value)}
-                      style={{ maxWidth: 120 }}
+              {editing === p.refereeType ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ fontSize: 12.5, color: WHITE, fontWeight: 600 }}>
+                    {personaLabel(p.refereeType)}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <LabelledInput
+                      label="Referrer ₦"
+                      value={draft.referrer}
+                      onChange={(v) => setDraft({ ...draft, referrer: v })}
                     />
-                    <input
-                      className="dx-input"
-                      aria-label="Referee reward"
-                      value={referee}
-                      onChange={(e) => setReferee(e.target.value)}
-                      style={{ maxWidth: 120 }}
+                    <LabelledInput
+                      label="Referee ₦"
+                      value={draft.referee}
+                      onChange={(v) => setDraft({ ...draft, referee: v })}
+                    />
+                    <LabelledInput
+                      label="Hold days"
+                      value={draft.holdDays}
+                      onChange={(v) => setDraft({ ...draft, holdDays: v })}
+                    />
+                    <LabelledInput
+                      label="Window days"
+                      value={draft.windowDays}
+                      onChange={(v) => setDraft({ ...draft, windowDays: v })}
+                    />
+                    <Toggle
+                      label="KYC required"
+                      checked={draft.requireKyc}
+                      onChange={(v) => setDraft({ ...draft, requireKyc: v })}
+                    />
+                    <Toggle
+                      label="Active"
+                      checked={draft.active}
+                      onChange={(v) => setDraft({ ...draft, active: v })}
                     />
                     <Btn
                       small
@@ -12464,31 +12656,93 @@ function PageReferralProgrammes() {
                       label="Cancel"
                       onClick={() => setEditing(null)}
                     />
-                  </>
-                ) : (
-                  <>
-                    <span style={{ fontSize: 12, color: WHITE, minWidth: 190 }}>
-                      Referrer {naira(p.referrerRewardAmount)} · Referee{' '}
-                      {naira(p.refereeRewardAmount)}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
+                    {personaLabel(p.refereeType)}
+                  </span>
+                  <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
+                  <span style={{ fontSize: 12, color: WHITE, minWidth: 190 }}>
+                    Referrer {naira(p.referrerRewardAmount)} · Referee{' '}
+                    {naira(p.refereeRewardAmount)}
+                  </span>
+                  <span style={{ fontSize: 12, color: MUTED, minWidth: 200 }}>
+                    {p.holdDays === 0 ? 'Pays immediately' : `${String(p.holdDays)}-day hold`} ·{' '}
+                    {String(p.qualificationWindowDays)}-day window ·{' '}
+                    {p.requireKycVerified ? 'KYC required' : 'No KYC gate'}
+                  </span>
+                  {canManage && (
+                    <span style={{ marginLeft: 'auto' }}>
+                      <Btn small outline color={G3} label="Edit" onClick={() => beginEdit(p)} />
                     </span>
-                    <span style={{ fontSize: 12, color: MUTED, minWidth: 200 }}>
-                      {p.holdDays === 0 ? 'Pays immediately' : `${String(p.holdDays)}-day hold`} ·{' '}
-                      {String(p.qualificationWindowDays)}-day window ·{' '}
-                      {p.requireKycVerified ? 'KYC required' : 'No KYC gate'}
-                    </span>
-                    {canManage && (
-                      <span style={{ marginLeft: 'auto' }}>
-                        <Btn small outline color={G3} label="Edit" onClick={() => beginEdit(p)} />
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
+                  )}
+                </div>
+              )}
             </div>
           ))
         )}
       </Card>
     </div>
+  );
+}
+
+/** A labelled field. The label is the accessible name, so a test and a screen
+ *  reader find the same control the operator is looking at. */
+function LabelledInput({
+  label,
+  value,
+  onChange,
+  width = 110,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  width?: number;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: 10.5, color: MUTED }}>{label}</span>
+      <input
+        className="dx-input"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ maxWidth: width }}
+      />
+    </span>
+  );
+}
+
+function Toggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: 12,
+        color: WHITE,
+        cursor: 'pointer',
+      }}
+    >
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      {label}
+    </label>
   );
 }
 
@@ -12498,7 +12752,17 @@ function PageDxPoints() {
   const [error, setError] = useState<string | null>(null);
   const [impactError, setImpactError] = useState<string | null>(null);
   const [editing, setEditing] = useState<LoyaltyEarnerPersona | null>(null);
-  const [perJob, setPerJob] = useState('');
+  // Every field the server accepts. `capped` is separate from `dailyCap`
+  // because uncapped is null, not zero — a zero cap would pay nobody, and
+  // conflating the two is how a control silently switches a programme off.
+  const [draft, setDraft] = useState({
+    perJob: '',
+    perReview: '',
+    minRating: '',
+    capped: true,
+    dailyCap: '',
+    active: true,
+  });
   const [busy, setBusy] = useState(false);
   const [rowError, setRowError] = useState<string | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
@@ -12532,16 +12796,44 @@ function PageDxPoints() {
     void loadImpact();
   }, [load, loadImpact]);
 
+  const beginEdit = (p: LoyaltyEarningProgrammeDto) => {
+    setRowError(null);
+    setEditing(p.persona);
+    setDraft({
+      perJob: String(p.pointsPerCompletedJob),
+      perReview: String(p.pointsPerQualifyingReview),
+      minRating: String(p.minReviewRating),
+      capped: p.dailyPointsCap !== null,
+      dailyCap: p.dailyPointsCap === null ? '' : String(p.dailyPointsCap),
+      active: p.active,
+    });
+  };
+
   const save = async (persona: LoyaltyEarnerPersona) => {
     setRowError(null);
-    const n = Number(perJob);
-    if (!Number.isFinite(n) || n < 0) {
-      setRowError('Points per completed job must be a number of zero or more.');
+    const perJob = Number(draft.perJob);
+    const perReview = Number(draft.perReview);
+    const minRating = Number(draft.minRating);
+    const cap = Number(draft.dailyCap);
+    if (![perJob, perReview, minRating].every((n) => Number.isFinite(n) && n >= 0)) {
+      setRowError('Points and the minimum rating must be numbers of zero or more.');
+      return;
+    }
+    if (draft.capped && (!Number.isFinite(cap) || cap <= 0)) {
+      setRowError(
+        'A daily cap must be greater than zero. Untick it to leave the programme uncapped.',
+      );
       return;
     }
     setBusy(true);
     try {
-      await api.admin.updateLoyaltyEarningProgramme(persona, { pointsPerCompletedJob: n });
+      await api.admin.updateLoyaltyEarningProgramme(persona, {
+        pointsPerCompletedJob: perJob,
+        pointsPerQualifyingReview: perReview,
+        minReviewRating: minRating,
+        dailyPointsCap: draft.capped ? cap : null,
+        active: draft.active,
+      });
       setBanner(`${personaLabel(persona)} DX Points earning updated.`);
       setEditing(null);
       await load();
@@ -12570,7 +12862,7 @@ function PageDxPoints() {
     );
   }
 
-  const impactFor = (persona: LoyaltyEarnerPersona) =>
+  const impactFor = (persona: LoyaltyEarnerPersona): LoyaltyEarningImpactDto | null =>
     impact?.find((i) => i.persona === persona) ?? null;
 
   return (
@@ -12603,46 +12895,68 @@ function PageDxPoints() {
           programmes.map((p) => {
             const i = impactFor(p.persona);
             return (
-              <div
-                key={p.persona}
-                style={{
-                  display: 'flex',
-                  gap: 12,
-                  padding: '10px 0',
-                  borderTop: `1px solid ${BORDER}`,
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                }}
-              >
-                <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
-                  {personaLabel(p.persona)}
-                </span>
-                <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
+              <div key={p.persona} style={{ padding: '10px 0', borderTop: `1px solid ${BORDER}` }}>
                 {editing === p.persona ? (
-                  <>
-                    <input
-                      className="dx-input"
-                      aria-label="Points per completed job"
-                      value={perJob}
-                      onChange={(e) => setPerJob(e.target.value)}
-                      style={{ maxWidth: 120 }}
-                    />
-                    <Btn
-                      small
-                      label={busy ? 'Saving…' : 'Save'}
-                      disabled={busy}
-                      onClick={() => void save(p.persona)}
-                    />
-                    <Btn
-                      small
-                      outline
-                      color={MUTED}
-                      label="Cancel"
-                      onClick={() => setEditing(null)}
-                    />
-                  </>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ fontSize: 12.5, color: WHITE, fontWeight: 600 }}>
+                      {personaLabel(p.persona)}
+                    </div>
+                    <div
+                      style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}
+                    >
+                      <LabelledInput
+                        label="DX per job"
+                        value={draft.perJob}
+                        onChange={(v) => setDraft({ ...draft, perJob: v })}
+                      />
+                      <LabelledInput
+                        label="DX per review"
+                        value={draft.perReview}
+                        onChange={(v) => setDraft({ ...draft, perReview: v })}
+                      />
+                      <LabelledInput
+                        label="Min rating"
+                        value={draft.minRating}
+                        onChange={(v) => setDraft({ ...draft, minRating: v })}
+                      />
+                      <Toggle
+                        label="Daily cap"
+                        checked={draft.capped}
+                        onChange={(v) => setDraft({ ...draft, capped: v })}
+                      />
+                      {draft.capped && (
+                        <LabelledInput
+                          label="DX per day"
+                          value={draft.dailyCap}
+                          onChange={(v) => setDraft({ ...draft, dailyCap: v })}
+                        />
+                      )}
+                      <Toggle
+                        label="Active"
+                        checked={draft.active}
+                        onChange={(v) => setDraft({ ...draft, active: v })}
+                      />
+                      <Btn
+                        small
+                        label={busy ? 'Saving…' : 'Save'}
+                        disabled={busy}
+                        onClick={() => void save(p.persona)}
+                      />
+                      <Btn
+                        small
+                        outline
+                        color={MUTED}
+                        label="Cancel"
+                        onClick={() => setEditing(null)}
+                      />
+                    </div>
+                  </div>
                 ) : (
-                  <>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12.5, color: WHITE, minWidth: 100 }}>
+                      {personaLabel(p.persona)}
+                    </span>
+                    <StatusChip status={p.active ? 'ACTIVE' : 'INACTIVE'} />
                     <span style={{ fontSize: 12, color: WHITE, minWidth: 180 }}>
                       {String(p.pointsPerCompletedJob)} DX per job ·{' '}
                       {String(p.pointsPerQualifyingReview)} per review
@@ -12665,20 +12979,10 @@ function PageDxPoints() {
                     </span>
                     {canManage && (
                       <span style={{ marginLeft: 'auto' }}>
-                        <Btn
-                          small
-                          outline
-                          color={G3}
-                          label="Edit"
-                          onClick={() => {
-                            setRowError(null);
-                            setEditing(p.persona);
-                            setPerJob(String(p.pointsPerCompletedJob));
-                          }}
-                        />
+                        <Btn small outline color={G3} label="Edit" onClick={() => beginEdit(p)} />
                       </span>
                     )}
-                  </>
+                  </div>
                 )}
               </div>
             );
