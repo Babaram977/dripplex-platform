@@ -1033,6 +1033,22 @@ export interface CampaignPromoterDto {
    * must treat it as a credential, not a label.
    */
   token: string;
+  /**
+   * The promoter's own standing referral code — what they actually share.
+   *
+   * Founder ruling 2026-09-13: one code, one rate. Enrolling somebody on a
+   * campaign raises what their existing code pays; it does not issue a second
+   * code, and `token` above is a backend identifier for the participation
+   * rather than anything a promoter hands out. A console that offered the token
+   * as the shareable thing would be handing out a string no signup form
+   * accepts.
+   *
+   * Enrolment ensures the code before the participation is written, so a
+   * promoter added through Ops always has one. Null is reserved for rows that
+   * predate that guarantee, and a console must show it as absent rather than
+   * substituting the token.
+   */
+  referralCode: string | null;
   status: CampaignPromoterStatus;
   addedAt: string;
   removedAt: string | null;

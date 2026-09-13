@@ -144,6 +144,10 @@ describe('ReferralsService', () => {
 
       expect(stats).toEqual({
         code: 'STAT0001',
+        // Not on a campaign: the code carries the programme rate, and the two
+        // campaign fields say so rather than being absent.
+        campaignName: null,
+        campaignRewardPoints: null,
         totalRedemptions: 5,
         pendingRedemptions: 2,
         rewardedRedemptions: 3,

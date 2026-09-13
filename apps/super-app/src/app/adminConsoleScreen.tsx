@@ -11620,12 +11620,79 @@ function PointsValue({ points, valueNgn }: { points: number; valueNgn: number | 
   );
 }
 
-/** A promoter's token is what earns the money, so it is treated as a
- *  credential: masked until the operator asks for it. */
+/**
+ * What the promoter actually shares.
+ *
+ * Founder ruling 2026-09-13: a promoter has one referral code, and enrolling
+ * them on a campaign raises what that code pays rather than issuing a second
+ * one. This is therefore the only string on the row an operator can give out —
+ * it is what a new customer types at signup, and what the promoter's own QR
+ * encodes.
+ *
+ * Not masked, unlike the token beside it. A referral code is meant to be
+ * published; hiding it would make the credential and the poster look alike,
+ * which is the confusion this row exists to end.
+ */
+function PromoterCode({ code }: { code: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (code === null) {
+    // Enrolment creates the code, so this is a pre-existing row rather than a
+    // normal state. Saying so beats printing the token in its place.
+    return (
+      <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        no referral code
+      </span>
+    );
+  }
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>shares</span>
+      <code style={{ fontSize: 12.5, color: G3, letterSpacing: 1.2, fontWeight: 700 }}>{code}</code>
+      <Btn
+        small
+        outline
+        color={G3}
+        label={copied ? 'Copied' : 'Copy'}
+        onClick={() => {
+          void navigator.clipboard
+            .writeText(code)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => {
+                setCopied(false);
+              }, 2000);
+            })
+            .catch(() => {
+              // Clipboard refused (no permission, insecure origin). The code is
+              // on screen and can be read off it.
+            });
+        }}
+      />
+    </span>
+  );
+}
+
+/**
+ * The promoter's internal attribution token.
+ *
+ * Founder ruling 2026-09-13: this is NOT what a promoter shares. They share
+ * their own referral code, and being on a campaign raises what that one code
+ * pays. The token stays a backend identifier — shown here only so an operator
+ * investigating an attribution can match a row to a record.
+ *
+ * Still masked. It remains a bearer credential: whoever holds it can claim an
+ * acquisition, which is exactly why it is not the thing handed out.
+ */
 function PromoterToken({ token }: { token: string }) {
   const [shown, setShown] = useState(false);
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      {/* Labelled, because an operator looking at a long code next to a
+          promoter's name will otherwise assume it is the thing to send them.
+          It is not: they share their own referral code. */}
+      <span style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        internal id
+      </span>
       <code style={{ fontSize: 11.5, color: shown ? WHITE : MUTED, letterSpacing: 0.4 }}>
         {shown ? token : '•'.repeat(Math.min(token.length, 12))}
       </code>
@@ -12125,6 +12192,7 @@ function PromoterTable({
       <span style={{ fontSize: 12, color: MUTED, minWidth: 100 }}>
         {PARTICIPANT_LABEL[p.participantType]}
       </span>
+      <PromoterCode code={p.referralCode} />
       <PromoterToken token={p.token} />
       <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
         {p.rewardAmountNgn !== null ? (

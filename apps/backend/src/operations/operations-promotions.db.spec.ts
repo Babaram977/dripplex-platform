@@ -174,6 +174,71 @@ describe('OperationsPromotionsService', () => {
     expect(audited.map((a) => a.action)).toContain('campaign.promoter.added');
   });
 
+  it('returns the promoter\u2019s own referral code, which is what they share', async () => {
+    if (!databaseAvailable) return;
+    // Founder ruling 2026-09-13: one code, one rate. The console exists to tell
+    // an operator what a promoter is sharing, and the answer is this code — the
+    // token is the backend identifier for the participation and is not
+    // something anybody can type into a signup form.
+    const [promotionId, userId] = [await aCampaign(), await aUser()];
+    const row = await ops.addPromoter(
+      promotionId,
+      { userId, participantType: CampaignParticipantType.INFLUENCER, rewardAmountNgn: 350 },
+      ADMIN,
+      ctx,
+    );
+
+    const stored = await prisma.referral.findUniqueOrThrow({ where: { userId } });
+    expect(row.referralCode).toBe(stored.code);
+    expect(row.referralCode).not.toBe(row.token);
+
+    const detail = await ops.getCampaign(promotionId);
+    expect(detail.promoters.find((p) => p.id === row.id)?.referralCode).toBe(stored.code);
+  });
+
+  it('gives each promoter their own code, never another promoter\u2019s', async () => {
+    if (!databaseAvailable) return;
+    // The batched lookup that fetches every code in one query is the place a
+    // mix-up would happen, and a mixed-up code sends an operator to tell the
+    // wrong person their earnings.
+    const promotionId = await aCampaign();
+    const [first, second] = [await aUser(), await aUser()];
+    for (const userId of [first, second]) {
+      await ops.addPromoter(
+        promotionId,
+        { userId, participantType: CampaignParticipantType.INFLUENCER, rewardAmountNgn: 350 },
+        ADMIN,
+        ctx,
+      );
+    }
+
+    const detail = await ops.getCampaign(promotionId);
+    for (const userId of [first, second]) {
+      const stored = await prisma.referral.findUniqueOrThrow({ where: { userId } });
+      expect(detail.promoters.find((p) => p.userId === userId)?.referralCode).toBe(stored.code);
+    }
+    const codes = detail.promoters.map((p) => p.referralCode);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('reports no code rather than a substitute when a row predates the guarantee', async () => {
+    if (!databaseAvailable) return;
+    // Enrolment ensures a code, so this state is only reachable by removing the
+    // referral row — which is exactly what a pre-guarantee row looks like. The
+    // console must say "none" rather than fall back to the token.
+    const [promotionId, userId] = [await aCampaign(), await aUser()];
+    const row = await ops.addPromoter(
+      promotionId,
+      { userId, participantType: CampaignParticipantType.INFLUENCER, rewardAmountNgn: 350 },
+      ADMIN,
+      ctx,
+    );
+    await prisma.referral.delete({ where: { userId } });
+
+    const detail = await ops.getCampaign(promotionId);
+    expect(detail.promoters.find((p) => p.id === row.id)?.referralCode).toBeNull();
+  });
+
   it('refuses a reward that is both cash and points', async () => {
     if (!databaseAvailable) return;
     const [promotionId, userId] = [await aCampaign(), await aUser()];

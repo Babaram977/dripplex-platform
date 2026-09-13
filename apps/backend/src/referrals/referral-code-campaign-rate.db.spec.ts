@@ -6,7 +6,7 @@ import {
   PromotionStatus,
   PromotionType,
   ReferralOwnerType,
-  type ReferralRefereeType,
+  ReferralRefereeType,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -202,6 +202,35 @@ describe('a referral code carries its owner’s campaign rate', () => {
     const redemption = await redeemWithCodeOf(promoter);
 
     expect(redemption?.campaignPromoterId).toBeNull();
+  }, 60_000);
+
+  it('quotes the campaign rate on the promoter’s own card, not the programme’s', async () => {
+    if (!guard()) return;
+    const promoter = await makeUser();
+    await enrol(await makeCampaign(), promoter);
+    await referrals.getOrCreateMyCode(promoter, ReferralOwnerType.DRIVER, ctx);
+
+    const stats = await referrals.getStats(promoter);
+
+    // The card tells somebody what their own code earns them. Quoting ₦150 to
+    // a pioneer driver who is paid ₦350 would be the screen lying about their
+    // money, which is worse than showing nothing.
+    expect(stats.referrerRewardAmount).toBe(350);
+    expect(stats.campaignName).not.toBeNull();
+  }, 60_000);
+
+  it('quotes the programme rate when there is no campaign', async () => {
+    if (!guard()) return;
+    const plain = await makeUser();
+    await referrals.getOrCreateMyCode(plain, ReferralOwnerType.CUSTOMER, ctx);
+
+    const programme = await prisma.referralProgramme.findUnique({
+      where: { refereeType: ReferralRefereeType.CUSTOMER },
+    });
+    const stats = await referrals.getStats(plain);
+
+    expect(stats.campaignName).toBeNull();
+    expect(stats.referrerRewardAmount).toBe(Number(programme?.referrerRewardAmount ?? 0));
   }, 60_000);
 
   it('carries a scheduled campaign, the same as the token path does', async () => {

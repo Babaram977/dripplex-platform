@@ -62,6 +62,21 @@ export interface PromoterRow {
    * canonical rate cannot be read — never a fallback constant.
    */
   rewardPointsValueNgn: number | null;
+  /**
+   * The promoter's own standing referral code — the thing they actually share.
+   *
+   * Founder ruling 2026-09-13: a promoter shares one code, and enrolling them
+   * on a campaign raises what that code pays rather than issuing a second one.
+   * The `token` above is the backend identifier for their participation; it is
+   * not shareable and nobody types it. An operator looking at this row needs
+   * the code, because that is what they will be asked about.
+   *
+   * Enrolment ensures the code before it writes the participation, so a
+   * promoter added through this console always has one. Null is therefore for
+   * rows that predate that guarantee, and is stated rather than papered over:
+   * issuing a code is a write, and this is a read.
+   */
+  referralCode: string | null;
   performance: CampaignPerformance;
 }
 
@@ -134,6 +149,17 @@ export class OperationsPromotionsService {
       orderBy: { addedAt: 'desc' },
     });
     const pointsPerNaira = await this.currentPointsPerNaira();
+    // One query for every promoter's code rather than one per row: a campaign
+    // with fifty promoters would otherwise open fifty round trips to render a
+    // table.
+    const codes = new Map<string, string>(
+      (
+        await this.prisma.referral.findMany({
+          where: { userId: { in: rows.map((r) => r.userId) } },
+          select: { userId: true, code: true },
+        })
+      ).map((c) => [c.userId, c.code]),
+    );
     const promoters = await Promise.all(
       rows.map(async (r) => ({
         id: r.id,
@@ -144,6 +170,8 @@ export class OperationsPromotionsService {
         // behind PROMOTIONS_READ; no promoter-facing route returns another
         // promoter's token, because a token is what earns the money.
         token: r.token,
+        // What the promoter shares. The campaign pays through this code.
+        referralCode: codes.get(r.userId) ?? null,
         status: r.status,
         addedAt: r.addedAt,
         removedAt: r.removedAt,

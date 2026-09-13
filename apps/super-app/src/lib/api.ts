@@ -303,8 +303,19 @@ export interface ReferralStatsDto {
   /** Naira the referred friend receives. Served by the API so a change to the
    *  reward never needs a client release. */
   refereeRewardAmount: number;
-  /** Naira the sharer receives once that friend completes their first ride. */
+  /** Naira the sharer receives once that friend completes their first ride.
+   *  Founder ruling 2026-09-13: this is the *campaign* amount when the sharer
+   *  is on a live campaign, and the programme amount otherwise. One code, one
+   *  rate — never both. */
   referrerRewardAmount: number;
+  /** The live campaign this code earns under, or null for an ordinary
+   *  referral. Named rather than inferred from the figure, so a campaign
+   *  paying the programme rate still reads as a campaign. */
+  campaignName: string | null;
+  /** Points, when the campaign pays DX Points instead of naira. Null means the
+   *  naira figure is the whole story — the two are not interchangeable at a
+   *  rate this client may apply. */
+  campaignRewardPoints: number | null;
 }
 
 // Driver Growth Campaign — the driver-side referral programme.
@@ -2203,9 +2214,15 @@ export interface CampaignPromoterDto {
   userId: string;
   name: string;
   participantType: CampaignParticipantType;
-  /** The promoter's private campaign token. It is what earns the money, so the
-   *  UI treats it as a credential, not a label. */
+  /** The promoter's private campaign token — a backend identifier for this
+   *  participation, not something a promoter hands out. It is what earns the
+   *  money, so the UI treats it as a credential, not a label. */
   token: string;
+  /** The promoter's own standing referral code: the one string on this row that
+   *  is meant to be published. Founder ruling 2026-09-13 — one code, one rate:
+   *  enrolment raises what this code pays rather than issuing a second one.
+   *  Null only for rows written before enrolment began ensuring the code. */
+  referralCode: string | null;
   status: CampaignPromoterStatus;
   addedAt: string;
   removedAt: string | null;
