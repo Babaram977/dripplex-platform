@@ -54,6 +54,25 @@ async function openAddBankForm(): Promise<void> {
   await screen.findByText('Add Bank Account');
 }
 
+/**
+ * Pick a bank the way a person now does: open the list, then choose.
+ *
+ * The picker used to be a native `<select>`, so a test could set its value
+ * directly. It is a searchable combobox now — several hundred Nigerian banks
+ * are not navigable by thumb — and its options exist only while the list is
+ * open. The assertions below are unchanged; only the gesture that reaches them
+ * is. What still matters is what these tests always checked: the request
+ * carries the bank's *code*, never a typed name.
+ */
+async function selectBank(name: string): Promise<void> {
+  // `findBy`, not `getBy`: the form appears only once the bank list has
+  // loaded, and the old `findByRole('option')` call these tests opened with
+  // was quietly serving as that wait. Replacing it with a synchronous query
+  // removed the wait and every one of them failed on an empty page.
+  fireEvent.focus(await screen.findByRole('combobox'));
+  fireEvent.mouseDown(await screen.findByRole('option', { name }));
+}
+
 describe('customer withdrawal destination', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,7 +86,7 @@ describe('customer withdrawal destination', () => {
   it('asks the bank, instead of inventing a name after a timer', async () => {
     await openAddBankForm();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN number'), {
       target: { value: '0123456789' },
     });
@@ -84,7 +103,7 @@ describe('customer withdrawal destination', () => {
   it('sends the real bank code, never the placeholder 000', async () => {
     await openAddBankForm();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN number'), {
       target: { value: '0123456789' },
     });
@@ -108,7 +127,7 @@ describe('customer withdrawal destination', () => {
     resolveBankAccount.mockRejectedValue(new Error('Could not resolve account name'));
     await openAddBankForm();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     fireEvent.change(screen.getByPlaceholderText('10-digit NUBAN number'), {
       target: { value: '0000000000' },
     });
@@ -122,7 +141,7 @@ describe('customer withdrawal destination', () => {
   it('drops a confirmed name the moment the number is edited', async () => {
     await openAddBankForm();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: '058' } });
+    await selectBank('Guaranty Trust Bank');
     const field = screen.getByPlaceholderText('10-digit NUBAN number');
     fireEvent.change(field, { target: { value: '0123456789' } });
     fireEvent.click(screen.getByText('Verify account'));
