@@ -340,21 +340,43 @@ describe('Referral Campaigns — a campaign can actually be run', () => {
     expect(body.userId).not.toBe('rider-profile-1');
   });
 
-  it('never sends `search` to the driver roster, which would be a 400', async () => {
-    // ListDriversQueryDto accepts page/limit only, and the global
-    // ValidationPipe runs forbidNonWhitelisted.
+  it('searches the driver roster server-side rather than filtering in the browser', async () => {
+    // ListDriversQueryDto accepts `search` now. Filtering a pulled page only
+    // worked while the roster was small and quietly stopped finding people
+    // past the window once it was not.
     permissions = [READ, MANAGE];
     await renderPage();
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
     fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'DRIVER' } });
     await pickPerson('Musa');
-    // The sidebar badge loader also calls listDrivers, so assert across every
-    // call rather than assuming the picker's is the only one.
-    await waitFor(() => expect(listDrivers.mock.calls.length).toBeGreaterThan(0));
-    for (const [query] of listDrivers.mock.calls as [Record<string, unknown> | undefined][]) {
-      expect(query ?? {}).not.toHaveProperty('search');
-    }
+
+    // The sidebar badge loader also calls listDrivers, so find the picker's
+    // call rather than assuming it is the only one.
+    await waitFor(() =>
+      expect(
+        listDrivers.mock.calls.some(
+          ([q]) => (q as { search?: string } | undefined)?.search === 'Musa',
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it('searches the rider roster server-side too', async () => {
+    permissions = [READ, MANAGE];
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Add promoter')).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Promoter class'), { target: { value: 'RIDER' } });
+    await pickPerson('Chidi');
+
+    await waitFor(() =>
+      expect(
+        listRiders.mock.calls.some(
+          ([q]) => (q as { search?: string } | undefined)?.search === 'Chidi',
+        ),
+      ).toBe(true),
+    );
   });
 
   it('clears the person when the promoter class changes rosters', async () => {

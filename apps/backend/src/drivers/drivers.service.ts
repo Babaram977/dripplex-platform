@@ -267,6 +267,22 @@ export class DriversService {
     const where: Prisma.DriverProfileWhereInput = {
       deletedAt: null,
       ...(query.status ? { status: query.status } : {}),
+      // The searchable fields live on the user, not the profile, so the match
+      // is nested through the relation. Same fields and same case-insensitive
+      // `contains` as the customer roster, so an operator gets the same
+      // behaviour from the same typing on either desk.
+      ...(query.search
+        ? {
+            user: {
+              OR: [
+                { firstName: { contains: query.search, mode: 'insensitive' as const } },
+                { lastName: { contains: query.search, mode: 'insensitive' as const } },
+                { email: { contains: query.search, mode: 'insensitive' as const } },
+                { phone: { contains: query.search, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
     };
     const [profiles, total] = await Promise.all([
       this.prisma.driverProfile.findMany({

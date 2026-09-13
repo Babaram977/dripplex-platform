@@ -663,5 +663,102 @@ describe('DriversService', () => {
 
       expect(live.items.some((item) => item.driverId === pending.id)).toBe(true);
     });
+
+    /**
+     * The Operations Console enrols campaign promoters by name. Without this
+     * the console had to pull a page of the roster and filter it in the
+     * browser, which only works while the roster is small.
+     *
+     * The searchable fields are on the user, not the profile, so the match is
+     * nested through the relation — the thing most likely to be got wrong, and
+     * silently, because a `where` that matches nothing still returns 200.
+     */
+    it('finds a driver by name, case-insensitively, through the user relation', async () => {
+      if (!databaseAvailable) return;
+
+      const needle = `Zephyrine${randomUUID().slice(0, 8)}`;
+      const found = await prisma.user.create({
+        data: {
+          email: `driver-search-hit-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: needle,
+          lastName: 'Searchable',
+        },
+      });
+      userIds.push(found.id);
+      await prisma.driverProfile.create({ data: { userId: found.id } });
+
+      // Lower-cased on purpose: the stored name is capitalised.
+      const hit = await service.listDrivers({
+        page: 1,
+        limit: 200,
+        search: needle.toLowerCase(),
+      });
+
+      expect(hit.items.map((item) => item.driverId)).toEqual([found.id]);
+      // The count drives pagination and must narrow with the rows, not stay
+      // at the unfiltered total.
+      expect(hit.meta.total).toBe(1);
+    });
+
+    it('finds a driver by email and by phone, and returns nobody for a miss', async () => {
+      if (!databaseAvailable) return;
+
+      const tag = randomUUID().slice(0, 8);
+      const email = `driver-search-contact-${tag}@dripplex.test`;
+      const phone = `+23480${tag.replace(/\D/g, '0').slice(0, 7).padEnd(7, '0')}`;
+      const person = await prisma.user.create({
+        data: {
+          email,
+          phone,
+          passwordHash: 'not-a-real-hash',
+          firstName: 'Contact',
+          lastName: 'Searchable',
+        },
+      });
+      userIds.push(person.id);
+      await prisma.driverProfile.create({ data: { userId: person.id } });
+
+      const byEmail = await service.listDrivers({ page: 1, limit: 200, search: tag });
+      expect(byEmail.items.some((item) => item.driverId === person.id)).toBe(true);
+
+      const byPhone = await service.listDrivers({ page: 1, limit: 200, search: phone });
+      expect(byPhone.items.some((item) => item.driverId === person.id)).toBe(true);
+
+      const miss = await service.listDrivers({
+        page: 1,
+        limit: 200,
+        search: `no-such-driver-${randomUUID()}`,
+      });
+      expect(miss.items).toEqual([]);
+      expect(miss.meta.total).toBe(0);
+    });
+
+    it('ANDs search with deletedAt, so a deleted driver is never a search hit', async () => {
+      if (!databaseAvailable) return;
+
+      const needle = `Vanished${randomUUID().slice(0, 8)}`;
+      const ghost = await prisma.user.create({
+        data: {
+          email: `driver-search-ghost-${randomUUID()}@dripplex.test`,
+          passwordHash: 'not-a-real-hash',
+          firstName: needle,
+          lastName: 'Searchable',
+        },
+      });
+      userIds.push(ghost.id);
+      await prisma.driverProfile.create({ data: { userId: ghost.id } });
+
+      const before = await service.listDrivers({ page: 1, limit: 200, search: needle });
+      expect(before.items.map((item) => item.driverId)).toEqual([ghost.id]);
+
+      await prisma.driverProfile.update({
+        where: { userId: ghost.id },
+        data: { deletedAt: new Date() },
+      });
+
+      const after = await service.listDrivers({ page: 1, limit: 200, search: needle });
+      expect(after.items).toEqual([]);
+    });
   });
 });

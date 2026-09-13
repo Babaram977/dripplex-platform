@@ -1,6 +1,6 @@
 import { RiderStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export class ListRidersQueryDto {
   @IsOptional()
@@ -23,4 +23,14 @@ export class ListRidersQueryDto {
   @IsOptional()
   @IsEnum(RiderStatus)
   public status?: RiderStatus;
+
+  /**
+   * Free text matched against the rider's name, email and phone. Mirrors
+   * `ListCustomersQueryDto.search` and the driver roster's, so the same typing
+   * behaves the same way on every desk.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  public search?: string;
 }
