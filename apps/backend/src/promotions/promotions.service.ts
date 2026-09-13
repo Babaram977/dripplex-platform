@@ -27,6 +27,7 @@ import {
   type PromotionRules,
 } from './promotion-rules';
 import {
+  ATTRIBUTION_PROMOTION_TYPES,
   CREDIT_PROMOTION_TYPES,
   PROMOTION_AUDIT_ACTIONS,
   PROMOTION_WALLET_REFERENCE_TYPE,
@@ -1155,6 +1156,15 @@ export class PromotionsService implements OnModuleInit {
     return (CREDIT_PROMOTION_TYPES as readonly string[]).includes(type);
   }
 
+  /**
+   * A campaign that groups promoters rather than discounting anything — see
+   * ATTRIBUTION_PROMOTION_TYPES. It has no benefit fields of its own, so the
+   * discount-shape rule below does not apply to it.
+   */
+  private isAttributionType(type: PromotionType): boolean {
+    return (ATTRIBUTION_PROMOTION_TYPES as readonly string[]).includes(type);
+  }
+
   private async emitCouponExpiredIfPast(
     promotion: Promotion,
     userId: string,
@@ -1362,6 +1372,7 @@ export class PromotionsService implements OnModuleInit {
       dto.type !== undefined &&
       dto.type !== PromotionType.BOGO &&
       !this.isCreditType(dto.type) &&
+      !this.isAttributionType(dto.type) &&
       dto.percentOff === undefined &&
       dto.amountOff === undefined
     ) {
