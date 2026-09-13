@@ -97,7 +97,7 @@ export class CampaignPromoterService {
     // Refused by name rather than silently, because an operator who sees
     // "already on Pioneer Drivers" can go and remove them; one that just fails
     // tells them nothing about what to do next.
-    await this.refuseIfAlreadyOnALiveCampaign(input.userId);
+    await this.refuseIfAlreadyOnALiveCampaign(input.userId, campaign.id);
 
     for (let attempt = 0; attempt < CAMPAIGN_TOKEN_MAX_GENERATION_ATTEMPTS; attempt += 1) {
       try {
@@ -250,15 +250,30 @@ export class CampaignPromoterService {
    * enrolment. A REMOVED participation never blocks: removing somebody is how
    * an operator frees them to be enrolled elsewhere.
    */
-  private async refuseIfAlreadyOnALiveCampaign(userId: string): Promise<void> {
-    // No need to exclude the campaign being enrolled: this only runs when the
-    // promoter has no row on it at all — an existing row, active or removed, is
-    // handled by `reinstate` above and returns before reaching here. A first
-    // version took an `excludingPromotionId` for safety; a mutation deleting it
-    // changed nothing, which is how the parameter was found to be unreachable
-    // rather than defensive.
+  private async refuseIfAlreadyOnALiveCampaign(
+    userId: string,
+    excludingPromotionId: string,
+  ): Promise<void> {
+    // The campaign being enrolled onto is excluded, and that exclusion is not
+    // padding — it is the concurrent case. Two simultaneous enrolments of the
+    // same person onto the *same* campaign both pass the `findUnique` above
+    // seeing no row; the winner writes one; the loser then reaches this guard
+    // and finds it. Without the exclusion the loser is told "already promoting
+    // X — remove them from that campaign first" about the very campaign it was
+    // enrolling onto, which reads as an instruction to undo the enrolment that
+    // just succeeded. Excluded, the loser falls through to the unique
+    // constraint on (promotion_id, user_id) and gets "already a promoter on
+    // this campaign", which is what happened.
+    //
+    // A single-threaded call never reaches here with a row on this campaign —
+    // `reinstate` returns first — which is why deleting this exclusion leaves
+    // every deterministic test green. The race is 1 run in 8.
     const held = await this.prisma.campaignPromoter.findMany({
-      where: { userId, status: CampaignPromoterStatus.ACTIVE },
+      where: {
+        userId,
+        status: CampaignPromoterStatus.ACTIVE,
+        promotionId: { not: excludingPromotionId },
+      },
       select: {
         promotion: { select: { name: true, status: true, deletedAt: true } },
       },
