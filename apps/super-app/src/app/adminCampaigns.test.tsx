@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * DPX-PROMO-REF-001 — Referral Campaigns in the Operations Console.
@@ -42,6 +42,26 @@ let permissions: string[] = [];
 
 vi.mock('../lib/api', () => ({
   api: {
+    // The console verifies the stored session against the server before it
+    // renders a single page. Every console test therefore needs a live
+    // /auth/me; without it the gate correctly refuses and the suite sees the
+    // sign-in screen.
+    auth: {
+      me: () =>
+        Promise.resolve({
+          id: 'u-ops-1',
+          email: 'ops@dripplex.test',
+          phone: null,
+          firstName: 'Dan',
+          lastName: 'Operator',
+          profilePhotoUrl: null,
+          dateOfBirth: null,
+          gender: null,
+          status: 'ACTIVE',
+          roles: ['operations_staff'],
+          permissions,
+        }),
+    },
     admin: {
       listCustomers: (q: unknown) => listCustomers(q),
       listDrivers: (q: unknown) => listDrivers(q),
@@ -62,6 +82,7 @@ vi.mock('../lib/auth', () => ({
   auth: {
     getUser: () => ({ permissions, roles: ['operations_staff'] }),
     getAccessToken: () => 'token',
+    setUser: () => undefined,
     clear: () => undefined,
   },
 }));
@@ -233,6 +254,24 @@ beforeEach(() => {
   listCustomers.mockResolvedValue({ items: [customerRow()], meta: { total: 1 } });
   listDrivers.mockResolvedValue({ items: [driverRow()], meta: { total: 1 } });
   listRiders.mockResolvedValue({ items: [riderRow()], meta: { total: 1 } });
+});
+
+/**
+ * Load the console module once, before the clock starts on any test.
+ *
+ * adminConsoleScreen.tsx is ~13,000 lines, and importing it costs well over a
+ * second — transform, module init, then the first mount of a very large tree.
+ * Every test after the first pays about 100ms; the first paid all of it, which
+ * made the whole one-time cost look like the cost of that one test and put it
+ * within a few hundred milliseconds of the 5s limit on CI. Adding one await to
+ * the console's mount path was then enough to time it out, which is what
+ * happened on d7d63f7c: the failing test was simply whichever ran first.
+ *
+ * Hooks have their own budget, so paying it here bills setup to setup and
+ * leaves each test's reported time as its own work.
+ */
+beforeAll(async () => {
+  await import('./adminConsoleScreen');
 });
 
 describe('Referral Campaigns — a campaign can actually be run', () => {
@@ -494,7 +533,10 @@ describe('Referral Campaigns — states', () => {
     let release: (v: unknown) => void = () => undefined;
     listPromotions.mockReturnValue(new Promise((r) => (release = r)));
     await renderPage();
-    expect(screen.getByText('Loading…')).toBeTruthy();
+    // The session gate resolves first — nothing of the console renders until
+    // the server confirms the stored session — so the loading state appears a
+    // tick later than it used to, not synchronously with the render.
+    await waitFor(() => expect(screen.getByText('Loading…')).toBeTruthy());
     release([]);
   });
 
