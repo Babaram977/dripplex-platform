@@ -46,7 +46,6 @@ export interface PromoterRow {
   userId: string;
   name: string;
   participantType: CampaignParticipantType;
-  token: string;
   status: CampaignPromoterStatus;
   addedAt: Date;
   removedAt: Date | null;
@@ -62,6 +61,22 @@ export interface PromoterRow {
    * canonical rate cannot be read — never a fallback constant.
    */
   rewardPointsValueNgn: number | null;
+  /**
+   * The promoter's own standing referral code — the thing they actually share.
+   *
+   * Founder ruling 2026-09-13: a promoter shares one code, and enrolling them
+   * on a campaign raises what that code pays rather than issuing a second one.
+   * The campaign token is the backend identifier for their participation; it
+   * is not shareable, nobody types it, and this row no longer carries it at
+   * all. An operator looking here needs the code, because that is what they
+   * will be asked about.
+   *
+   * Enrolment ensures the code before it writes the participation, so a
+   * promoter added through this console always has one. Null is therefore for
+   * rows that predate that guarantee, and is stated rather than papered over:
+   * issuing a code is a write, and this is a read.
+   */
+  referralCode: string | null;
   performance: CampaignPerformance;
 }
 
@@ -134,16 +149,30 @@ export class OperationsPromotionsService {
       orderBy: { addedAt: 'desc' },
     });
     const pointsPerNaira = await this.currentPointsPerNaira();
+    // One query for every promoter's code rather than one per row: a campaign
+    // with fifty promoters would otherwise open fifty round trips to render a
+    // table.
+    const codes = new Map<string, string>(
+      (
+        await this.prisma.referral.findMany({
+          where: { userId: { in: rows.map((r) => r.userId) } },
+          select: { userId: true, code: true },
+        })
+      ).map((c) => [c.userId, c.code]),
+    );
     const promoters = await Promise.all(
       rows.map(async (r) => ({
         id: r.id,
         userId: r.userId,
         name: `${r.user.firstName} ${r.user.lastName}`.trim(),
         participantType: r.participantType,
-        // The private token is shown here and nowhere else. This endpoint is
-        // behind PROMOTIONS_READ; no promoter-facing route returns another
-        // promoter's token, because a token is what earns the money.
-        token: r.token,
+        // No token. It is a bearer credential that attributes acquisitions, and
+        // since founder instruction 2026-09-13 nothing displays it — so this
+        // route does not hand it to a browser. It is still written, still
+        // unique, and still readable from the database for an investigation.
+        //
+        // What the promoter shares is the code. The campaign pays through it.
+        referralCode: codes.get(r.userId) ?? null,
         status: r.status,
         addedAt: r.addedAt,
         removedAt: r.removedAt,

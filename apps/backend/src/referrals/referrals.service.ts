@@ -118,19 +118,37 @@ export class ReferralsService {
       this.lifecycle.programmeFor(ReferralRefereeType.CUSTOMER),
     ]);
 
+    // What this person's code actually pays, which is not always the
+    // programme's rate. A promoter enrolled on a live campaign earns their
+    // campaign amount — that is the whole point of the 2026-09-13 ruling — and
+    // quoting ₦150 on the screen of somebody who earns ₦350 would be the
+    // screen lying about their own money.
+    const participation = await this.activeCampaignRate(referral.userId);
+    const programmeReferrer =
+      programme === null
+        ? REFERRAL_REWARD_AMOUNTS.REFERRER
+        : Number(programme.referrerRewardAmount);
+
     return {
       code: referral.code,
       totalRedemptions: total,
       pendingRedemptions: pending,
       rewardedRedemptions: rewarded,
+      // The referee's side never varies: the founder fixed it platform-wide so
+      // no campaign can outbid another for the same acquisition.
       refereeRewardAmount:
         programme === null
           ? REFERRAL_REWARD_AMOUNTS.REFEREE
           : Number(programme.refereeRewardAmount),
-      referrerRewardAmount:
-        programme === null
-          ? REFERRAL_REWARD_AMOUNTS.REFERRER
-          : Number(programme.referrerRewardAmount),
+      referrerRewardAmount: participation?.rewardAmountNgn ?? programmeReferrer,
+      // Stated rather than inferred from the amount, so a campaign that happens
+      // to pay the programme rate still reads as a campaign, and so the card
+      // can say which one without a second call.
+      campaignName: participation?.campaignName ?? null,
+      // A points campaign pays in DX Points, and naira is the wrong unit to
+      // print for it. Null here means "the naira figure above is the whole
+      // story".
+      campaignRewardPoints: participation?.rewardPoints ?? null,
     };
   }
 
@@ -250,6 +268,39 @@ export class ReferralsService {
         }`,
       );
     }
+  }
+
+  /**
+   * What a live campaign is paying this person, for display on their own card.
+   *
+   * Separate from `activeCampaignParticipation` because that one answers "which
+   * participation attaches to a new acquisition" and needs only an id, while
+   * this one is quoting money back to the person earning it and needs the
+   * amount and the campaign's name.
+   */
+  private async activeCampaignRate(userId: string): Promise<{
+    campaignName: string;
+    rewardAmountNgn: number | null;
+    rewardPoints: number | null;
+  } | null> {
+    const promoters = await this.prisma.campaignPromoter.findMany({
+      where: { userId, status: CampaignPromoterStatus.ACTIVE },
+      select: {
+        rewardAmount: true,
+        rewardPoints: true,
+        promotion: { select: { name: true, status: true, deletedAt: true } },
+      },
+      orderBy: { addedAt: 'desc' },
+    });
+    const live = promoters.find((p) => isCampaignAttributable(p.promotion));
+    if (live === undefined) {
+      return null;
+    }
+    return {
+      campaignName: live.promotion.name,
+      rewardAmountNgn: live.rewardAmount === null ? null : Number(live.rewardAmount),
+      rewardPoints: live.rewardPoints,
+    };
   }
 
   /**

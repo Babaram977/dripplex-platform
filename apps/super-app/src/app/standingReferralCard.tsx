@@ -1,6 +1,8 @@
+import { referralRewardQuote } from '@dripplex/types';
 import { useEffect, useState } from 'react';
 
 import { referralShareUrl } from '../lib/referralLink';
+import { ReferralQr } from './referralQr';
 
 import type { ReferralStatsDto } from '../lib/api';
 
@@ -92,6 +94,8 @@ export function StandingReferralCard({
     return null;
   }
 
+  const quote = referralRewardQuote(stats);
+
   return (
     <div
       className="mb-5 rounded-2xl p-4"
@@ -100,10 +104,26 @@ export function StandingReferralCard({
       <p className="mb-1 text-[13px] font-semibold" style={{ fontFamily: PP, color: '#fff' }}>
         Your referral code
       </p>
+      {/* The campaign is named when there is one. A promoter earning the
+          campaign rate should be told which campaign it is, not left to infer
+          it from a larger number. */}
+      {stats.campaignName !== null && (
+        <p
+          className="mb-2 inline-block rounded-lg px-2 py-1 text-[11px] font-semibold"
+          style={{ background: 'rgba(43,172,82,.14)', color: G3, fontFamily: IT }}
+        >
+          {stats.campaignName}
+        </p>
+      )}
       <p className="mb-3 text-[12px]" style={{ fontFamily: IT, color: SECONDARY }}>
-        {naira(stats.referrerRewardAmount)} lands in this wallet for every passenger who signs up
-        with your code — paid when they complete their first ride. They get{' '}
-        {naira(stats.refereeRewardAmount)} too.
+        {/* Which currency this code pays is decided once, in @dripplex/types,
+            so this card and the merchant portal cannot answer it differently
+            for the same promoter. */}
+        {quote.kind === 'POINTS'
+          ? `${quote.points.toLocaleString()} DX Points`
+          : naira(quote.amountNgn)}{' '}
+        lands in this wallet for every passenger who signs up with your code — paid when they
+        complete their first ride. They get {naira(stats.refereeRewardAmount)} too.
       </p>
 
       <div
@@ -124,6 +144,15 @@ export function StandingReferralCard({
         >
           {copied ? 'Copied' : 'Share'}
         </button>
+      </div>
+
+      {/* Scannable, for a poster or a WhatsApp status. Same code, same link —
+          the QR is only a faster way to hand over the URL above. */}
+      <div className="mb-3 flex flex-col items-center gap-2">
+        <ReferralQr url={referralShareUrl(stats.code)} />
+        <p className="text-[10px]" style={{ fontFamily: IT, color: MUTED }}>
+          Scan to sign up with your code
+        </p>
       </div>
 
       <div className="flex gap-3">

@@ -1026,13 +1026,33 @@ export interface CampaignPromoterDto {
   userId: string;
   name: string;
   participantType: CampaignParticipantType;
-  /**
-   * The promoter's private campaign token. Returned only by the
-   * `operations:promotions:read` campaign-detail route; no promoter-facing API
-   * returns anybody else's. It is what earns the money, so a UI showing it
-   * must treat it as a credential, not a label.
+  /*
+   * There is deliberately no `token` here.
+   *
+   * The per-campaign token still exists and still does its job — it is what
+   * attributes an acquisition to a promoter — but it is a bearer credential:
+   * whoever holds it can have acquisitions attributed to that promoter. It was
+   * previously returned on this route and masked in the console. Founder
+   * instruction 2026-09-13: it is not displayed. With nothing left to display
+   * it, sending it to a browser is exposure that buys nothing, so the route
+   * stops returning it. Read it from the database if an investigation needs it.
    */
-  token: string;
+  /**
+   * The promoter's own standing referral code — what they actually share.
+   *
+   * Founder ruling 2026-09-13: one code, one rate. Enrolling somebody on a
+   * campaign raises what their existing code pays; it does not issue a second
+   * code, and `token` above is a backend identifier for the participation
+   * rather than anything a promoter hands out. A console that offered the token
+   * as the shareable thing would be handing out a string no signup form
+   * accepts.
+   *
+   * Enrolment ensures the code before the participation is written, so a
+   * promoter added through Ops always has one. Null is reserved for rows that
+   * predate that guarantee, and a console must show it as absent rather than
+   * substituting the token.
+   */
+  referralCode: string | null;
   status: CampaignPromoterStatus;
   addedAt: string;
   removedAt: string | null;

@@ -1,5 +1,6 @@
 'use client';
 
+import { referralRewardQuote } from '@dripplex/types';
 import {
   Badge,
   Button,
@@ -402,14 +403,30 @@ function ReferralCard(): React.JSX.Element | null {
     return null;
   }
 
+  const quote = referralRewardQuote(
+    stats ?? { referrerRewardAmount: 0, campaignRewardPoints: null },
+  );
+  // Named rather than inferred from the figure, so a campaign paying the
+  // ordinary rate still reads as a campaign.
+  const campaignName = stats?.campaignName ?? null;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Refer customers</CardTitle>
         <p className="text-muted-foreground text-sm">
           Share your code with shoppers. You earn{' '}
-          {formatMoney(stats?.referrerRewardAmount ?? 0, 'NGN')} per customer, paid into this wallet
-          once they take their first ride — not at signup.
+          {/* One code, one rate (founder ruling 2026-09-13): the server already
+              returns the campaign amount when this code is enrolled on one, so
+              the figure follows enrolment without a second code. Which currency
+              it is gets decided in @dripplex/types, shared with the customer
+              app — a points campaign printed as naira here would be this screen
+              inventing a conversion rate. */}
+          {quote.kind === 'POINTS'
+            ? `${quote.points.toLocaleString()} DX Points`
+            : formatMoney(quote.amountNgn, 'NGN')}{' '}
+          per customer, paid into this wallet once they take their first ride — not at signup.
+          {campaignName !== null && ` Campaign: ${campaignName}.`}
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

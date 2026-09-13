@@ -597,6 +597,7 @@ export type {
   ReferralCampaignStatus,
   ReferralCampaignTier,
   ReferralDto,
+  ReferralRewardQuote,
   ReferralFraudCheckDto,
   ReferralFraudCheckStatus,
   ReferralFraudCheckType,
@@ -667,6 +668,7 @@ export type {
   WishlistItemType,
 } from './platform/index.js';
 export { getNotificationSoundEvent, NOTIFICATION_SOUND_EVENTS } from './platform/index.js';
+export { referralRewardQuote } from './platform/index.js';
 export {
   PLATFORM_BASE_CENTRE,
   PLATFORM_BASE_CITY,

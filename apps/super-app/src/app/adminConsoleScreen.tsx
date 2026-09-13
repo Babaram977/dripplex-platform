@@ -11620,21 +11620,59 @@ function PointsValue({ points, valueNgn }: { points: number; valueNgn: number | 
   );
 }
 
-/** A promoter's token is what earns the money, so it is treated as a
- *  credential: masked until the operator asks for it. */
-function PromoterToken({ token }: { token: string }) {
-  const [shown, setShown] = useState(false);
+/**
+ * What the promoter actually shares.
+ *
+ * Founder ruling 2026-09-13: a promoter has one referral code, and enrolling
+ * them on a campaign raises what that code pays rather than issuing a second
+ * one. This is therefore the only string on the row an operator can give out —
+ * it is what a new customer types at signup, and what the promoter's own QR
+ * encodes.
+ *
+ * Not masked. A referral code is meant to be published — it goes on posters
+ * and into WhatsApp statuses — so hiding it behind a Reveal would say the
+ * opposite of what it is.
+ *
+ * The per-campaign token used to sit beside this, masked. Founder instruction
+ * 2026-09-13: it is not shown at all. It is a bearer credential that attributes
+ * acquisitions, nobody outside the backend needs to read it, and a console that
+ * displayed it — the previous one even offered to copy it — invited an operator
+ * to send the wrong string to a promoter.
+ */
+function PromoterCode({ code }: { code: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (code === null) {
+    // Enrolment creates the code, so this is a pre-existing row rather than a
+    // normal state. Saying so beats printing the token in its place.
+    return (
+      <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        no referral code
+      </span>
+    );
+  }
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      <code style={{ fontSize: 11.5, color: shown ? WHITE : MUTED, letterSpacing: 0.4 }}>
-        {shown ? token : '•'.repeat(Math.min(token.length, 12))}
-      </code>
+      <span style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>shares</span>
+      <code style={{ fontSize: 12.5, color: G3, letterSpacing: 1.2, fontWeight: 700 }}>{code}</code>
       <Btn
         small
         outline
         color={G3}
-        label={shown ? 'Hide' : 'Reveal'}
-        onClick={() => setShown((v) => !v)}
+        label={copied ? 'Copied' : 'Copy'}
+        onClick={() => {
+          void navigator.clipboard
+            .writeText(code)
+            .then(() => {
+              setCopied(true);
+              setTimeout(() => {
+                setCopied(false);
+              }, 2000);
+            })
+            .catch(() => {
+              // Clipboard refused (no permission, insecure origin). The code is
+              // on screen and can be read off it.
+            });
+        }}
       />
     </span>
   );
@@ -12125,7 +12163,7 @@ function PromoterTable({
       <span style={{ fontSize: 12, color: MUTED, minWidth: 100 }}>
         {PARTICIPANT_LABEL[p.participantType]}
       </span>
-      <PromoterToken token={p.token} />
+      <PromoterCode code={p.referralCode} />
       <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
         {p.rewardAmountNgn !== null ? (
           naira(p.rewardAmountNgn)

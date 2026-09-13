@@ -117,7 +117,8 @@ describe('the client permission flag is presentation, not enforcement', () => {
       await screen.findByText('You do not have permission to perform this action.'),
     ).toBeInTheDocument();
     // Three promoters before, three after: nothing was added optimistically.
-    expect(screen.getAllByText('••••••••')).toHaveLength(3);
+    // Counted by their referral codes, which is what the row now carries.
+    expect(screen.getAllByText(/^(AMAKA350|BAYO7788|CHIDI001)$/)).toHaveLength(3);
   });
 
   it('withholding the flag hides controls without hiding or filtering data', async () => {
