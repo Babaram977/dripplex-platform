@@ -139,6 +139,10 @@ import {
   AdminVehiclesScreen,
   AdminCustomersScreen,
   AdminCampaignsScreen,
+  AdminReferralsScreen,
+  AdminReferralReviewScreen,
+  AdminReferralProgrammesScreen,
+  AdminDxPointsScreen,
   AdminPricingScreen,
   AdminIncidentsScreen,
   AdminSupportScreen,
@@ -447,6 +451,10 @@ type Screen =
   | 'adminvehicles'
   | 'admincustomers'
   | 'admincampaigns'
+  | 'adminreferrals'
+  | 'adminreferralreview'
+  | 'adminreferralprogrammes'
+  | 'admindxpoints'
   | 'adminpricing'
   | 'adminincidents'
   | 'adminsupport'
@@ -1944,6 +1952,10 @@ function AppShell() {
     adminvehicles: <AdminVehiclesScreen />,
     admincustomers: <AdminCustomersScreen />,
     admincampaigns: <AdminCampaignsScreen />,
+    adminreferrals: <AdminReferralsScreen />,
+    adminreferralreview: <AdminReferralReviewScreen />,
+    adminreferralprogrammes: <AdminReferralProgrammesScreen />,
+    admindxpoints: <AdminDxPointsScreen />,
     adminpricing: <AdminPricingScreen />,
     adminincidents: <AdminIncidentsScreen />,
     adminsupport: <AdminSupportScreen />,
@@ -2412,6 +2424,10 @@ function AppShell() {
     'adminvehicles',
     'admincustomers',
     'admincampaigns',
+    'adminreferrals',
+    'adminreferralreview',
+    'adminreferralprogrammes',
+    'admindxpoints',
     'adminpricing',
     'adminincidents',
     'adminsupport',

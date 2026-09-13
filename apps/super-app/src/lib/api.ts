@@ -2272,6 +2272,136 @@ export interface AddCampaignPromoterRequest {
   rewardPoints?: number;
 }
 
+// ── Referral & DX Points operations desks ───────────────────────────────────
+// Mirrors packages/types `platform/index.ts`. Reading comes from
+// /operations/finance/referrals (operations:finance:read); the decisions and
+// the programme edits are separate endpoints under /admin with their own
+// permissions, because reading a desk and changing what it pays are not the
+// same authority.
+
+export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+/** Who was referred. Narrower than ReferralPersona: only these three have a
+ *  standing referral programme with reward amounts attached. */
+export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET';
+export type LoyaltyEarnerPersona = 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+
+export interface ReferralPersonaPerformanceDto {
+  persona: ReferralPersona;
+  referrers: number;
+  activeReferrers: number;
+  redemptions: number;
+  pendingRedemptions: number;
+  rewardedRedemptions: number;
+  /** rewarded / redemptions — what converted, not what was clicked. */
+  conversionRate: number;
+}
+
+export interface DriverCampaignPerformanceDto {
+  campaignId: string;
+  campaignName: string;
+  status: string;
+  periodStart: string;
+  periodEnd: string;
+  participatingDrivers: number;
+  registeredPassengers: number;
+  qualifiedPassengers: number;
+  rewardsPending: { count: number; amount: number };
+  rewardsApproved: { count: number; amount: number };
+  rewardsPaid: { count: number; amount: number };
+}
+
+export interface ReferralOverviewDto {
+  personas: ReferralPersonaPerformanceDto[];
+  driverCampaigns: DriverCampaignPerformanceDto[];
+  /** Personas the founder named that have no referral programme at all yet. */
+  personasWithoutProgramme: string[];
+}
+
+export interface ReferralPerformerDto {
+  userId: string;
+  name: string;
+  persona: ReferralPersona;
+  code: string;
+  redemptions: number;
+  rewardedRedemptions: number;
+  /** Driver Growth Campaign only. Null — not zero — for personas without one. */
+  rewardAmountEarned: number | null;
+  rewardAmountUnpaid: number | null;
+}
+
+export interface ReferralReviewItemDto {
+  redemptionId: string;
+  referrerName: string;
+  referrerCode: string;
+  refereeName: string;
+  refereeType: ReferralRefereeType;
+  /** The signal that fired without refusing it — why this row is here. */
+  flaggedReason: string | null;
+  referrerRewardAmount: number | null;
+  refereeRewardAmount: number | null;
+  qualifiedAt: string | null;
+  /** When the hold would have released it. Null when it cannot be computed. */
+  releasesAt: string | null;
+  /** True once the hold has elapsed and only the flag is holding it — nothing
+   *  is coming to release it but a decision. */
+  holdElapsed: boolean;
+  actionPath: string;
+}
+
+export interface ReferralProgrammeDto {
+  refereeType: ReferralRefereeType;
+  referrerRewardAmount: number;
+  refereeRewardAmount: number;
+  /** Days between a referral qualifying and its reward being paid. Zero pays
+   *  immediately. */
+  holdDays: number;
+  qualificationWindowDays: number;
+  requireKycVerified: boolean;
+  active: boolean;
+  updatedAt: string;
+}
+
+export interface UpdateReferralProgrammeRequest {
+  referrerRewardAmount?: number;
+  refereeRewardAmount?: number;
+  holdDays?: number;
+  qualificationWindowDays?: number;
+  requireKycVerified?: boolean;
+  active?: boolean;
+}
+
+export interface LoyaltyEarningProgrammeDto {
+  persona: LoyaltyEarnerPersona;
+  active: boolean;
+  pointsPerCompletedJob: number;
+  /** Founder decision: a review boosts points and never the star rating. */
+  pointsPerQualifyingReview: number;
+  minReviewRating: number;
+  /** Per person, rolling 24 hours. Null is uncapped. */
+  dailyPointsCap: number | null;
+  updatedAt: string;
+}
+
+export interface LoyaltyEarningImpactDto {
+  persona: LoyaltyEarnerPersona;
+  /** Partners this would begin paying — approved, verified, active. */
+  eligiblePartners: number;
+  dailyPointsCap: number | null;
+  /** Null when uncapped: there is no ceiling to state, and that absence is
+   *  the thing worth seeing. */
+  worstCaseDailyPoints: number | null;
+  worstCaseDailyNaira: number | null;
+  pointsPerNaira: number;
+}
+
+export interface UpdateLoyaltyEarningProgrammeRequest {
+  active?: boolean;
+  pointsPerCompletedJob?: number;
+  pointsPerQualifyingReview?: number;
+  minReviewRating?: number;
+  dailyPointsCap?: number | null;
+}
+
 export interface RemoveCampaignPromoterResultDto {
   id: string;
   status: CampaignPromoterStatus;
@@ -4265,6 +4395,61 @@ export const api = {
       ),
     getAcquisitionIncentive: () =>
       dx<AcquisitionIncentiveDto>('GET', '/operations/promotions/acquisition-incentive'),
+
+    // ── Referral desks (read) — operations:finance:read ─────────────────────
+    referralOverview: () => dx<ReferralOverviewDto>('GET', '/operations/finance/referrals'),
+    referralPerformers: (persona: ReferralPersona) =>
+      dx<{ items: ReferralPerformerDto[]; meta: { total: number } }>(
+        'GET',
+        `/operations/finance/referrals/${encodeURIComponent(persona)}/performers`,
+        undefined,
+        { pageSize: 50 },
+      ),
+    referralReviewQueue: () =>
+      dx<{ items: ReferralReviewItemDto[]; meta: { total: number } }>(
+        'GET',
+        '/operations/finance/referrals/review-queue',
+        undefined,
+        { pageSize: 100 },
+      ),
+    referralProgrammes: () =>
+      dx<ReferralProgrammeDto[]>('GET', '/operations/finance/referrals/programmes'),
+
+    // ── Referral decisions and programme edits — admin:referrals:manage ─────
+    // Reading a desk and changing what it pays are different authorities, so
+    // these sit under /admin rather than as writes on the read controller.
+    updateReferralProgramme: (
+      refereeType: ReferralRefereeType,
+      body: UpdateReferralProgrammeRequest,
+    ) =>
+      dx<ReferralProgrammeDto>(
+        'PATCH',
+        `/admin/referrals/programmes/${encodeURIComponent(refereeType)}`,
+        body,
+      ),
+    approveReferralRedemption: (id: string) =>
+      dx<unknown>('POST', `/admin/referrals/redemptions/${encodeURIComponent(id)}/approve`, {}),
+    rejectReferralRedemption: (id: string, reason?: string) =>
+      dx<unknown>(
+        'POST',
+        `/admin/referrals/redemptions/${encodeURIComponent(id)}/reject`,
+        reason !== undefined ? { reason } : {},
+      ),
+
+    // ── DX Points earning programmes — admin:loyalty:manage ─────────────────
+    loyaltyEarningProgrammes: () =>
+      dx<LoyaltyEarningProgrammeDto[]>('GET', '/admin/loyalty/earning-programmes'),
+    loyaltyEarningImpact: () =>
+      dx<LoyaltyEarningImpactDto[]>('GET', '/admin/loyalty/earning-programmes/impact'),
+    updateLoyaltyEarningProgramme: (
+      persona: LoyaltyEarnerPersona,
+      body: UpdateLoyaltyEarningProgrammeRequest,
+    ) =>
+      dx<LoyaltyEarningProgrammeDto>(
+        'PATCH',
+        `/admin/loyalty/earning-programmes/${encodeURIComponent(persona)}`,
+        body,
+      ),
 
     // Merchants review desk. Pass a status to scope (e.g. 'PENDING'/'UNDER_REVIEW').
     listMerchants: (status?: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED') =>
