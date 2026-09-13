@@ -13,6 +13,7 @@ import {
 
 import { DripplexApiError } from '@/lib/sdk';
 import {
+  LEGACY_CAMPAIGN_TOKENS,
   acquisitionIncentive,
   campaignDetail,
   cashPerformance,
@@ -352,9 +353,12 @@ describe('the promoter table', () => {
     // all — not revealed, not masked. It is a bearer credential that attributes
     // acquisitions, and this column previously offered to copy it. What the
     // column carries now is the one string an operator can actually hand over.
+    const { cash, points, removed } = LEGACY_CAMPAIGN_TOKENS;
+    for (const token of [cash, points, removed]) {
+      expect(screen.queryByText(token)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
     for (const promoter of campaignDetail.promoters) {
-      expect(screen.queryByText(promoter.token)).not.toBeInTheDocument();
-      expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
       if (promoter.referralCode !== null) {
         expect(screen.getByText(promoter.referralCode)).toBeInTheDocument();
       }

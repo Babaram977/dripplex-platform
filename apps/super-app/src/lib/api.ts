@@ -2214,10 +2214,10 @@ export interface CampaignPromoterDto {
   userId: string;
   name: string;
   participantType: CampaignParticipantType;
-  /** The promoter's private campaign token — a backend identifier for this
-   *  participation, not something a promoter hands out. It is what earns the
-   *  money, so the UI treats it as a credential, not a label. */
-  token: string;
+  /* No `token`. The per-campaign token is a bearer credential — whoever holds
+   * it can have an acquisition attributed to that promoter — and nothing
+   * displays it since founder instruction 2026-09-13, so the route no longer
+   * returns it to a browser at all. */
   /** The promoter's own standing referral code: the one string on this row that
    *  is meant to be published. Founder ruling 2026-09-13 — one code, one rate:
    *  enrolment raises what this code pays rather than issuing a second one.

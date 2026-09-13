@@ -4,6 +4,7 @@ import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  LEGACY_CAMPAIGN_TOKENS,
   acquisitionIncentive,
   campaignDetail,
   campaignSummary,
@@ -384,7 +385,7 @@ describe('campaign detail', () => {
   it('shows the referral code and never the token', async () => {
     renderDetail();
     await screen.findByText('Amaka Pioneer');
-    expect(screen.queryByText(firstPromoter().token)).not.toBeInTheDocument();
+    expect(screen.queryByText(LEGACY_CAMPAIGN_TOKENS.cash)).not.toBeInTheDocument();
     expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
     expect(screen.getByText('AMAKA350')).toBeInTheDocument();
   });

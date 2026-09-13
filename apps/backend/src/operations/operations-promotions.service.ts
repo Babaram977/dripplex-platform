@@ -46,7 +46,6 @@ export interface PromoterRow {
   userId: string;
   name: string;
   participantType: CampaignParticipantType;
-  token: string;
   status: CampaignPromoterStatus;
   addedAt: Date;
   removedAt: Date | null;
@@ -67,9 +66,10 @@ export interface PromoterRow {
    *
    * Founder ruling 2026-09-13: a promoter shares one code, and enrolling them
    * on a campaign raises what that code pays rather than issuing a second one.
-   * The `token` above is the backend identifier for their participation; it is
-   * not shareable and nobody types it. An operator looking at this row needs
-   * the code, because that is what they will be asked about.
+   * The campaign token is the backend identifier for their participation; it
+   * is not shareable, nobody types it, and this row no longer carries it at
+   * all. An operator looking here needs the code, because that is what they
+   * will be asked about.
    *
    * Enrolment ensures the code before it writes the participation, so a
    * promoter added through this console always has one. Null is therefore for
@@ -166,11 +166,12 @@ export class OperationsPromotionsService {
         userId: r.userId,
         name: `${r.user.firstName} ${r.user.lastName}`.trim(),
         participantType: r.participantType,
-        // The private token is shown here and nowhere else. This endpoint is
-        // behind PROMOTIONS_READ; no promoter-facing route returns another
-        // promoter's token, because a token is what earns the money.
-        token: r.token,
-        // What the promoter shares. The campaign pays through this code.
+        // No token. It is a bearer credential that attributes acquisitions, and
+        // since founder instruction 2026-09-13 nothing displays it — so this
+        // route does not hand it to a browser. It is still written, still
+        // unique, and still readable from the database for an investigation.
+        //
+        // What the promoter shares is the code. The campaign pays through it.
         referralCode: codes.get(r.userId) ?? null,
         status: r.status,
         addedAt: r.addedAt,
