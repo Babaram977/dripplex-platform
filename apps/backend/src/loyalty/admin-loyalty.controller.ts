@@ -151,15 +151,6 @@ export class AdminLoyaltyController {
     return { success: true, data };
   }
 
-  @Get(':userId')
-  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
-  public async getUserLoyalty(
-    @Param('userId', ParseUUIDPipe) userId: string,
-  ): Promise<ApiSuccessResponse<LoyaltyAccountOverview>> {
-    const data = await this.loyaltyService.getCustomerOverview(userId);
-    return { success: true, data };
-  }
-
   @Post('achievements')
   @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
   public async createAchievement(
@@ -201,6 +192,28 @@ export class AdminLoyaltyController {
     @Req() request: Request,
   ): Promise<ApiSuccessResponse<{ deleted: true }>> {
     const data = await this.loyaltyService.deleteAchievement(id, this.auditContext(request));
+    return { success: true, data };
+  }
+
+  /**
+   * Declared last on purpose. `:userId` matches any single segment, so every
+   * literal GET under `admin/loyalty` must be registered before it or Nest
+   * hands the request here instead — silently, and only in the deployed app:
+   * the startup log still prints the swallowed route as `Mapped`.
+   *
+   * That is not hypothetical. It is why `GET /admin/loyalty/nope` answers 401
+   * rather than 404, which in turn made a 401 on `earning-programmes` prove
+   * nothing about whether that route was reachable at all. The literal routes
+   * happened to be declared above this one; nothing enforced it.
+   *
+   * Keep this handler at the bottom of the controller. Add new GETs above it.
+   */
+  @Get(':userId')
+  @RequirePermissions(LOYALTY_PERMISSIONS.ADMIN_MANAGE)
+  public async getUserLoyalty(
+    @Param('userId', ParseUUIDPipe) userId: string,
+  ): Promise<ApiSuccessResponse<LoyaltyAccountOverview>> {
+    const data = await this.loyaltyService.getCustomerOverview(userId);
     return { success: true, data };
   }
 
