@@ -338,7 +338,7 @@ describe('the promoter table', () => {
     expect(screen.getByText(/≈ ₦300 at 100:₦1/)).toBeInTheDocument();
   });
 
-  it('masks every token by default, however many rows there are', () => {
+  it('never renders a token, however many rows there are', () => {
     render(
       <PromoterTable
         promoters={campaignDetail.promoters}
@@ -348,10 +348,18 @@ describe('the promoter table', () => {
         removingId={null}
       />,
     );
-    expect(screen.getAllByText('••••••••')).toHaveLength(3);
+    // Founder instruction 2026-09-13: the campaign token is not displayed at
+    // all — not revealed, not masked. It is a bearer credential that attributes
+    // acquisitions, and this column previously offered to copy it. What the
+    // column carries now is the one string an operator can actually hand over.
     for (const promoter of campaignDetail.promoters) {
       expect(screen.queryByText(promoter.token)).not.toBeInTheDocument();
+      expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
+      if (promoter.referralCode !== null) {
+        expect(screen.getByText(promoter.referralCode)).toBeInTheDocument();
+      }
     }
+    expect(screen.queryByRole('button', { name: 'Reveal' })).not.toBeInTheDocument();
   });
 
   it('scrolls horizontally on a narrow screen instead of truncating a money column', () => {

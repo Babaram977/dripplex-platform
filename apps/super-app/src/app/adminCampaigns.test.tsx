@@ -653,13 +653,19 @@ describe('Referral Campaigns — money and points are the server’s', () => {
 });
 
 describe('Referral Campaigns — promoters', () => {
-  it('masks a promoter token until it is asked for', async () => {
+  it('never shows the campaign token, masked or otherwise', async () => {
+    // Founder instruction 2026-09-13. The token is a bearer credential that
+    // attributes acquisitions; nobody outside the backend reads it, and a
+    // console that displayed it — even masked behind a Reveal — invited an
+    // operator to send it to a promoter in place of their referral code.
     await renderPage();
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Ada Promoter')).toBeTruthy());
     expect(screen.queryByText('CAMPAIGNTOKEN123')).toBeNull();
-    fireEvent.click(screen.getByText('Reveal'));
-    expect(screen.getByText('CAMPAIGNTOKEN123')).toBeTruthy();
+    expect(screen.queryByText('Reveal')).toBeNull();
+    expect(screen.queryByText('internal id')).toBeNull();
+    // Not even partially: a masked token is still a token on the screen.
+    expect(document.body.textContent).not.toContain('CAMPAIGNTOKEN');
   });
 
   it('shows the referral code the promoter actually shares, unmasked', async () => {
@@ -674,15 +680,15 @@ describe('Referral Campaigns — promoters', () => {
     expect(screen.getByText('shares')).toBeTruthy();
   });
 
-  it('keeps the token masked while the code is visible, so the two cannot be confused', async () => {
+  it('leaves the referral code as the only promoter string on the row', async () => {
     // The defect being guarded: an operator sending the token, which is a
-    // bearer credential and which no signup form accepts.
+    // bearer credential and which no signup form accepts. With the token gone
+    // there is exactly one string here to hand out, and it is the right one.
     await renderPage();
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Ada Promoter')).toBeTruthy());
     expect(screen.getByText('ADA4321')).toBeTruthy();
-    expect(screen.queryByText('CAMPAIGNTOKEN123')).toBeNull();
-    expect(screen.getByText('internal id')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('CAMPAIGNTOKEN');
   });
 
   it('copies the referral code, never the token', async () => {
@@ -707,7 +713,7 @@ describe('Referral Campaigns — promoters', () => {
     await openCampaign();
     await waitFor(() => expect(screen.getByText('Ada Promoter')).toBeTruthy());
     expect(screen.getByText('no referral code')).toBeTruthy();
-    expect(screen.queryByText('CAMPAIGNTOKEN123')).toBeNull();
+    expect(document.body.textContent).not.toContain('CAMPAIGNTOKEN');
   });
 
   it('never renders a removed promoter as active or offers to remove them', async () => {

@@ -381,11 +381,12 @@ describe('campaign detail', () => {
     expect(screen.getByText('Driver')).toBeInTheDocument();
   });
 
-  it('masks every token until asked', async () => {
+  it('shows the referral code and never the token', async () => {
     renderDetail();
     await screen.findByText('Amaka Pioneer');
-    expect(screen.getAllByText('••••••••')).toHaveLength(3);
     expect(screen.queryByText(firstPromoter().token)).not.toBeInTheDocument();
+    expect(screen.queryByText('••••••••')).not.toBeInTheDocument();
+    expect(screen.getByText('AMAKA350')).toBeInTheDocument();
   });
 
   it('reports a campaign that does not exist instead of rendering an empty shell', async () => {

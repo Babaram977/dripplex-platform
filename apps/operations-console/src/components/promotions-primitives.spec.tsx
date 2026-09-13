@@ -1,18 +1,14 @@
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   CampaignStatusBadge,
   PointsValue,
   PromoterStatusBadge,
-  PromoterToken,
   RewardValue,
   conversion,
   naira,
 } from './promotions-primitives';
-
-import { required } from '@/test/promotions-fixtures';
 
 describe('DX Points are never presented as naira', () => {
   it('shows the value the server computed, labelled with the rate', () => {
@@ -168,77 +164,5 @@ describe('a removed promoter never reads as active', () => {
     render(<PromoterStatusBadge status="ACTIVE" removedAt={null} />);
     expect(screen.getByText('ACTIVE')).toBeInTheDocument();
     expect(screen.queryByText('REMOVED')).not.toBeInTheDocument();
-  });
-});
-
-/** jsdom defines `navigator.clipboard` as a getter, so it has to be redefined
- *  rather than assigned. */
-function stubClipboard(writeText: ReturnType<typeof vi.fn>): void {
-  Object.defineProperty(navigator, 'clipboard', {
-    configurable: true,
-    value: { writeText },
-  });
-}
-
-describe('the private campaign token', () => {
-  const TOKEN = 'TOKENCASH1234567890ABCDEFGHIJKLMN';
-
-  it('is masked until an operator asks for it', () => {
-    render(<PromoterToken token={TOKEN} />);
-    expect(screen.queryByText(TOKEN)).not.toBeInTheDocument();
-    expect(screen.getByText('••••••••')).toBeInTheDocument();
-  });
-
-  it('reveals and re-hides on request', async () => {
-    const user = userEvent.setup();
-    render(<PromoterToken token={TOKEN} />);
-
-    await user.click(screen.getByRole('button', { name: 'Reveal' }));
-    expect(screen.getByText(TOKEN)).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Hide' }));
-    expect(screen.queryByText(TOKEN)).not.toBeInTheDocument();
-  });
-
-  it('copies without revealing — the token need not go on screen to be used', async () => {
-    const user = userEvent.setup();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    // After setup(), never before: user-event installs its own clipboard stub
-    // and would otherwise swallow the call this test is about.
-    stubClipboard(writeText);
-    render(<PromoterToken token={TOKEN} />);
-
-    await user.click(screen.getByRole('button', { name: 'Copy' }));
-
-    expect(writeText).toHaveBeenCalledWith(TOKEN);
-    expect(screen.queryByText(TOKEN)).not.toBeInTheDocument();
-  });
-
-  it('falls back to revealing when the clipboard is unavailable', async () => {
-    const user = userEvent.setup();
-    stubClipboard(vi.fn().mockRejectedValue(new Error('denied')));
-    render(<PromoterToken token={TOKEN} />);
-
-    await user.click(screen.getByRole('button', { name: 'Copy' }));
-
-    // Better to show it than to leave the operator with a button that silently
-    // does nothing.
-    expect(await screen.findByText(TOKEN)).toBeInTheDocument();
-  });
-
-  it("keeps each row's token separate — revealing one reveals only one", async () => {
-    const user = userEvent.setup();
-    render(
-      <>
-        <PromoterToken token="FIRSTTOKEN" />
-        <PromoterToken token="SECONDTOKEN" />
-      </>,
-    );
-
-    const [firstReveal] = screen.getAllByRole('button', { name: 'Reveal' });
-    await user.click(required(firstReveal, 'the first Reveal button'));
-
-    expect(screen.getByText('FIRSTTOKEN')).toBeInTheDocument();
-    expect(screen.queryByText('SECONDTOKEN')).not.toBeInTheDocument();
   });
 });

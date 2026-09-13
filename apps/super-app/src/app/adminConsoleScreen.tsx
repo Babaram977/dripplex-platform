@@ -11629,9 +11629,15 @@ function PointsValue({ points, valueNgn }: { points: number; valueNgn: number | 
  * it is what a new customer types at signup, and what the promoter's own QR
  * encodes.
  *
- * Not masked, unlike the token beside it. A referral code is meant to be
- * published; hiding it would make the credential and the poster look alike,
- * which is the confusion this row exists to end.
+ * Not masked. A referral code is meant to be published — it goes on posters
+ * and into WhatsApp statuses — so hiding it behind a Reveal would say the
+ * opposite of what it is.
+ *
+ * The per-campaign token used to sit beside this, masked. Founder instruction
+ * 2026-09-13: it is not shown at all. It is a bearer credential that attributes
+ * acquisitions, nobody outside the backend needs to read it, and a console that
+ * displayed it — the previous one even offered to copy it — invited an operator
+ * to send the wrong string to a promoter.
  */
 function PromoterCode({ code }: { code: string | null }) {
   const [copied, setCopied] = useState(false);
@@ -11667,41 +11673,6 @@ function PromoterCode({ code }: { code: string | null }) {
               // on screen and can be read off it.
             });
         }}
-      />
-    </span>
-  );
-}
-
-/**
- * The promoter's internal attribution token.
- *
- * Founder ruling 2026-09-13: this is NOT what a promoter shares. They share
- * their own referral code, and being on a campaign raises what that one code
- * pays. The token stays a backend identifier — shown here only so an operator
- * investigating an attribution can match a row to a record.
- *
- * Still masked. It remains a bearer credential: whoever holds it can claim an
- * acquisition, which is exactly why it is not the thing handed out.
- */
-function PromoterToken({ token }: { token: string }) {
-  const [shown, setShown] = useState(false);
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      {/* Labelled, because an operator looking at a long code next to a
-          promoter's name will otherwise assume it is the thing to send them.
-          It is not: they share their own referral code. */}
-      <span style={{ fontSize: 10.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-        internal id
-      </span>
-      <code style={{ fontSize: 11.5, color: shown ? WHITE : MUTED, letterSpacing: 0.4 }}>
-        {shown ? token : '•'.repeat(Math.min(token.length, 12))}
-      </code>
-      <Btn
-        small
-        outline
-        color={G3}
-        label={shown ? 'Hide' : 'Reveal'}
-        onClick={() => setShown((v) => !v)}
       />
     </span>
   );
@@ -12193,7 +12164,6 @@ function PromoterTable({
         {PARTICIPANT_LABEL[p.participantType]}
       </span>
       <PromoterCode code={p.referralCode} />
-      <PromoterToken token={p.token} />
       <span style={{ fontSize: 12, color: WHITE, minWidth: 150 }}>
         {p.rewardAmountNgn !== null ? (
           naira(p.rewardAmountNgn)
