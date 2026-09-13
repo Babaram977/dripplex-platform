@@ -11,6 +11,7 @@ import {
   type CampaignPerformanceDto,
   type CampaignPromoterDto,
   type CampaignSummaryDto,
+  type SessionDto,
   type LoyaltyEarnerPersona,
   type LoyaltyEarningImpactDto,
   type LoyaltyEarningProgrammeDto,
@@ -62,7 +63,7 @@ import {
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
 } from '../lib/api';
-import { auth } from '../lib/auth';
+import { auth, type DxUser } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
 
 import type { AddressPrediction } from '../lib/maps';
@@ -575,14 +576,6 @@ interface IntegrationRow {
   desc: string;
   /** Enabled, as the toggle reads it. */
   status: boolean;
-}
-
-interface AdminSessionRow {
-  device: string;
-  location: string;
-  time: string;
-  /** The session the operator is looking at it from. */
-  current: boolean;
 }
 
 const AUDIT_LOGS: AuditLogRow[] = []; // mock cleared — no ops audit-log feed yet
@@ -11195,203 +11188,388 @@ function PageAuditLogs() {
 }
 
 // ─── Page: Profile ────────────────────────────────────────────────────────────
+/**
+ * Every control here either works or says why it cannot.
+ *
+ * This page shipped with Save Changes and Change Password carrying no onClick
+ * at all, three switches backed by nothing but local state, an Active Sessions
+ * card that was permanently empty, and name/email/phone read from the cached
+ * session object — which is why an operator saw three blank fields and a page
+ * that looked finished.
+ *
+ * The Active Sessions card was empty on a false premise: a comment said "no
+ * admin-session endpoint yet", but `/auth/sessions` exists, is live, and
+ * `api.auth.listSessions` was already written against it.
+ *
+ * The switches are the part worth being careful about. Two-Factor
+ * Authentication read "Requires OTP on every login" next to a switch that was
+ * on — and there is no two-factor endpoint anywhere in the backend. A control
+ * that asserts a security property nobody enforces is worse than a dead
+ * button, so it is stated as unavailable rather than shown as enabled. The
+ * notification switches are the same: the only preferences endpoint is
+ * `/customer/notifications/preferences`, which is the customer's, not an
+ * operator's.
+ */
 function PageProfile() {
-  const u = auth.getUser();
-  const [emailNotif, setEmailNotif] = useState(true);
-  const [pushNotif, setPushNotif] = useState(true);
-  const [twoFA, setTwoFA] = useState(true);
-  const [name, setName] = useState(u ? `${u.firstName} ${u.lastName}`.trim() : '');
-  const [email, setEmail] = useState(u?.email ?? '');
-  const [phone, setPhone] = useState(u?.phone ?? '');
+  // Read the operator from the server, not from the cached session. The stored
+  // object is whatever login happened to persist, which is how the three
+  // fields came to be blank.
+  const [profile, setProfile] = useState<DxUser | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [banner, setBanner] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const me = await api.auth.me();
+      setProfile(me);
+      setFirstName(me.firstName);
+      setLastName(me.lastName);
+    } catch (e: unknown) {
+      setLoadError((e as { message?: string }).message ?? 'Could not load your profile.');
+      setProfile(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const save = async () => {
+    setSaveError(null);
+    if (firstName.trim() === '' || lastName.trim() === '') {
+      setSaveError('First and last name are both required.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.auth.updateMe({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+      });
+      setProfile(updated);
+      setBanner('Profile updated.');
+    } catch (e: unknown) {
+      setSaveError((e as { message?: string }).message ?? 'Could not save your profile.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const roleLabel =
-    u?.roles?.[0]?.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase()) ?? 'Operations';
-  const sessions: AdminSessionRow[] = []; // mock cleared — no admin-session endpoint yet
+    profile?.roles[0]?.replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase()) ??
+    'Operations';
+
+  if (loadError !== null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+          {loadError}
+        </div>
+      </Card>
+    );
+  }
+  if (profile === null) {
+    return (
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading…
+        </div>
+      </Card>
+    );
+  }
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-      {/* Profile card */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Card>
-          <div
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 10,
-              marginBottom: 16,
-            }}
-          >
-            <div style={{ position: 'relative' }}>
-              <Avatar name={name || 'Operations'} size={60} />
-              <button
-                className="dx-btn"
-                style={{
-                  position: 'absolute',
-                  bottom: -2,
-                  right: -2,
-                  width: 20,
-                  height: 20,
-                  borderRadius: '50%',
-                  background: G2,
-                  border: 'none',
-                  color: NAVY_DEEP,
-                  fontSize: 10,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                ✎
-              </button>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontFamily: 'Poppins, sans-serif',
-                  fontSize: 15,
-                  fontWeight: 700,
-                  color: WHITE,
-                }}
-              >
-                {name || 'Operations'}
-              </div>
-              <Chip label={roleLabel} color={G3} />
-            </div>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {[
-              ['Full Name', name, setName],
-              ['Email Address', email, setEmail],
-              ['Phone Number', phone, setPhone],
-            ].map(([label, val, setter]) => (
-              <div key={label as string}>
-                <div
-                  style={{
-                    fontSize: 10.5,
-                    color: MUTED,
-                    fontFamily: 'Inter, sans-serif',
-                    marginBottom: 4,
-                  }}
-                >
-                  {label as string}
-                </div>
-                <input
-                  className="dx-input"
-                  value={val as string}
-                  onChange={(e) => (setter as any)(e.target.value)}
-                />
-              </div>
-            ))}
-            <div>
-              <div
-                style={{
-                  fontSize: 10.5,
-                  color: MUTED,
-                  fontFamily: 'Inter, sans-serif',
-                  marginBottom: 4,
-                }}
-              >
-                Department
-              </div>
-              <input className="dx-input" value={roleLabel} readOnly />
-            </div>
-          </div>
-          <div style={{ marginTop: 14 }}>
-            <Btn label="Save Changes" color={G2} />
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {banner !== null && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 12.5, color: G3, fontFamily: 'Inter, sans-serif' }}>{banner}</div>
         </Card>
-      </div>
-      {/* Right column */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* Security */}
-        <Card>
-          <SectionHeader title="Security" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
-                <div
-                  style={{
-                    fontFamily: 'Inter, sans-serif',
-                    fontSize: 12.5,
-                    fontWeight: 600,
-                    color: WHITE,
-                  }}
-                >
-                  Two-Factor Authentication
-                </div>
-                <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 11, color: MUTED }}>
-                  Requires OTP on every login
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                className="dx-toggle"
-                checked={twoFA}
-                onChange={(e) => setTwoFA(e.target.checked)}
-              />
-            </div>
-            <SEP />
-            <Btn label="Change Password" color={MUTED} outline />
-          </div>
-        </Card>
-        {/* Notifications */}
-        <Card>
-          <SectionHeader title="Notifications" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[
-              ['Email Notifications', emailNotif, setEmailNotif],
-              ['Push Notifications', pushNotif, setPushNotif],
-            ].map(([label, val, setter]) => (
-              <div
-                key={label as string}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-              >
-                <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 12, color: WHITE }}>
-                  {label as string}
-                </span>
-                <input
-                  type="checkbox"
-                  className="dx-toggle"
-                  checked={val as boolean}
-                  onChange={(e) => (setter as any)(e.target.checked)}
-                />
-              </div>
-            ))}
-          </div>
-        </Card>
-        {/* Sessions */}
-        <Card>
-          <SectionHeader title="Active Sessions" />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {sessions.map((s, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 18 }}>{s.device.includes('iPhone') ? '📱' : '💻'}</span>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontFamily: 'Inter, sans-serif',
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: WHITE,
-                    }}
-                  >
-                    {s.device}
-                  </div>
-                  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: 10.5, color: MUTED }}>
-                    {s.location} · {s.time}
-                  </div>
-                </div>
-                {s.current ? (
-                  <Chip label="Current" color={G3} />
-                ) : (
-                  <Btn label="Revoke" small outline color={C_ERR} />
-                )}
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
+      )}
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            flexWrap: 'wrap',
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>
+            {`${profile.firstName} ${profile.lastName}`.trim()}
+          </span>
+          <StatusChip status={roleLabel} />
+        </div>
+
+        {saveError !== null && (
+          <div style={{ fontSize: 12.5, color: C_ERR, marginBottom: 8 }}>{saveError}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <LabelledInput label="First name" value={firstName} onChange={setFirstName} width={180} />
+          <LabelledInput label="Last name" value={lastName} onChange={setLastName} width={180} />
+          <Btn
+            small
+            label={saving ? 'Saving…' : 'Save Changes'}
+            disabled={saving}
+            onClick={() => void save()}
+          />
+        </div>
+
+        {/* Email and phone change through their own confirmation flows
+            (/auth/me/email/change, /auth/me/phone/change, each with a confirm
+            step). Editing them here would either do nothing or skip the
+            confirmation, so they are shown as the record and not as fields. */}
+        <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>
+          {profile.email ?? 'No email on file'} · {profile.phone ?? 'No phone on file'}
+          <span style={{ marginLeft: 8 }}>
+            — changed through a confirmation flow, not from this page
+          </span>
+        </div>
+      </Card>
+
+      <ChangePasswordCard onChanged={() => setBanner('Password changed.')} />
+      <ActiveSessionsCard />
+
+      <Card style={{ padding: '14px 16px' }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: WHITE, marginBottom: 4 }}>
+          Not configurable here
+        </div>
+        {/* Stated rather than switched. A control that claims OTP is required
+            on every login, while no endpoint enforces anything of the kind,
+            tells an operator their account is protected when it is not. */}
+        <div style={{ fontSize: 12, color: MUTED }}>
+          Two-factor authentication has no endpoint on the platform yet, so it cannot be turned on
+          or off from here and this page does not claim it is enabled. Operator notification
+          preferences are the same: the only preferences API belongs to the customer app.
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function ChangePasswordCard({ onChanged }: { onChanged: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setError(null);
+    // Matches ChangePasswordDto: 8-128. Checked here so an obvious slip does
+    // not cost a round trip; the server still rules on it.
+    if (newPassword.length < 8) {
+      setError('The new password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('The two new passwords do not match.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.auth.changePassword({ currentPassword, newPassword });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setOpen(false);
+      onChanged();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not change your password.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>Password</span>
+        {!open && (
+          <span style={{ marginLeft: 'auto' }}>
+            <Btn small outline color={G3} label="Change Password" onClick={() => setOpen(true)} />
+          </span>
+        )}
+      </div>
+
+      {open && (
+        <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {error !== null && <div style={{ fontSize: 12.5, color: C_ERR }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            <LabelledPassword
+              label="Current password"
+              value={currentPassword}
+              onChange={setCurrentPassword}
+            />
+            <LabelledPassword label="New password" value={newPassword} onChange={setNewPassword} />
+            <LabelledPassword
+              label="Confirm new password"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+            />
+            <Btn
+              small
+              label={busy ? 'Changing…' : 'Change'}
+              disabled={busy}
+              onClick={() => void submit()}
+            />
+            <Btn small outline color={MUTED} label="Cancel" onClick={() => setOpen(false)} />
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function LabelledPassword({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: 10.5, color: MUTED }}>{label}</span>
+      <input
+        className="dx-input"
+        type="password"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ maxWidth: 170 }}
+      />
+    </span>
+  );
+}
+
+function ActiveSessionsCard() {
+  const [sessions, setSessions] = useState<SessionDto[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setError(null);
+    try {
+      setSessions((await api.auth.listSessions()).items);
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not load your sessions.');
+      setSessions(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const revoke = async (sessionId: string) => {
+    setNotice(null);
+    setBusyId(sessionId);
+    try {
+      await api.auth.revokeSession(sessionId);
+      setNotice('Session signed out.');
+      await load();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not sign that session out.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const revokeOthers = async () => {
+    setNotice(null);
+    setBusyId('others');
+    try {
+      const res = await api.auth.revokeOtherSessions();
+      setNotice(
+        res.revokedCount === 1
+          ? '1 other session signed out.'
+          : `${String(res.revokedCount)} other sessions signed out.`,
+      );
+      await load();
+    } catch (e: unknown) {
+      setError((e as { message?: string }).message ?? 'Could not sign the other sessions out.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 13.5, fontWeight: 600, color: WHITE }}>Active Sessions</span>
+        {sessions !== null && sessions.length > 1 && (
+          <span style={{ marginLeft: 'auto' }}>
+            <Btn
+              small
+              outline
+              color={C_ERR}
+              label={busyId === 'others' ? 'Signing out…' : 'Sign out others'}
+              disabled={busyId !== null}
+              onClick={() => void revokeOthers()}
+            />
+          </span>
+        )}
+      </div>
+
+      {notice !== null && <div style={{ fontSize: 12.5, color: G3, marginTop: 8 }}>{notice}</div>}
+      {error !== null && <div style={{ fontSize: 12.5, color: C_ERR, marginTop: 8 }}>{error}</div>}
+
+      {sessions === null && error === null && (
+        <div style={{ fontSize: 12.5, color: MUTED, marginTop: 8 }}>Loading…</div>
+      )}
+      {sessions !== null && sessions.length === 0 && (
+        <div style={{ fontSize: 12.5, color: MUTED, marginTop: 8 }}>No other sessions.</div>
+      )}
+      {sessions?.map((s) => (
+        <div
+          key={s.sessionId}
+          style={{
+            display: 'flex',
+            gap: 12,
+            padding: '10px 0',
+            borderTop: `1px solid ${BORDER}`,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <span style={{ fontSize: 12.5, color: WHITE, minWidth: 150 }}>
+            {s.browser ?? 'Unknown browser'} · {s.operatingSystem ?? 'Unknown OS'}
+          </span>
+          <span style={{ fontSize: 12, color: MUTED, minWidth: 150 }}>
+            {s.location ?? s.ip ?? 'Location unknown'}
+          </span>
+          <span style={{ fontSize: 12, color: MUTED, minWidth: 130 }}>
+            Last active {new Date(s.lastActiveAt).toLocaleString('en-NG')}
+          </span>
+          {s.current ? (
+            <StatusChip status="THIS DEVICE" />
+          ) : (
+            <span style={{ marginLeft: 'auto' }}>
+              <Btn
+                small
+                outline
+                color={C_ERR}
+                label={busyId === s.sessionId ? 'Signing out…' : 'Sign out'}
+                disabled={busyId !== null}
+                onClick={() => void revoke(s.sessionId)}
+              />
+            </span>
+          )}
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -13248,13 +13426,66 @@ function renderPage(page: AdminPage) {
 // A session is an Operations session only when it carries the operations_staff
 // role or an operations:* permission — a leftover customer/merchant token must
 // not slip past the gate (its /admin/* calls would all 403).
-function isOpsAuthed(): boolean {
-  const u = auth.getUser();
-  if (!u || !auth.getAccessToken()) return false;
+function grantsOpsAccess(u: Pick<DxUser, 'roles' | 'permissions'>): boolean {
   return (
     u.roles.includes('operations_staff') ||
     u.roles.includes('admin') ||
     u.permissions.some((p) => p.startsWith('operations:'))
+  );
+}
+
+/**
+ * What this browser is *holding*, which is not the same as being signed in.
+ *
+ * Everything here comes out of localStorage: a token string nobody has checked
+ * and a user object this device wrote down at some past login. That was the
+ * whole gate, and it is why the console opened straight onto the dashboard
+ * with no sign-in — a token from a session that had expired, been revoked, or
+ * been signed out of elsewhere still reads back exactly like a live one, and a
+ * `dx_user` entry with `roles: ["admin"]` typed into devtools reads like one
+ * too. Only the server knows which of those is true, so this answers the
+ * narrower question of whether it is worth asking it.
+ */
+function holdsOpsSession(): boolean {
+  const u = auth.getUser();
+  if (!u || !auth.getAccessToken()) return false;
+  return grantsOpsAccess(u);
+}
+
+/**
+ * The three states the front door can be in.
+ *
+ * 'checking' is the one that was missing. Without it there is nowhere to stand
+ * while the server answers, so the console had to guess — and it guessed the
+ * dashboard.
+ */
+type OpsGate = 'checking' | 'in' | 'out';
+
+/**
+ * Shown while the stored session is being checked against the server.
+ *
+ * Deliberately not the dashboard behind a spinner: the point of the check is
+ * that we do not yet know whether this person may see the dashboard, and a
+ * blurred-out one is still one that rendered.
+ */
+function OpsGateChecking() {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        minHeight: 320,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'Inter, sans-serif',
+        background: NAVY_BASE,
+        color: MUTED,
+        fontSize: 13,
+      }}
+    >
+      Checking your session…
+    </div>
   );
 }
 
@@ -13274,7 +13505,8 @@ function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
       const res = await api.auth.loginOperations({ email, password });
       auth.setTokens(res.accessToken, res.refreshToken);
       auth.setUser(res.user);
-      if (!isOpsAuthed()) {
+      // The response we were just handed, not what localStorage reads back.
+      if (!grantsOpsAccess(res.user)) {
         auth.clear();
         setError('This account does not have Operations access.');
         return;
@@ -13350,7 +13582,8 @@ function OpsSignIn({ onSignedIn }: { onSignedIn: () => void }) {
 
 export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?: AdminPage }) {
   const [page, setPage] = useState<AdminPage>(initialPage);
-  const [authed, setAuthed] = useState<boolean>(() => isOpsAuthed());
+  const [gate, setGate] = useState<OpsGate>(() => (holdsOpsSession() ? 'checking' : 'out'));
+  const authed = gate === 'in';
   const [badges, setBadges] = useState<NavBadges>({});
   const narrow = useNarrowViewport();
   const [navOpen, setNavOpen] = useState(false);
@@ -13361,9 +13594,63 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
   }, [narrow]);
   const handleSignOut = () => {
     auth.clear();
-    setAuthed(false);
+    setGate('out');
     setPage('dashboard');
   };
+
+  /**
+   * Ask the server whether the token this device is holding is a live
+   * Operations session, before showing a single page of one.
+   *
+   * /auth/me reads roles and permissions from the database on every call
+   * rather than from the token's claims, so this also catches an operator
+   * whose access was withdrawn after the token was issued — which the stored
+   * user object, frozen at login, would go on granting until it expired.
+   *
+   * A failure of any kind ends in sign-in. There is no case where the honest
+   * answer to "is this a valid session?" is unknown-so-assume-yes.
+   */
+  useEffect(() => {
+    if (gate !== 'checking') return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const me = await api.auth.me();
+        if (cancelled) return;
+        if (!grantsOpsAccess(me)) {
+          auth.clear();
+          setGate('out');
+          return;
+        }
+        // Store what the server just said, so the permission checks the rest
+        // of the console makes are against current access, not login-day access.
+        auth.setUser(me);
+        setGate('in');
+      } catch {
+        if (cancelled) return;
+        auth.clear();
+        setGate('out');
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gate]);
+
+  /**
+   * The API client clears the session and fires this when a 401 survives a
+   * refresh attempt. The console kept its own `authed` flag and never heard
+   * it, so an expired session left the shell standing with every panel failing
+   * underneath it.
+   */
+  useEffect(() => {
+    const onExpired = () => {
+      setGate('out');
+      setPage('dashboard');
+    };
+    window.addEventListener('dx:session-expired', onExpired);
+    return () => window.removeEventListener('dx:session-expired', onExpired);
+  }, []);
 
   // Real sidebar badge counts. Each source is independent so one failing queue
   // never blanks the others; absent/0 simply shows no badge.
@@ -13398,7 +13685,8 @@ export function AdminConsoleScreen({ initialPage = 'dashboard' }: { initialPage?
     };
   }, [authed, page]);
 
-  if (!authed) return <OpsSignIn onSignedIn={() => setAuthed(true)} />;
+  if (gate === 'checking') return <OpsGateChecking />;
+  if (gate === 'out') return <OpsSignIn onSignedIn={() => setGate('in')} />;
   return (
     <div
       style={{
