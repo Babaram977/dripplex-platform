@@ -96,6 +96,10 @@ export const cashPromoter: CampaignPromoterDto = {
   name: 'Amaka Pioneer',
   participantType: 'PIONEER_DRIVER',
   token: 'TOKENCASH1234567890ABCDEFGHIJKLMN',
+  // What this promoter shares. The token above is a backend identifier for the
+  // participation; the campaign pays through this code (founder ruling
+  // 2026-09-13: one code, one rate).
+  referralCode: 'AMAKA350',
   status: 'ACTIVE',
   addedAt: '2026-09-01T09:00:00.000Z',
   removedAt: null,
@@ -111,6 +115,7 @@ export const pointsPromoter: CampaignPromoterDto = {
   name: 'Bayo Influencer',
   participantType: 'INFLUENCER',
   token: 'TOKENPOINTS1234567890ABCDEFGHIJK',
+  referralCode: 'BAYO7788',
   status: 'ACTIVE',
   addedAt: '2026-09-02T09:00:00.000Z',
   removedAt: null,
@@ -126,6 +131,9 @@ export const removedPromoter: CampaignPromoterDto = {
   name: 'Chidi Former',
   participantType: 'DRIVER',
   token: 'TOKENGONE1234567890ABCDEFGHIJKLM',
+  // A removed promoter keeps their code — it is theirs, not the campaign's,
+  // and their historical acquisitions were attributed through it.
+  referralCode: 'CHIDI001',
   status: 'REMOVED',
   addedAt: '2026-08-01T09:00:00.000Z',
   removedAt: '2026-09-05T09:00:00.000Z',
