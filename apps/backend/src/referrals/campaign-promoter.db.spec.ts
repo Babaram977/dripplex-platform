@@ -265,6 +265,69 @@ describe('CampaignPromoterService', () => {
     }
   });
 
+  it('tells the loser of a race it lost this campaign, not to leave another one', async () => {
+    if (!databaseAvailable) return;
+    // The race above finds this roughly twice in twenty runs, which is not
+    // protection. Here the interleaving is forced instead of hoped for: the
+    // competing enrolment is committed *during* the loser's existence check, so
+    // the loser always reaches the one-campaign-at-a-time guard with a row
+    // already written on the very campaign it is enrolling onto.
+    //
+    // Before the guard excluded that campaign, the loser was told "already
+    // promoting X — remove them from that campaign first", naming the campaign
+    // it was being added to. An operator following that sentence would remove
+    // the promoter from the enrolment that had just succeeded.
+    const [promotionId, userId] = [await aCampaign(), await aUser()];
+    const input = {
+      promotionId,
+      userId,
+      participantType: CampaignParticipantType.CUSTOMER,
+      reward: { amountNgn: 150 },
+    };
+
+    let winnerEnrolled = false;
+    const racingPrisma = Object.create(prisma) as PrismaService;
+    Object.defineProperty(racingPrisma, 'campaignPromoter', {
+      configurable: true,
+      value: {
+        ...prisma.campaignPromoter,
+        findUnique: async (args: Parameters<typeof prisma.campaignPromoter.findUnique>[0]) => {
+          // The read happens first and its answer is what the loser gets back:
+          // a stale "no row here". The winner commits in between. Returning a
+          // fresh read instead would hand the loser the winner's row and send
+          // it down the reinstate branch, which is a different bug entirely.
+          const stale = await prisma.campaignPromoter.findUnique(args);
+          if (!winnerEnrolled) {
+            winnerEnrolled = true;
+            await service.addPromoter(input, ADMIN);
+          }
+          return stale;
+        },
+      },
+    });
+    const auditService = { record: () => Promise.resolve(undefined) } as unknown as AuditService;
+    const loser = new CampaignPromoterService(
+      racingPrisma,
+      new ReferralsService(
+        prisma,
+        auditService,
+        { emit: () => Promise.resolve(undefined) } as unknown as DomainEventBus,
+        {
+          advance: () => Promise.resolve(undefined),
+        } as never,
+      ),
+      auditService,
+    );
+
+    // One attempt, both assertions on the same error. Calling twice would send
+    // the second one down the reinstate path — a different branch, which would
+    // quietly stop testing the race.
+    const error: unknown = await loser.addPromoter(input, ADMIN).catch((e: unknown) => e);
+    expect(String(error)).toMatch(/already a(n active)? promoter/i);
+    expect(String(error)).not.toMatch(/remove them from that/i);
+    expect(await prisma.campaignPromoter.count({ where: { promotionId, userId } })).toBe(1);
+  });
+
   it('removal stops future participation and destroys nothing', async () => {
     if (!databaseAvailable) return;
     const [promotionId, userId, refereeId] = [await aCampaign(), await aUser(), await aUser()];
