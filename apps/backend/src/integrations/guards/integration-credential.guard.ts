@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   Logger,
   UnauthorizedException,
@@ -72,15 +73,31 @@ export class IntegrationCredentialGuard implements CanActivate {
       throw new UnauthorizedException('Integration credentials required');
     }
 
-    const integration = await this.credentialsService.authenticateIncoming(
+    const result = await this.credentialsService.authenticateIncoming(
       integrationId,
       apiKey,
       requiredScope,
     );
 
-    if (!integration) {
+    // R6: authentication and authorization are different answers.
+    //
+    // Everything that fails before the secret verifies stays a single
+    // indistinguishable 401 — that is the anti-enumeration control and it is
+    // untouched. Only `unscoped`, which is reachable solely after the caller
+    // has proved they hold a working credential for this integration, becomes
+    // 403. A POS integrator can now tell "your key is wrong" from "your key
+    // may not do this"; previously both said the former.
+    if (result.outcome === 'unscoped') {
+      throw new ForbiddenException(
+        `Integration credential lacks the required scope: ${requiredScope}`,
+      );
+    }
+
+    if (result.outcome !== 'authenticated') {
       throw new UnauthorizedException('Invalid integration credentials');
     }
+
+    const { integration } = result;
 
     // Handed to the controller through the request rather than re-read there,
     // so the route cannot accidentally trust an id from the body instead of

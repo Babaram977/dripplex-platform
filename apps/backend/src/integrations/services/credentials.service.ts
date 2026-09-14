@@ -51,6 +51,17 @@ export interface CredentialResponse {
  * rotate every 90 days") — stated there since the risk register was written and
  * never enforced until now.
  */
+/**
+ * The three outcomes of authenticating an incoming POS request (R6).
+ *
+ * `unauthenticated` deliberately collapses unknown integration, archived,
+ * inactive and wrong key into one indistinguishable result.
+ */
+export type IncomingAuthResult =
+  | { outcome: 'authenticated'; integration: MerchantIntegration }
+  | { outcome: 'unauthenticated' }
+  | { outcome: 'unscoped' };
+
 export const CREDENTIAL_LIFETIME_DAYS = 90;
 
 /** The expiry a freshly issued or freshly rotated credential carries. */
@@ -403,20 +414,33 @@ export class CredentialsService {
    * that integration's own merchantId, and then checks scope, which is the
    * part that decides whether the key may write a catalogue at all.
    *
-   * Returns null for every failure — unknown integration, archived, inactive,
-   * wrong key, missing scope — so a caller cannot distinguish "no such
-   * integration" from "wrong key" and use the endpoint to enumerate ids.
+   * Returns `unauthenticated` for unknown integration, archived, inactive and
+   * wrong key alike, so a caller cannot distinguish "no such integration" from
+   * "wrong key" and use the endpoint to enumerate ids. That uniformity is the
+   * point and is unchanged.
+   *
+   * `unscoped` is the one case deliberately told apart (R6). It is reachable
+   * **only after the presented secret has verified**, so the caller has already
+   * proved they hold a working credential for this integration — they know it
+   * exists and that their key is right. Naming the missing privilege therefore
+   * discloses nothing they could not already determine, while the
+   * anti-enumeration property is preserved exactly where it matters: every
+   * pre-authentication failure still looks identical.
+   *
+   * Before this, all five outcomes returned null and the guard answered 401 for
+   * each, so a POS integrator could not tell "your key is wrong" from "your key
+   * may not do this" — which is a diagnosis problem, not a security one.
    */
   public async authenticateIncoming(
     integrationId: string,
     presentedSecret: string,
     requiredScope: string,
-  ): Promise<MerchantIntegration | null> {
+  ): Promise<IncomingAuthResult> {
     const integration = await this.prisma.merchantIntegration.findFirst({
       where: { id: integrationId, archivedAt: null, status: 'ACTIVE' },
     });
     if (!integration) {
-      return null;
+      return { outcome: 'unauthenticated' };
     }
 
     const verified = await this.verifyIncomingCredential(
@@ -426,7 +450,7 @@ export class CredentialsService {
       presentedSecret,
     );
     if (!verified) {
-      return null;
+      return { outcome: 'unauthenticated' };
     }
 
     // Scope is checked separately from the secret: a valid key that was never
@@ -442,10 +466,12 @@ export class CredentialsService {
     });
 
     if (!credential?.scopes.includes(requiredScope)) {
-      return null;
+      // Past this point the secret has verified, so this is authorization, not
+      // authentication — see the note above on why telling them apart is safe.
+      return { outcome: 'unscoped' };
     }
 
-    return integration;
+    return { outcome: 'authenticated', integration };
   }
 
   /**

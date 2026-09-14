@@ -475,21 +475,17 @@ suite('POS catalogue and inventory over HTTP (8B)', () => {
     expect(response.status).toBe(401);
   });
 
-  it.failing(
-    'E2E-020/029 · a credential without the scope is refused as 403, not 401 [PENDING B6]',
-    async () => {
-      // integrationC holds catalog:write and not inventory:write. Today the
-      // guard answers 401 for both a wrong secret and a missing scope, so a POS
-      // integrator cannot tell "your key is wrong" from "your key may not do
-      // this". Flips to it() with B6.
-      const response = await asPos('/integrations/inventory/sync', integrationC, keyC, {
-        method: 'PUT',
-        headers: { 'idempotency-key': randomUUID() },
-        body: JSON.stringify({ items: [{ externalSku: skuMapped, quantity: 1 }] }),
-      });
-      expect(response.status).toBe(403);
-    },
-  );
+  it('E2E-020/029 · a credential without the scope is refused as 403, not 401', async () => {
+    // integrationC holds catalog:write and not inventory:write. The guard
+    // now answers 403 here and 401 for a wrong secret, so a POS integrator
+    // can tell "your key is wrong" from "your key may not do this" (R6).
+    const response = await asPos('/integrations/inventory/sync', integrationC, keyC, {
+      method: 'PUT',
+      headers: { 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ items: [{ externalSku: skuMapped, quantity: 1 }] }),
+    });
+    expect(response.status).toBe(403);
+  });
 
   it('E2E-038 · one merchant cannot read another integration’s stock levels', async () => {
     // Merchant B holds a valid JWT with integrations:read and asks for merchant

@@ -398,41 +398,38 @@ suite('POS onboarding over HTTP (8A)', () => {
     expect(stillWorks.status).toBe(200);
   });
 
-  it.failing(
-    'E2E-012 · a valid credential lacking the scope is refused as 403, not 401 [PENDING B6]',
-    async () => {
-      // Same shape as above: it holds orders:read and not inventory:write.
-      // Today both failures answer `Invalid integration credentials`, so a POS
-      // integrator cannot tell a wrong key from a missing privilege.
-      const created = await asMerchant('/integrations', {
-        method: 'POST',
-        body: JSON.stringify({ vendorName: 'Scope POS' }),
-      });
-      const integrationId = ((await created.json()) as Record<string, unknown>)[
-        'integrationId'
-      ] as string;
-      integrationIds.push(integrationId);
+  it('E2E-012 · a valid credential lacking the scope is refused as 403, not 401', async () => {
+    // Same shape as above: it holds orders:read and not inventory:write.
+    // A missing privilege now answers 403 while a wrong key still answers
+    // 401, so the two are distinguishable (R6).
+    const created = await asMerchant('/integrations', {
+      method: 'POST',
+      body: JSON.stringify({ vendorName: 'Scope POS' }),
+    });
+    const integrationId = ((await created.json()) as Record<string, unknown>)[
+      'integrationId'
+    ] as string;
+    integrationIds.push(integrationId);
 
-      // Narrowed on the generated credential rather than issued separately:
-      // P5 now refuses a second live credential of the same type.
-      const secret = 'scope-probe-secret-value';
-      await prisma.integrationCredential.updateMany({
-        where: { integrationId, credentialType: 'INCOMING_API_KEY' },
-        data: { credentialHash: await bcrypt.hash(secret, 10), scopes: ['orders:read'] },
-      });
+    // Narrowed on the generated credential rather than issued separately:
+    // P5 now refuses a second live credential of the same type.
+    const secret = 'scope-probe-secret-value';
+    await prisma.integrationCredential.updateMany({
+      where: { integrationId, credentialType: 'INCOMING_API_KEY' },
+      data: { credentialHash: await bcrypt.hash(secret, 10), scopes: ['orders:read'] },
+    });
 
-      const response = await fetch(`${baseUrl}/integrations/inventory/sync`, {
-        method: 'PUT',
-        headers: {
-          'content-type': 'application/json',
-          'x-integration-id': integrationId,
-          'x-integration-key': secret,
-          'idempotency-key': randomUUID(),
-          'x-forwarded-for': nextCaller(),
-        },
-        body: JSON.stringify({ items: [] }),
-      });
-      expect(response.status).toBe(403);
-    },
-  );
+    const response = await fetch(`${baseUrl}/integrations/inventory/sync`, {
+      method: 'PUT',
+      headers: {
+        'content-type': 'application/json',
+        'x-integration-id': integrationId,
+        'x-integration-key': secret,
+        'idempotency-key': randomUUID(),
+        'x-forwarded-for': nextCaller(),
+      },
+      body: JSON.stringify({ items: [] }),
+    });
+    expect(response.status).toBe(403);
+  });
 });
