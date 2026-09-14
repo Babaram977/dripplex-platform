@@ -182,17 +182,32 @@ export class RideDispatchService {
   ): Promise<RideDto> {
     const offer = await this.requireLiveOffer(driverId, offerId);
 
-    const [, , updatedRide] = await this.prisma.$transaction([
-      this.prisma.rideOffer.update({
-        where: { id: offer.id },
+    // `requireLiveOffer` above read the offer; everything below writes it. In
+    // between, another call can accept the same offer, and the sweep can expire
+    // it. Re-stating each precondition in the WHERE of its own write is what
+    // makes checking and acting one indivisible act — a bare `update` keyed on
+    // id alone re-applies a decision taken against state that has since moved.
+    const updatedRide = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.rideOffer.updateMany({
+        where: { id: offer.id, status: RideOfferStatus.PENDING },
         data: { status: RideOfferStatus.ACCEPTED, respondedAt: new Date() },
-      }),
-      this.prisma.driverAvailability.update({
-        where: { driverId },
-        data: { activeRideCount: { increment: 1 } },
-      }),
-      this.prisma.ride.update({
-        where: { id: offer.rideId },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictDomainException('Offer is no longer pending');
+      }
+
+      // Guarding the offer alone is not enough. One ride can carry two live
+      // offers — `dispatchRide` reads the existing ones before creating its
+      // own, so two dispatches racing on the same ride each believe they are
+      // the first — and two *different* offers both pass the check above. The
+      // ride itself is therefore the thing that has to be claimed: it may only
+      // be assigned while it is still looking for a driver. The loser is told
+      // so rather than silently overwriting the winner's assignment.
+      const assigned = await tx.ride.updateMany({
+        where: {
+          id: offer.rideId,
+          status: { in: [RideStatus.REQUESTED, RideStatus.SEARCHING] },
+        },
         data: {
           status: RideStatus.DRIVER_ASSIGNED,
           driverId,
@@ -204,8 +219,20 @@ export class RideDispatchService {
           // its own screen.
           verificationCode: generateTripVerificationCode(),
         },
-      }),
-    ]);
+      });
+      if (assigned.count !== 1) {
+        throw new ConflictDomainException('Ride has already been assigned to another driver');
+      }
+
+      // Only now — the increment is what makes a driver invisible to dispatch
+      // until the trip ends, so it must never outlive a failed claim.
+      await tx.driverAvailability.update({
+        where: { driverId },
+        data: { activeRideCount: { increment: 1 } },
+      });
+
+      return await tx.ride.findUniqueOrThrow({ where: { id: offer.rideId } });
+    });
 
     await this.auditService.record(
       RIDE_AUDIT_ACTIONS.OFFER_ACCEPTED,
