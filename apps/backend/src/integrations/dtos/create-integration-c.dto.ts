@@ -53,9 +53,14 @@ export class CreateIntegrationCDto {
    * Note: Must be valid HTTP/HTTPS URL, HTTPS recommended for production
    */
   @IsOptional()
+  // HTTPS only at write time. DrippleX has no webhook delivery path yet, so
+  // enforcing it here — where a merchant establishes or changes the endpoint —
+  // costs nothing today and avoids migrating live integrations once payloads
+  // start travelling. Existing `http:` rows are grandfathered: this rejects new
+  // and changed values, and `validateUrl` still accepts what is already stored.
   @IsUrl(
-    { require_protocol: true, protocols: ['http', 'https'] },
-    { message: 'webhookUrl must be a valid HTTP or HTTPS URL' },
+    { require_protocol: true, protocols: ['https'] },
+    { message: 'webhookUrl must be a valid HTTPS URL' },
   )
   public readonly webhookUrl?: string;
 
