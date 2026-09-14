@@ -12,6 +12,22 @@
 
 ---
 
+> **Correction, 2026-09-14 — scope.** This PR is described as the B2 foundation.
+> It also implements **segment closure**, which the historical decomposition
+> assigned to **B4**: `docs/DPX-P1-B2-VERIFICATION.md` on the #351 branch lists
+> "Segment closure logic (deferred to P1-B4)" under _What P1-B2 Does NOT
+> Implement_. The code is tested, mutation-checked and deployed and is not being
+> undone; the record is corrected so nobody opens B4 expecting closure to be
+> missing. What remains unimplemented from B4's historical scope is the
+> **lifecycle state machine** — every transition beyond `ACTIVE → CLOSED`.
+>
+> A further correction: `append()` is **P1-B1**, and migrating the existing
+> audit writers is **P1-B7**. Section 9 below calls `append()` "the piece
+> between B2 and B8", which understates it — both are named increments.
+>
+> See `docs/DPX-P1-B-SERIES-STATUS.md`, which also records that **no formal
+> B-series or Contract 14 specification exists on `main`.**
+
 ## 1. Why this is a re-cut and not a rebase of #351
 
 #351 cannot be rebased, and the reason is not the one I first reported.
