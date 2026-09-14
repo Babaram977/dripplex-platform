@@ -24,6 +24,9 @@ const databaseUrl =
  * The suite does NOT test an authoritative-write boundary. There is none in
  * this increment, deliberately: see the migration's header.
  */
+/** Chosen at module load: `it.skip` must be selected while the describe body runs. */
+const DATABASE_CONFIGURED = (process.env['DATABASE_URL'] ?? '') !== '';
+
 describe('P1-B2 audit segments and global sequence', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
@@ -122,9 +125,22 @@ describe('P1-B2 audit segments and global sequence', () => {
     }
   });
 
+  /**
+   * A DB-backed test either runs against PostgreSQL or is reported as SKIPPED.
+   * It must never report PASS after deliberately doing nothing.
+   *
+   * This used to return early inside a passing `it`, so a run with no database
+   * reported every assertion below as green while executing none of them. CI is
+   * not exposed — jest-global-setup refuses to start under CI without a
+   * reachable database, for exactly this reason — but a local run was silently
+   * green, and a suite that cannot tell "proved" from "did not run" is the
+   * failure mode this module has already shipped twice.
+   *
+   * Decided at module load, because `databaseAvailable` is only known after
+   * beforeAll and `it.skip` has to be chosen while the describe body runs.
+   */
   const maybe = (name: string, fn: () => Promise<void>): void => {
-    it(name, async () => {
-      if (!databaseAvailable) return;
+    (DATABASE_CONFIGURED ? it : it.skip)(name, async () => {
       await fn();
     });
   };

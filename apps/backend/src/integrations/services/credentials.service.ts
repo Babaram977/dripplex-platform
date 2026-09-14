@@ -3,6 +3,7 @@ import * as bcrypt from 'bcrypt';
 
 import { AuditService } from '../../audit/audit.service';
 import {
+  ConflictDomainException,
   NotFoundDomainException,
   ForbiddenDomainException,
   ValidationDomainException,
@@ -43,6 +44,20 @@ export interface CredentialResponse {
  * Incoming credentials: stored with BCRYPT hash (verify-only)
  * Outgoing credentials: stored with AES-256-GCM encryption (must decrypt to use)
  */
+/**
+ * How long a platform-generated integration credential is valid.
+ *
+ * 90 days, as CRIT-005's preventive controls already specify ("API keys must
+ * rotate every 90 days") — stated there since the risk register was written and
+ * never enforced until now.
+ */
+export const CREDENTIAL_LIFETIME_DAYS = 90;
+
+/** The expiry a freshly issued or freshly rotated credential carries. */
+export function credentialExpiry(from: Date = new Date()): Date {
+  return new Date(from.getTime() + CREDENTIAL_LIFETIME_DAYS * 24 * 60 * 60 * 1000);
+}
+
 @Injectable()
 export class CredentialsService {
   private readonly bcryptRounds = 10;
@@ -96,6 +111,18 @@ export class CredentialsService {
         credentialType: input.credentialType,
       },
     });
+
+    // A live credential is never silently replaced. The update branch below
+    // exists for rotation, which archives the old row first — so an archived
+    // row still falls through and is reissued, and only an ACTIVE one is
+    // refused. Without this, a second create for a type that already has a key
+    // overwrote the secret in place and a POS stopped working mid-shift with
+    // nothing to show why.
+    if (existing?.archivedAt === null) {
+      throw new ConflictDomainException(
+        'A credential of this type is already active for this integration. Rotate it explicitly instead of replacing it.',
+      );
+    }
 
     const credential = existing
       ? await this.prisma.integrationCredential.update({
@@ -181,7 +208,10 @@ export class CredentialsService {
       integrationId,
       credentialType: credentialType as any,
       secret: newSecret,
-      expiresAt: oldCredential.expiresAt,
+      // Fresh, not inherited. Carrying the old date forward meant a rotated
+      // credential expired on the date the one it replaced would have — so
+      // rotation did not restore validity, which is the only thing it is for.
+      expiresAt: credentialExpiry(),
       scopes: oldCredential.scopes,
     });
     /* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment */
