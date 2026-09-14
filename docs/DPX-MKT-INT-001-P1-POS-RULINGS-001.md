@@ -95,6 +95,14 @@ The agreed mechanism is that an authorized operator runs the four statements and
 four integers — no new production code, no new privileged endpoint, no exposed database
 credentials, no Operations Console change, no deployment and no migration.
 
+**The statement is now written, and verified against the real schema, in
+`docs/ops/DPX-MKT-INT-001-P1-POS-P4-INVENTORY-RUNBOOK.md`.** It has been executed only against a
+local database migrated to the same schema and seeded to make each predicate prove itself — which
+establishes that it is schema-correct and that its filters discriminate, and establishes **nothing
+whatever about production's contents**. P4 stays open until an authorized operator runs it there.
+No tooling available to an engineering session can reach the production database, and the routes
+that would create such access are the ones this mechanism rules out.
+
 **Count 1 has since acquired a second consumer.** PR #398 enforces HTTPS on every webhook write
 path while grandfathering existing `http://` rows, and recorded that those rows must be migrated
 or explicitly handled _before_ webhook delivery is built. That is the same question as count 1,
