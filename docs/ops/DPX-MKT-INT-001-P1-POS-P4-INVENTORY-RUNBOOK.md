@@ -186,6 +186,27 @@ c4_no_expiry                = ____
 c5_legacy_short_lifetime    = ____
 ```
 
+### c5 is an as-of value, unlike the other five
+
+**`c5` is the only one of the six that moves on its own.** Legacy credentials keep lapsing on
+their original 90-day schedule, so the population shrinks between the moment it is measured and
+any decision taken on it. The other five describe structural facts that change only when someone
+changes them.
+
+So `c5` must be written down as
+
+```
+c5_legacy_short_lifetime = N   as of <UTC timestamp of the run>
+```
+
+and read that way afterwards. **`c5 = N` is not a standing description of production**, and a
+later decision should treat the execution timestamp as the provenance boundary rather than
+assuming the number is still current.
+
+A stale `c5` errs in the safe direction — it **overstates** the population, because the only
+movement is downward — but "directionally conservative" is not the same as "current", and it
+should not be presented as current production state.
+
 Record alongside them:
 
 - the exact timestamp (UTC) and the environment the statement ran against;
@@ -203,10 +224,10 @@ is to avoid deciding the migration and expiry treatment of live credentials on a
 
 ## 6 · What the numbers will decide
 
-| Count                           | If it is zero                                                                               | If it is non-zero                                                                                                                                                                                                                                                                                    |
-| ------------------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **c1** `http://` webhooks       | PR #398's grandfathering clause is inert; HTTPS-only is already total.                      | Those rows must be migrated or explicitly handled _before_ webhook delivery is built.                                                                                                                                                                                                                |
-| **c2a / c2b**                   | —                                                                                           | Per R5, `OUTGOING_API_KEY` rows are stored AES-GCM and cannot authenticate against the incoming bcrypt path. A non-zero c2b is a population of credentials that _never could have worked_, and its size determines whether recovery-and-rehash is worth attempting at all.                           |
-| **c3** out-of-vocabulary scopes | R4's vocabulary is already clean.                                                           | Each such credential needs a decision: narrow it, or accept it as grandfathered.                                                                                                                                                                                                                     |
-| **c4** no expiry                | Every credential is bounded.                                                                | Under the 99-year ruling a `NULL` expiry is **non-compliant with issuance policy** — it came through the legacy `createCredential` path, which defaults the field to `null`. So this counts **policy bypass**, not "credentials that predate a policy".                                              |
-| **c5** legacy short lifetime    | No credential is still on the pre-99-year policy; the existing-credential decision is moot. | This is the population the **existing-credential decision** acts on: leave them to lapse, extend, or handle conditionally. Extending them would be a **production write against live credentials** and needs its own authorization. The count exists so that decision is not made blind to its size. |
+| Count                                | If it is zero                                                                               | If it is non-zero                                                                                                                                                                                                                                                                                    |
+| ------------------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **c1** `http://` webhooks            | PR #398's grandfathering clause is inert; HTTPS-only is already total.                      | Those rows must be migrated or explicitly handled _before_ webhook delivery is built.                                                                                                                                                                                                                |
+| **c2a / c2b**                        | —                                                                                           | Per R5, `OUTGOING_API_KEY` rows are stored AES-GCM and cannot authenticate against the incoming bcrypt path. A non-zero c2b is a population of credentials that _never could have worked_, and its size determines whether recovery-and-rehash is worth attempting at all.                           |
+| **c3** out-of-vocabulary scopes      | R4's vocabulary is already clean.                                                           | Each such credential needs a decision: narrow it, or accept it as grandfathered.                                                                                                                                                                                                                     |
+| **c4** no expiry                     | Every credential is bounded.                                                                | Under the 99-year ruling a `NULL` expiry is **non-compliant with issuance policy** — it came through the legacy `createCredential` path, which defaults the field to `null`. So this counts **policy bypass**, not "credentials that predate a policy".                                              |
+| **c5** legacy short lifetime (as-of) | No credential is still on the pre-99-year policy; the existing-credential decision is moot. | This is the population the **existing-credential decision** acts on: leave them to lapse, extend, or handle conditionally. Extending them would be a **production write against live credentials** and needs its own authorization. The count exists so that decision is not made blind to its size. |
