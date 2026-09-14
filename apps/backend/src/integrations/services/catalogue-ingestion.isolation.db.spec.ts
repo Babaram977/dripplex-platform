@@ -42,6 +42,7 @@ describe('catalogue ingestion — cross-merchant isolation', () => {
   let databaseAvailable = false;
   let prisma: PrismaService;
   let service: CatalogueIngestionService;
+  let buildService: (client: PrismaService) => CatalogueIngestionService;
 
   interface Merchant {
     userId: string;
@@ -103,19 +104,25 @@ describe('catalogue ingestion — cross-merchant isolation', () => {
       create: jest.fn().mockResolvedValue(undefined),
     };
     const auditService = new AuditService(auditLogRepository);
-    const merchantProfiles = new MerchantProfileResolver(prisma);
-    service = new CatalogueIngestionService(
-      prisma,
-      new MerchantProductsService(
-        prisma,
+    // Built from whichever client is handed in, so the race test below can give
+    // one instance a client whose writes are interleaved and still exercise the
+    // same wiring as production.
+    buildService = (client: PrismaService): CatalogueIngestionService => {
+      const merchantProfiles = new MerchantProfileResolver(client);
+      return new CatalogueIngestionService(
+        client,
+        new MerchantProductsService(
+          client,
+          auditService,
+          new ProductSearchSyncService(new DomainEventBus()),
+        ),
+        new CategoryMappingService(client),
         auditService,
-        new ProductSearchSyncService(new DomainEventBus()),
-      ),
-      new CategoryMappingService(prisma),
-      auditService,
-      merchantProfiles,
-      new InventoryIngestionService(prisma, merchantProfiles, auditService),
-    );
+        merchantProfiles,
+        new InventoryIngestionService(client, merchantProfiles, auditService),
+      );
+    };
+    service = buildService(prisma);
 
     alpha = await makeMerchant('alpha');
     beta = await makeMerchant('beta');
@@ -278,6 +285,70 @@ describe('catalogue ingestion — cross-merchant isolation', () => {
       where: { merchantId: alpha.profileId, name: 'Raced Product' },
     });
     expect(products).toHaveLength(1);
+  });
+
+  maybe('the loser of a job race does not re-apply the batch', async () => {
+    // The test above finds this roughly twice in twenty CI runs, because it
+    // depends on two real requests interleaving at exactly the wrong moment.
+    // Here the interleaving is forced, so the defect it found cannot come back
+    // unnoticed.
+    //
+    // What went wrong: `openJob` caught the unique violation on
+    // (integrationId, idempotencyKey) and handed the loser the winner's job —
+    // and then `ingest` carried on into the item loop anyway. Both requests
+    // reached `applyItem`, both found `mapping.productId` still null, and both
+    // created a product. The slug de-duplicator made the second one legal, so a
+    // POS retrying inside the same instant silently doubled a live catalogue.
+    const key = randomUUID();
+    const sku = `SKU-FORCED-${randomUUID().slice(0, 8)}`;
+    const payload = (): IngestCatalogueDto => ({
+      idempotencyKey: key,
+      items: [item({ externalSku: sku, name: 'Forced Race Product' })],
+    });
+
+    let winnerRan = false;
+    const racing = Object.create(prisma) as PrismaService;
+    Object.defineProperty(racing, 'catalogSyncJob', {
+      configurable: true,
+      value: {
+        ...prisma.catalogSyncJob,
+        create: async (args: Parameters<typeof prisma.catalogSyncJob.create>[0]) => {
+          // The loser has already read "no job for this key" and is committing
+          // to its own insert. The winner completes in this gap — which is the
+          // gap the real race happens in — so the insert below always loses.
+          if (!winnerRan) {
+            winnerRan = true;
+            await service.ingest(alpha.integration, payload(), {});
+          }
+          return await prisma.catalogSyncJob.create(args);
+        },
+      },
+    });
+
+    const loser = await buildService(racing).ingest(alpha.integration, payload(), {});
+
+    expect(winnerRan).toBe(true);
+    // It is told the truth: this batch was already handled.
+    expect(loser.replayed).toBe(true);
+
+    const jobs = await prisma.catalogSyncJob.findMany({
+      where: { integrationId: alpha.integration.id, idempotencyKey: key },
+    });
+    expect(jobs).toHaveLength(1);
+    expect(loser.jobId).toBe(jobs[0]?.id);
+
+    // The assertion the defect broke: one product, not two.
+    const products = await prisma.product.findMany({
+      where: { merchantId: alpha.profileId, name: 'Forced Race Product' },
+    });
+    expect(products).toHaveLength(1);
+
+    // And one mapping for the SKU, still pointing at that single product.
+    const mappings = await prisma.productSync.findMany({
+      where: { integrationId: alpha.integration.id, externalSku: sku },
+    });
+    expect(mappings).toHaveLength(1);
+    expect(mappings[0]?.productId).toBe(products[0]?.id);
   });
 
   maybe('a category mapping belongs to one integration only', async () => {

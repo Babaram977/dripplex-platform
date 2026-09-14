@@ -49,6 +49,19 @@ export interface ReferralStatsDto {
    * shows both numbers, so serving only one still left the other hardcoded
    * in the client — where it sat at the unapproved 500. */
   referrerRewardAmount: number;
+  /**
+   * The live campaign this code earns under, or null.
+   *
+   * Founder ruling 2026-09-13: one code, one rate. Enrolled on a campaign, the
+   * code pays that campaign's amount; otherwise the programme's. Named rather
+   * than inferred from the figure, so a campaign paying the programme rate
+   * still reads as a campaign.
+   */
+  campaignName: string | null;
+  /** Points, when the campaign pays DX Points rather than naira. Null means the
+   *  naira figure above is the whole story — the two are not interchangeable at
+   *  a rate this screen may apply. */
+  campaignRewardPoints: number | null;
 }
 
 export function toReferralDto(referral: Referral): ReferralDto {

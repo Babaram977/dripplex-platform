@@ -20,6 +20,9 @@ describe('ReferralsService', () => {
       findMany: jest.Mock;
     };
     ride: { count: jest.Mock };
+    // Registration now asks whether the code's owner is on a live campaign, so
+    // this unit needs the model even when the answer is "no campaign".
+    campaignPromoter: { findMany: jest.Mock };
   };
   let auditService: jest.Mocked<AuditService>;
   let eventBus: jest.Mocked<DomainEventBus>;
@@ -37,6 +40,7 @@ describe('ReferralsService', () => {
         findMany: jest.fn(),
       },
       ride: { count: jest.fn() },
+      campaignPromoter: { findMany: jest.fn().mockResolvedValue([]) },
     };
     auditService = {
       record: jest.fn().mockResolvedValue(undefined),
@@ -140,6 +144,10 @@ describe('ReferralsService', () => {
 
       expect(stats).toEqual({
         code: 'STAT0001',
+        // Not on a campaign: the code carries the programme rate, and the two
+        // campaign fields say so rather than being absent.
+        campaignName: null,
+        campaignRewardPoints: null,
         totalRedemptions: 5,
         pendingRedemptions: 2,
         rewardedRedemptions: 3,

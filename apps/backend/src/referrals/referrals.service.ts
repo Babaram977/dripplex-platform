@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  CampaignPromoterStatus,
   Prisma,
   ReferralOwnerType,
   ReferralRedemptionStatus,
@@ -12,6 +13,7 @@ import { DomainEventBus } from '../events/domain-event-bus';
 import { DOMAIN_EVENTS } from '../events/domain-events';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { isCampaignAttributable } from './campaign-promoter.constants';
 import { generateReferralCode } from './referral-code.util';
 import { ReferralLifecycleService } from './referral-lifecycle.service';
 import {
@@ -116,19 +118,37 @@ export class ReferralsService {
       this.lifecycle.programmeFor(ReferralRefereeType.CUSTOMER),
     ]);
 
+    // What this person's code actually pays, which is not always the
+    // programme's rate. A promoter enrolled on a live campaign earns their
+    // campaign amount — that is the whole point of the 2026-09-13 ruling — and
+    // quoting ₦150 on the screen of somebody who earns ₦350 would be the
+    // screen lying about their own money.
+    const participation = await this.activeCampaignRate(referral.userId);
+    const programmeReferrer =
+      programme === null
+        ? REFERRAL_REWARD_AMOUNTS.REFERRER
+        : Number(programme.referrerRewardAmount);
+
     return {
       code: referral.code,
       totalRedemptions: total,
       pendingRedemptions: pending,
       rewardedRedemptions: rewarded,
+      // The referee's side never varies: the founder fixed it platform-wide so
+      // no campaign can outbid another for the same acquisition.
       refereeRewardAmount:
         programme === null
           ? REFERRAL_REWARD_AMOUNTS.REFEREE
           : Number(programme.refereeRewardAmount),
-      referrerRewardAmount:
-        programme === null
-          ? REFERRAL_REWARD_AMOUNTS.REFERRER
-          : Number(programme.referrerRewardAmount),
+      referrerRewardAmount: participation?.rewardAmountNgn ?? programmeReferrer,
+      // Stated rather than inferred from the amount, so a campaign that happens
+      // to pay the programme rate still reads as a campaign, and so the card
+      // can say which one without a second call.
+      campaignName: participation?.campaignName ?? null,
+      // A points campaign pays in DX Points, and naira is the wrong unit to
+      // print for it. Null here means "the naira figure above is the whole
+      // story".
+      campaignRewardPoints: participation?.rewardPoints ?? null,
     };
   }
 
@@ -197,11 +217,24 @@ export class ReferralsService {
           ? null
           : new Date(Date.now() + programme.qualificationWindowDays * 24 * 60 * 60 * 1000);
 
+      // Founder ruling, 2026-09-13: a promoter does not get a second code.
+      // Their own referral code is the only thing they ever share, and being
+      // enrolled on a campaign raises what that one code pays — ₦350 instead of
+      // ₦150, never both. Take them off the campaign and it drops back.
+      //
+      // So the campaign participation is attached here, at registration, from
+      // the code's owner. `advance()` then reads `campaignPromoterId` and pays
+      // the promoter's configured amount in place of the programme rate; with
+      // no participation it is null and the programme rate applies, exactly as
+      // before. Nothing about the ₦150 path changes.
+      const participation = await this.activeCampaignParticipation(referral.userId);
+
       const redemption = await this.prisma.referralRedemption.create({
         data: {
           referralId: referral.id,
           refereeUserId,
           refereeType,
+          ...(participation === null ? {} : { campaignPromoterId: participation.id }),
           ...(expiresAt === null ? {} : { expiresAt }),
         },
       });
@@ -212,7 +245,15 @@ export class ReferralsService {
         {
           resource: 'referral_redemption',
           resourceId: redemption.id,
-          metadata: { referralId: referral.id, referrerId: referral.userId, refereeType },
+          metadata: {
+            referralId: referral.id,
+            referrerId: referral.userId,
+            refereeType,
+            // Null for an ordinary referral. Present means this acquisition
+            // will pay the campaign's rate, which is the thing an audit of a
+            // ₦350 payment needs to be able to explain.
+            campaignPromoterId: participation?.id ?? null,
+          },
         },
       );
       await this.eventBus.emit(
@@ -227,6 +268,63 @@ export class ReferralsService {
         }`,
       );
     }
+  }
+
+  /**
+   * What a live campaign is paying this person, for display on their own card.
+   *
+   * Separate from `activeCampaignParticipation` because that one answers "which
+   * participation attaches to a new acquisition" and needs only an id, while
+   * this one is quoting money back to the person earning it and needs the
+   * amount and the campaign's name.
+   */
+  private async activeCampaignRate(userId: string): Promise<{
+    campaignName: string;
+    rewardAmountNgn: number | null;
+    rewardPoints: number | null;
+  } | null> {
+    const promoters = await this.prisma.campaignPromoter.findMany({
+      where: { userId, status: CampaignPromoterStatus.ACTIVE },
+      select: {
+        rewardAmount: true,
+        rewardPoints: true,
+        promotion: { select: { name: true, status: true, deletedAt: true } },
+      },
+      orderBy: { addedAt: 'desc' },
+    });
+    const live = promoters.find((p) => isCampaignAttributable(p.promotion));
+    if (live === undefined) {
+      return null;
+    }
+    return {
+      campaignName: live.promotion.name,
+      rewardAmountNgn: live.rewardAmount === null ? null : Number(live.rewardAmount),
+      rewardPoints: live.rewardPoints,
+    };
+  }
+
+  /**
+   * The campaign participation a referral code currently carries, or null.
+   *
+   * One campaign at a time is enforced at enrolment, so at most one row can
+   * come back; `findFirst` rather than `findUnique` because the uniqueness is a
+   * rule about live participations, not a database constraint the schema can
+   * express (a promoter may hold many REMOVED rows from past campaigns).
+   *
+   * "Live" is `isCampaignAttributable`, shared with the token path, so a
+   * campaign that has closed cannot keep paying its rate through one route
+   * while refusing it through the other.
+   */
+  private async activeCampaignParticipation(
+    referrerUserId: string,
+  ): Promise<{ id: string } | null> {
+    const promoters = await this.prisma.campaignPromoter.findMany({
+      where: { userId: referrerUserId, status: CampaignPromoterStatus.ACTIVE },
+      select: { id: true, promotion: { select: { status: true, deletedAt: true } } },
+      orderBy: { addedAt: 'desc' },
+    });
+    const live = promoters.find((p) => isCampaignAttributable(p.promotion));
+    return live === undefined ? null : { id: live.id };
   }
 
   /**

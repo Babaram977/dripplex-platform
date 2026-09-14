@@ -25,7 +25,6 @@ import {
   PARTICIPANT_TYPE_LABEL,
   PointsValue,
   PromoterStatusBadge,
-  PromoterToken,
   RewardValue,
   conversion,
   count,
@@ -394,7 +393,7 @@ export function PromoterTable({
           <tr className="border-b border-gray-200 text-xs uppercase tracking-wide text-gray-500">
             <th className="pb-2 pr-4 font-medium">Promoter</th>
             <th className="pb-2 pr-4 font-medium">Type</th>
-            <th className="pb-2 pr-4 font-medium">Token</th>
+            <th className="pb-2 pr-4 font-medium">Referral code</th>
             <th className="pb-2 pr-4 font-medium">Reward each</th>
             <th className="pb-2 pr-4 text-right font-medium">Referrals</th>
             <th className="pb-2 pr-4 text-right font-medium">Cash earned</th>
@@ -412,8 +411,15 @@ export function PromoterTable({
             >
               <td className="py-3 pr-4 font-medium text-gray-900">{promoter.name}</td>
               <td className="py-3 pr-4">{PARTICIPANT_TYPE_LABEL[promoter.participantType]}</td>
-              <td className="py-3 pr-4">
-                <PromoterToken token={promoter.token} />
+              {/* What the promoter shares. Founder ruling 2026-09-13: one code,
+                  one rate — enrolment raises what this code pays rather than
+                  issuing a second one. The per-campaign token used to occupy
+                  this column, masked behind a Reveal and with a Copy button;
+                  founder instruction the same day is that it is not displayed
+                  at all. It is a bearer credential, no signup form accepts it,
+                  and offering to copy it invited sending the wrong string. */}
+              <td className="py-3 pr-4 font-mono text-xs text-gray-800">
+                {promoter.referralCode ?? '—'}
               </td>
               <td className="py-3 pr-4">
                 <RewardValue

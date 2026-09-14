@@ -90,50 +90,82 @@ export const pointsPerformance: CampaignPerformanceDto = {
   rewardsEarnedPointsValueNgn: 225,
 };
 
-export const cashPromoter: CampaignPromoterDto = {
-  id: 'promoter-cash',
-  userId: 'user-1',
-  name: 'Amaka Pioneer',
-  participantType: 'PIONEER_DRIVER',
-  token: 'TOKENCASH1234567890ABCDEFGHIJKLMN',
-  status: 'ACTIVE',
-  addedAt: '2026-09-01T09:00:00.000Z',
-  removedAt: null,
-  rewardAmountNgn: 350,
-  rewardPoints: null,
-  rewardPointsValueNgn: null,
-  performance: cashPerformance,
-};
+/**
+ * Campaign tokens the API used to return and no longer does.
+ *
+ * The fixtures below still carry one at runtime, attached past the type rather
+ * than declared on it. That is deliberate: a table that cannot render a token
+ * because the fixture has none proves nothing, while one handed a token and
+ * still not rendering it proves the screen ignores it. A deployed server on an
+ * older build would send exactly this.
+ */
+export const LEGACY_CAMPAIGN_TOKENS = {
+  cash: 'TOKENCASH1234567890ABCDEFGHIJKLMN',
+  points: 'TOKENPOINTS1234567890ABCDEFGHIJK',
+  removed: 'TOKENGONE1234567890ABCDEFGHIJKLM',
+} as const;
 
-export const pointsPromoter: CampaignPromoterDto = {
-  id: 'promoter-points',
-  userId: 'user-2',
-  name: 'Bayo Influencer',
-  participantType: 'INFLUENCER',
-  token: 'TOKENPOINTS1234567890ABCDEFGHIJK',
-  status: 'ACTIVE',
-  addedAt: '2026-09-02T09:00:00.000Z',
-  removedAt: null,
-  rewardAmountNgn: null,
-  rewardPoints: 30_000,
-  rewardPointsValueNgn: 300,
-  performance: pointsPerformance,
-};
+function withLegacyToken(promoter: CampaignPromoterDto, token: string): CampaignPromoterDto {
+  return Object.assign(promoter, { token });
+}
 
-export const removedPromoter: CampaignPromoterDto = {
-  id: 'promoter-removed',
-  userId: 'user-3',
-  name: 'Chidi Former',
-  participantType: 'DRIVER',
-  token: 'TOKENGONE1234567890ABCDEFGHIJKLM',
-  status: 'REMOVED',
-  addedAt: '2026-08-01T09:00:00.000Z',
-  removedAt: '2026-09-05T09:00:00.000Z',
-  rewardAmountNgn: 200,
-  rewardPoints: null,
-  rewardPointsValueNgn: null,
-  performance: cashPerformance,
-};
+export const cashPromoter: CampaignPromoterDto = withLegacyToken(
+  {
+    id: 'promoter-cash',
+    userId: 'user-1',
+    name: 'Amaka Pioneer',
+    participantType: 'PIONEER_DRIVER',
+    // What this promoter shares. The campaign pays through this code (founder
+    // ruling 2026-09-13: one code, one rate).
+    referralCode: 'AMAKA350',
+    status: 'ACTIVE',
+    addedAt: '2026-09-01T09:00:00.000Z',
+    removedAt: null,
+    rewardAmountNgn: 350,
+    rewardPoints: null,
+    rewardPointsValueNgn: null,
+    performance: cashPerformance,
+  },
+  LEGACY_CAMPAIGN_TOKENS.cash,
+);
+
+export const pointsPromoter: CampaignPromoterDto = withLegacyToken(
+  {
+    id: 'promoter-points',
+    userId: 'user-2',
+    name: 'Bayo Influencer',
+    participantType: 'INFLUENCER',
+    referralCode: 'BAYO7788',
+    status: 'ACTIVE',
+    addedAt: '2026-09-02T09:00:00.000Z',
+    removedAt: null,
+    rewardAmountNgn: null,
+    rewardPoints: 30_000,
+    rewardPointsValueNgn: 300,
+    performance: pointsPerformance,
+  },
+  LEGACY_CAMPAIGN_TOKENS.points,
+);
+
+export const removedPromoter: CampaignPromoterDto = withLegacyToken(
+  {
+    id: 'promoter-removed',
+    userId: 'user-3',
+    name: 'Chidi Former',
+    participantType: 'DRIVER',
+    // A removed promoter keeps their code — it is theirs, not the campaign's,
+    // and their historical acquisitions were attributed through it.
+    referralCode: 'CHIDI001',
+    status: 'REMOVED',
+    addedAt: '2026-08-01T09:00:00.000Z',
+    removedAt: '2026-09-05T09:00:00.000Z',
+    rewardAmountNgn: 200,
+    rewardPoints: null,
+    rewardPointsValueNgn: null,
+    performance: cashPerformance,
+  },
+  LEGACY_CAMPAIGN_TOKENS.removed,
+);
 
 export const campaignSummary: CampaignSummaryDto = {
   id: 'campaign-1',

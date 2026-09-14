@@ -670,8 +670,30 @@ export interface ReferralStatsDto {
    * declared it, so any client reading it had to hardcode the amount or go
    * without. Both figures come from the backend for the same reason: a reward
    * amount stated in a client is one that keeps being stated after it changes.
+   *
+   * Founder ruling 2026-09-13: this is the *campaign* amount when the sharer is
+   * enrolled on a live campaign, and the programme amount otherwise. One code,
+   * one rate — a promoter never holds two, and quoting the programme figure to
+   * somebody earning the campaign one would be the screen lying about their own
+   * money.
    */
   referrerRewardAmount: number;
+  /**
+   * The live campaign this code currently earns under, or null for an ordinary
+   * referral.
+   *
+   * Stated rather than inferred from the amount, so a campaign that happens to
+   * pay the programme rate still reads as a campaign.
+   */
+  campaignName: string | null;
+  /**
+   * Points, when the campaign pays in DX Points rather than naira.
+   *
+   * Null means the naira figure is the whole story. A points campaign must not
+   * be printed as naira: the two are not interchangeable at a rate this screen
+   * is allowed to apply.
+   */
+  campaignRewardPoints: number | null;
 }
 
 export interface ReferralRedemptionDto {
@@ -1682,6 +1704,9 @@ export {
   PLATFORM_BASE_COUNTRY,
   PLATFORM_BASE_STATE,
 } from './service-area.js';
+
+export { referralRewardQuote } from './referral-reward-quote.js';
+export type { ReferralRewardQuote } from './referral-reward-quote.js';
 
 export {
   CALL_ALERT_ANDROID_CHANNEL_ID,
