@@ -264,8 +264,31 @@ event envelope, HMAC-SHA256 signature, retries with backoff, delivery log, and t
    the button. The integration is named in the record's user agent (`integration:<id>`) and the
    full story is in `OrderStatusUpdate`, but the order audit row itself is not literally
    accurate. Changing it means changing a live merchant path.
-2. **Rate limiting.** None of the three routes is throttled, and neither are the catalogue or
-   inventory routes. A POS is a different shape of caller from a person; it needs its own number.
+2. **Rate limiting.** **Corrected 2026-09-14 — "none" was wrong.** Every route here is already
+   throttled, by the global `ProxyAwareThrottlerGuard` (`app.module.ts`, an `APP_GUARD`) at
+   `THROTTLE_LIMIT` / `THROTTLE_TTL_MS` — **100 requests per 60 seconds**, defaults in
+   `env.validation.ts`. No integrations route opts out with `@SkipThrottle`. Verified in
+   production: `POST /api/v1/integrations/catalogue/sync` answers with `x-ratelimit-limit: 100`.
+
+   The original point stands, though, and is still open: there is no **POS-specific** limit. A POS
+   is a different shape of caller from a person and still needs its own number. Two properties of
+   the limit that does exist make that more pressing rather than less, and neither was documented:
+
+   - **The bucket is keyed on source IP**, not on the credential or the integration
+     (`ProxyAwareThrottlerGuard.getTracker` — leftmost `X-Forwarded-For`, then `X-Real-IP`, then
+     `request.ip`). Several tills behind one restaurant NAT therefore share a single 100/60s
+     allowance, and a busy merchant can throttle themselves. The symptom would look like the POS
+     integration breaking.
+   - **It does not deliver the protection the D plan assigns to rate limiting.**
+     `docs/integration-api/DPX-MKT-INT-001-D-IMPLEMENTATION-PLAN.md` §1 requires rate limiting to
+     "prevent credential enumeration attacks". An IP-keyed bucket does not: an attacker rotating
+     source IPs gets a fresh allowance each time. Meeting that requirement needs a
+     credential-keyed limit, which does not exist. (`UserScopedThrottlerGuard` keys by user id,
+     but a POS authenticates with an integration credential and never populates `request.user`,
+     so it falls through to IP keying.)
+
+   Choosing the POS threshold and its keying is a business decision, deliberately not made here.
+
 3. **`estimatedReadyAt`.** `acceptOrder` accepts one and the POS cannot send it, so an
    integration-accepted order never carries an ETA the customer can see. Adding it is small;
    whether a POS's estimate should reach a customer is not a code decision.
