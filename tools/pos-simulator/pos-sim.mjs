@@ -375,6 +375,30 @@ const run = async () => {
       },
     });
     check('accept transitions the order', [200, 409].includes(prep.status), `HTTP ${prep.status}`);
+
+    const ready = await call('PUT', `/integrations/orders/status/${first.orderNumber}`, {
+      integration: auth,
+      idempotencyKey: `sim-ready-${Date.now()}`,
+      body: {
+        externalOrderId: `POS-${Date.now()}`,
+        status: 'READY',
+        sourceTimestamp: new Date().toISOString(),
+      },
+    });
+    check(
+      'ready completes the POS half',
+      [200, 409].includes(ready.status),
+      `HTTP ${ready.status}`,
+    );
+
+    const after = await call('GET', `/integrations/orders/detail/${first.orderNumber}`, {
+      integration: auth,
+    });
+    check(
+      'the order reached READY',
+      after.body?.data?.status === 'READY',
+      after.body?.data?.status ?? '?',
+    );
   }
 
   const cancel = await call('PUT', `/integrations/orders/status/DPX-DOES-NOT-EXIST`, {
