@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { Test } from '@nestjs/testing';
 import {
+  BusinessType,
+  DeliveryStatus,
   MerchantStatus,
   OrderStatus,
   PaymentStatus,
@@ -14,6 +16,7 @@ import * as bcrypt from 'bcrypt';
 
 import { CartService } from '../cart/cart.service';
 import { AppConfigService } from '../config/app-config.service';
+import { DomainEventBus } from '../events/domain-event-bus';
 import { CheckoutService } from '../orders/checkout.service';
 import { OrderPaymentMethodDtoEnum } from '../payments/dto/payment.dto';
 import { PaymentService } from '../payments/payment.service';
@@ -93,6 +96,13 @@ suite('POS order flow over HTTP (8C)', () => {
   let cashOrderNumber = '';
   let merchantDirectOrderNumber = '';
   let foreignOrderNumber = '';
+  // Reserved for 8E: the financial-boundary tests need orders that have NOT yet
+  // been transitioned, because the assertion is about what a transition does.
+  let feWallet = '';
+  let feCash = '';
+  let feMerchantDirect = '';
+  let events: DomainEventBus;
+  let merchantUserA = '';
 
   const ctx = {};
   const unitPrice = 4_500;
@@ -141,7 +151,7 @@ suite('POS order flow over HTTP (8C)', () => {
       }),
     });
 
-  async function makeMerchant(): Promise<{ token: string; profileId: string }> {
+  async function makeMerchant(): Promise<{ token: string; profileId: string; userId: string }> {
     const email = `pos-8c-m-${randomUUID()}@example.com`;
     const merchantRole = await prisma.role.findUniqueOrThrow({ where: { name: 'merchant' } });
     const user = await prisma.user.create({
@@ -176,7 +186,7 @@ suite('POS order flow over HTTP (8C)', () => {
     if (login.status !== 200 || typeof body.data?.accessToken !== 'string') {
       throw new Error(`Merchant login failed: HTTP ${String(login.status)}`);
     }
-    return { token: body.data.accessToken, profileId: profile.id };
+    return { token: body.data.accessToken, profileId: profile.id, userId: user.id };
   }
 
   async function makeIntegration(token: string, scopes: string[], secret: string): Promise<string> {
@@ -267,6 +277,7 @@ suite('POS order flow over HTTP (8C)', () => {
     checkout = moduleRef.get(CheckoutService);
     payments = moduleRef.get(PaymentService);
     wallets = moduleRef.get(WalletService);
+    events = moduleRef.get(DomainEventBus);
 
     const read = await prisma.permission.upsert({
       where: { code: 'integrations:read' },
@@ -298,6 +309,7 @@ suite('POS order flow over HTTP (8C)', () => {
     const merchantB = await makeMerchant();
     tokenA = merchantA.token;
     profileA = merchantA.profileId;
+    merchantUserA = merchantA.userId;
     profileB = merchantB.profileId;
 
     integrationA = await makeIntegration(tokenA, ['orders:read', 'orders:write'], keyA);
@@ -334,6 +346,26 @@ suite('POS order flow over HTTP (8C)', () => {
     });
     addressId = address.id;
 
+    // Without a locatable business, OrderReadySubscriber's dispatch fails with
+    // "This merchant has no usable pickup location" and no DeliveryJob is
+    // created — so E2E-086b would assert against a job that never existed.
+    await prisma.business.create({
+      data: {
+        merchantId: merchantUserA,
+        businessName: `POS 8C Kitchen ${randomUUID().slice(0, 6)}`,
+        businessType: BusinessType.SOLE_PROPRIETORSHIP,
+        registrationNumber: `RC-${randomUUID()}`,
+        email: `business-${randomUUID()}@dripplex.test`,
+        phone: '+2348031234567',
+        country: 'Nigeria',
+        state: 'Kano',
+        city: 'Kano',
+        address: '840 Tudun Wada, Kano',
+        latitude: 11.99,
+        longitude: 8.56,
+      },
+    });
+
     const productA = await makeProduct(profileA);
     const productB = await makeProduct(profileB);
 
@@ -358,6 +390,14 @@ suite('POS order flow over HTTP (8C)', () => {
       OrderPaymentMethodDtoEnum.MERCHANT_DIRECT,
     );
     foreignOrderNumber = await makeOrder(profileB, productB, OrderPaymentMethodDtoEnum.WALLET);
+
+    feWallet = await makeOrder(profileA, productA, OrderPaymentMethodDtoEnum.WALLET);
+    feCash = await makeOrder(profileA, productA, OrderPaymentMethodDtoEnum.CASH);
+    feMerchantDirect = await makeOrder(
+      profileA,
+      productA,
+      OrderPaymentMethodDtoEnum.MERCHANT_DIRECT,
+    );
   }, 300_000);
 
   afterAll(async () => {
@@ -374,12 +414,17 @@ suite('POS order flow over HTTP (8C)', () => {
     await prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } });
     // CartItem and OrderItem both RESTRICT product deletion, and a cart
     // survives checkout as CHECKED_OUT with its items intact.
+    // READY dispatches a rider: OrderReadySubscriber creates a DeliveryJob for
+    // every DELIVERY order. DeliveryJob.orderId is unique and its children
+    // cascade, so one deleteMany here, ahead of the orders it points at.
+    await prisma.deliveryJob.deleteMany({ where: { customerId } });
     await prisma.cartItem.deleteMany({ where: { cart: { customerId } } });
     await prisma.cart.deleteMany({ where: { customerId } });
     await prisma.orderItem.deleteMany({ where: { order: { customerId } } });
     await prisma.order.deleteMany({ where: { customerId } });
     await prisma.customerAddress.deleteMany({ where: { customerId } });
     await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+    await prisma.business.deleteMany({ where: { merchantId: { in: userIds } } });
     await prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.rolePermission.deleteMany({ where: { roleId } });
     await prisma.userRole.deleteMany({ where: { userId: { in: userIds } } });
@@ -562,4 +607,141 @@ suite('POS order flow over HTTP (8C)', () => {
       expect(response.status).toBe(403);
     },
   );
+
+  // ── 8E · the financial boundary ───────────────────────────────────────
+
+  /**
+   * Every figure that could move if a POS request ever reached money.
+   *
+   * Balances where a balance is the invariant, counts where existence is.
+   * CommissionAccount is the trap: checkout's assertMerchantApproved calls
+   * getOrCreateAccount, so the row already exists before any POS request —
+   * counting it would look clean while outstandingBalance moved.
+   */
+  async function financialSnapshot(): Promise<Record<string, string>> {
+    const [customerWallet, merchantWallet, account] = await Promise.all([
+      prisma.wallet.findFirst({
+        where: { ownerType: WalletOwnerType.CUSTOMER, ownerId: customerId },
+      }),
+      prisma.wallet.findFirst({
+        where: { ownerType: WalletOwnerType.MERCHANT, ownerId: merchantUserA },
+      }),
+      prisma.commissionAccount.findFirst({ where: { ownerId: merchantUserA } }),
+    ]);
+    // Ids filtered rather than defaulted: a merchant has no Wallet row until
+    // something credits one, and feeding '' to a uuid column makes Prisma throw
+    // rather than return zero — which would fail the test for the wrong reason.
+    const walletIds = [customerWallet?.id, merchantWallet?.id].filter(
+      (id): id is string => typeof id === 'string',
+    );
+    const [ledgerEntries, payments, settlements, commissionEntries, transfers] = await Promise.all([
+      walletIds.length > 0
+        ? prisma.walletLedgerEntry.count({ where: { walletId: { in: walletIds } } })
+        : 0,
+      prisma.paymentTransaction.count({ where: { customerId } }),
+      prisma.orderSettlement.count({ where: { merchantId: profileA } }),
+      account ? prisma.commissionLedgerEntry.count({ where: { accountId: account.id } }) : 0,
+      prisma.merchantSettlementTransfer.count({ where: { merchantId: profileA } }),
+    ]);
+    return {
+      customerAvailable: customerWallet?.availableBalance.toString() ?? 'none',
+      customerPending: customerWallet?.pendingBalance.toString() ?? 'none',
+      merchantAvailable: merchantWallet?.availableBalance.toString() ?? 'none',
+      merchantPending: merchantWallet?.pendingBalance.toString() ?? 'none',
+      commissionOutstanding: account?.outstandingBalance.toString() ?? 'none',
+      ledgerEntries: String(ledgerEntries),
+      paymentTransactions: String(payments),
+      orderSettlements: String(settlements),
+      commissionEntries: String(commissionEntries),
+      settlementTransfers: String(transfers),
+    };
+  }
+
+  /**
+   * E2E-084/085 — the assertion this slice exists for.
+   *
+   * A POS may drive exactly PREPARING and READY, which emit OrderAccepted and
+   * OrderReady. Tracing every eventBus.on subscription: the financial
+   * subscribers listen to OrderCompleted, OrderRefunded, DeliveryCompleted,
+   * DeliveryCashConfirmed and the Ride events — never to either event a POS can
+   * produce. The two sets are disjoint, so this is structural rather than
+   * incidental. The snapshot is the empirical half of that argument.
+   *
+   * drain() is not optional: DomainEventBus.emit returns immediately and
+   * dispatches on a floating promise, so an after-snapshot taken without it
+   * could pass while a handler was still running — asserting nothing.
+   */
+  it.each([
+    ['WALLET', (): string => feWallet],
+    ['CASH', (): string => feCash],
+    ['MERCHANT_DIRECT', (): string => feMerchantDirect],
+  ])('E2E-084/085 · POS fulfilment of a %s order moves no money', async (_mode, order) => {
+    const orderNumber = order();
+    const before = await financialSnapshot();
+
+    expect((await push(orderNumber, OrderStatus.PREPARING)).status).toBe(200);
+    expect((await push(orderNumber, OrderStatus.READY)).status).toBe(200);
+    await events.drain();
+
+    expect(await financialSnapshot()).toEqual(before);
+  });
+
+  it('E2E-080..083 · catalogue, stock and order reads move no money either', async () => {
+    const before = await financialSnapshot();
+
+    await asPos('/integrations/orders/list', integrationA, keyA);
+    await asPos(`/integrations/orders/detail/${feWallet}`, integrationA, keyA);
+    await asPos('/integrations/catalogue/sync', integrationA, keyA, {
+      method: 'POST',
+      body: JSON.stringify({
+        idempotencyKey: randomUUID(),
+        items: [{ externalSku, name: 'Jollof Rice', price: 3500 }],
+      }),
+    });
+    await asPos('/integrations/inventory/sync', integrationA, keyA, {
+      method: 'PUT',
+      headers: { 'idempotency-key': randomUUID() },
+      body: JSON.stringify({ items: [{ externalSku, quantity: 7 }] }),
+    });
+    await events.drain();
+
+    expect(await financialSnapshot()).toEqual(before);
+  });
+
+  it('E2E-086 · a MERCHANT_DIRECT order never grows a DrippleX payment leg', async () => {
+    // The customer pays the merchant directly; DrippleX never handles or
+    // verifies that payment. So the absence here is total — not an empty leg,
+    // not a zero-value one. Fulfilment must not create one.
+    const order = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: feMerchantDirect },
+    });
+    expect(order.paymentStatus).toBe(PaymentStatus.PENDING);
+
+    expect(await prisma.paymentTransaction.count({ where: { orderId: order.id } })).toBe(0);
+    expect(await prisma.orderSettlement.count({ where: { orderId: order.id } })).toBe(0);
+  });
+
+  it('E2E-086b · READY dispatches a rider but a POS cannot complete a delivery', async () => {
+    // READY legitimately creates a DeliveryJob — that is what READY means, and
+    // the merchant's own portal button does the same. It is the one path by
+    // which a POS-triggered event could ever reach a financial subscriber
+    // (rider-settlement listens to DeliveryCompleted), so this pins where it
+    // stops: the job exists, and nothing a POS can send advances it.
+    const order = await prisma.order.findFirstOrThrow({ where: { orderNumber: feWallet } });
+    const job = await prisma.deliveryJob.findFirst({ where: { orderId: order.id } });
+    expect(job).not.toBeNull();
+    expect(job?.status).not.toBe(DeliveryStatus.DELIVERED);
+
+    // No route a POS credential can reach advances a delivery.
+    const attempt = await asPos(`/integrations/orders/status/${feWallet}`, integrationA, keyA, {
+      method: 'PUT',
+      headers: { 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        externalOrderId: `POS-${randomUUID().slice(0, 8)}`,
+        status: OrderStatus.DELIVERED,
+        sourceTimestamp: new Date().toISOString(),
+      }),
+    });
+    expect(attempt.status).toBe(400);
+  });
 });
