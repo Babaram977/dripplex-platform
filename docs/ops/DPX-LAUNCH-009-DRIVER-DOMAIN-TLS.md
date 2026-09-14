@@ -1,8 +1,56 @@
-# DPX-LAUNCH-003 — `driver.dripplex.com` serves the wrong TLS certificate
+# DPX-LAUNCH-009 — `driver.dripplex.com` serves the wrong TLS certificate
 
 **Date:** 2026-08-18
 **Reported by:** founder — "drivers get a security warning"
-**Status:** diagnosed; the remedy is a Railway dashboard action, not a code change.
+**Status:** ~~diagnosed; the remedy is a Railway dashboard action~~ — **root cause
+corrected 2026-09-14, see the notice below.** The remedy is a DNS change, and it
+remains outstanding.
+
+---
+
+> ## ⚠️ Corrections (2026-09-14)
+>
+> **1. This document was filed under the wrong ID.** Its heading read
+> `DPX-LAUNCH-003`, which is already taken by
+> `DPX-LAUNCH-003-GOOGLE-SIGNIN.md` — two documents claimed one launch ID. The
+> heading now matches the filename, `DPX-LAUNCH-009`.
+>
+> **2. The root cause in §5 is wrong, and so is the remedy in §6.** This document
+> concludes that Railway holds the custom-domain record but never provisioned it
+> through to a live binding, and prescribes removing and re-adding the domain in
+> the Railway dashboard. `DPX-DRIVER-REDIRECT-001-COMPATIBILITY-REDIRECT.md` §1
+> establishes otherwise, and this pass confirmed it independently:
+>
+> |                           |                           |
+> | ------------------------- | ------------------------- |
+> | CNAME Railway requires    | `u1jtq3rx.up.railway.app` |
+> | CNAME DNS actually serves | `hhni6n78.up.railway.app` |
+>
+> **It is a DNS misconfiguration.** Ownership validation can never complete
+> against a mismatched CNAME, so no certificate is ever issued — which is why
+> the certificate never appeared, and why the §6 remove-and-re-add would not
+> have fixed it. The fix is to correct the CNAME, then let validation run.
+>
+> **3. Still live as of 2026-09-14.** `driver.dripplex.com` resolves to
+> `hhni6n78.up.railway.app` and the origin still presents `CN=*.up.railway.app`.
+> The symptom in §1 is current, not historical.
+>
+> ### Measuring TLS from an agent session — read this before re-testing
+>
+> Outbound HTTPS in the Claude Code session environment goes through an agent
+> proxy. **`openssl s_client` returns the proxy's certificate, not the origin's**
+> — during this pass it reported `CN=*.dripplex.com` for this host and briefly
+> looked like evidence the defect had been fixed. It was not.
+>
+> Only a measurement that opens a CONNECT tunnel and completes TLS with the
+> origin is valid evidence here:
+>
+> ```
+> curl -sv https://driver.dripplex.com/ -o /dev/null 2>&1 | grep subject:
+> ```
+>
+> Treat any `openssl s_client` reading taken from inside a session as evidence
+> about the proxy, never about the origin.
 
 ---
 
@@ -69,7 +117,11 @@ $ curl -i https://29fwdwci.up.railway.app/   → 404 x-railway-fallback: true   
 So the difference between `api` and `driver` is not the DNS value. It is that Railway's edge has a
 binding for the host `api.dripplex.com` and none for `driver.dripplex.com`.
 
-## 5. Root cause
+## 5. Root cause — **SUPERSEDED (2026-09-14)**
+
+> The conclusion below is wrong. The cause is a CNAME mismatch, not a stalled
+> Railway provisioning step. See the corrections notice at the top. The section
+> is kept because its ruled-out theories and measurements remain useful.
 
 Railway's API _does_ hold the custom-domain record — service `@dripplex/driver-portal`, domain id
 `9a495f90-387b-4930-95e1-c67e5f952ffd`, `targetPort: 3005`, which matches the service's `PORT`.
@@ -91,7 +143,12 @@ Ruled out along the way:
 - **A port mismatch.** `targetPort: 3005` matches the running service.
 - **A dead deployment.** The service is online and answering `200`.
 
-## 6. The fix
+## 6. The fix — **SUPERSEDED (2026-09-14)**
+
+> Removing and re-adding the Railway domain does not fix a mismatched CNAME:
+> validation would fail again the same way. Correct the DNS record first. The
+> steps below are retained for the dashboard navigation and the verification
+> command, which are still correct.
 
 Railway's public API exposes no certificate or DNS-validation status, and the MCP tooling has no
 way to detach and re-attach a custom domain, so this cannot be driven from a session. Both
