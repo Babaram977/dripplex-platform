@@ -1,7 +1,7 @@
 # MKT-INT-001-L (inbound half) — POS order status sync: implementation contract
 
 **Document**: DPX-MKT-INT-001-P1-ORDER-SYNC-CONTRACT.md
-**Status**: Implemented. §5 **ruled and closed** (2026-09-12), with the caveat in §5.3 recorded. **Awaiting sign-off on §7**; §6 and §8 are open on purpose.
+**Status**: Implemented. §5 **ruled and closed** (2026-09-12), with the caveat in §5.3 recorded. **§6 closed by R1 and R2** (2026-09-14) — see `DPX-MKT-INT-001-P1-POS-RULINGS-001.md`. §8 remains open on purpose: the POS rate limit is R7, deliberately undecided.
 **Date**: 2026-09-12
 **Extends**: `DPX-MKT-INT-001-P1-CATALOGUE-CONTRACT.md` (+ Amendment 1) and
 `DPX-MKT-INT-001-P1-INVENTORY-CONTRACT.md`. Where any of them disagree with the approved
@@ -220,7 +220,16 @@ gap is a known one rather than a discovered one.
 
 ---
 
-## 6. Not built, and why — **decision required**
+## 6. Not built, and why — **ruled and closed (2026-09-14)**
+
+> **Closed by R1 and R2.** POS-originated order creation is **not** coming: DrippleX is the
+> system of record for order creation, and a POS is a fulfilment integration (R1). Guaranteed
+> webhook delivery is likewise not promised in this increment; polling is the guaranteed
+> mechanism, and a signed outbound webhook is Phase 2, gated on an approved event and payload
+> contract (R2). Both are recorded in `DPX-MKT-INT-001-P1-POS-RULINGS-001.md`.
+>
+> The reasoning below is retained: it is _why_ R1 was ruled the way it was, not a question still
+> awaiting an answer.
 
 **POS-originated order creation is not implemented and has no approved contract anywhere.**
 
