@@ -327,6 +327,71 @@ function MxCard({
   );
 }
 
+/** What went wrong, in terms the merchant can act on. */
+interface LoadError {
+  forbidden: boolean;
+  message: string;
+}
+
+/**
+ * A refusal is never an empty state.
+ *
+ * Every merchant-facing list distinguishes "you cannot see this" from "there is
+ * nothing here". They used to collapse both into an empty array, which renders
+ * a confident "no orders"/"no products" over the top of a 403 — and a merchant
+ * reading that goes looking for their missing catalogue, or stops cooking
+ * because the kitchen screen says the orders dried up. The Orders list is the
+ * sharp case: it re-polls every six seconds, so the lie refreshes.
+ */
+function toLoadError(e: unknown): LoadError {
+  const err = e as { status?: number; message?: string };
+  return {
+    forbidden: err.status === 403,
+    message: err.message ?? 'Something went wrong. Try again.',
+  };
+}
+
+function LoadErrorNotice({ error }: { error: LoadError }) {
+  return (
+    <MxCard
+      style={{
+        borderColor: error.forbidden ? 'rgba(245,158,11,.35)' : 'rgba(239,68,68,.3)',
+        background: error.forbidden ? 'rgba(245,158,11,.07)' : 'rgba(239,68,68,.07)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: PP,
+          fontWeight: 600,
+          fontSize: 14,
+          color: error.forbidden ? C_WARN : C_ERR,
+          marginBottom: 6,
+        }}
+      >
+        {error.forbidden ? 'Not available to this account' : 'Could not load'}
+      </div>
+      <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.6)' }}>
+        {error.message}
+      </div>
+    </MxCard>
+  );
+}
+
+function ConnectEmpty({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        fontFamily: IT,
+        fontSize: 13,
+        color: MUTED,
+        padding: '18px 2px',
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
 function MxInput({
   label,
   placeholder,
@@ -1447,7 +1512,7 @@ const TAB_STATUSES: Record<string, readonly string[]> = {
   all: [],
 };
 
-function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
+export function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
   const tabs: { key: MxStatus | 'all'; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'new', label: 'New' },
@@ -1468,6 +1533,8 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
   const [rejectReason, setRejectReason] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
+
   const fetchOrders = useCallback(async (tab: MxStatus | 'all') => {
     try {
       // One unfiltered read, filtered here. The list query takes a single
@@ -1477,8 +1544,12 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
       const items = (res as { items?: MerchantOrderDto[] }).items ?? [];
       const wanted = TAB_STATUSES[tab] ?? [];
       setOrders(wanted.length === 0 ? items : items.filter((o) => wanted.includes(o.status)));
-    } catch {
-      setOrders([]);
+      setLoadError(null);
+    } catch (e: unknown) {
+      // Deliberately NOT setOrders([]). This poll runs every six seconds, so a
+      // refusal rendered as "no orders" is a lie that refreshes — a merchant
+      // reading it stops cooking while real orders arrive.
+      setLoadError(toLoadError(e));
     } finally {
       setLoading(false);
     }
@@ -1645,6 +1716,8 @@ function OrdersPage({ onDetail }: { onDetail: (id: string) => void }) {
         >
           Loading orders…
         </div>
+      ) : loadError ? (
+        <LoadErrorNotice error={loadError} />
       ) : orders.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '60px 0' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📭</div>
@@ -2433,75 +2506,12 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
  * Connect adds no second way to publish.
  */
 
-/** What went wrong, in terms the merchant can act on. */
-interface ConnectError {
-  forbidden: boolean;
-  message: string;
-}
-
-/**
- * A refusal is never an empty state.
- *
- * Every list on this page distinguishes "you cannot see this" from "there is
- * nothing here". The merchant Products tab collapses both into an empty array,
- * which renders a confident "no products" over the top of a 403 — the exact
- * failure this page must not reproduce.
- */
-function toConnectError(e: unknown): ConnectError {
-  const err = e as { status?: number; message?: string };
-  return {
-    forbidden: err.status === 403,
-    message: err.message ?? 'Something went wrong. Try again.',
-  };
-}
-
-function ConnectNotice({ error }: { error: ConnectError }) {
-  return (
-    <MxCard
-      style={{
-        borderColor: error.forbidden ? 'rgba(245,158,11,.35)' : 'rgba(239,68,68,.3)',
-        background: error.forbidden ? 'rgba(245,158,11,.07)' : 'rgba(239,68,68,.07)',
-      }}
-    >
-      <div
-        style={{
-          fontFamily: PP,
-          fontWeight: 600,
-          fontSize: 14,
-          color: error.forbidden ? C_WARN : C_ERR,
-          marginBottom: 6,
-        }}
-      >
-        {error.forbidden ? 'Not available to this account' : 'Could not load'}
-      </div>
-      <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.6)' }}>
-        {error.message}
-      </div>
-    </MxCard>
-  );
-}
-
-function ConnectEmpty({ text }: { text: string }) {
-  return (
-    <div
-      style={{
-        fontFamily: IT,
-        fontSize: 13,
-        color: MUTED,
-        padding: '18px 2px',
-      }}
-    >
-      {text}
-    </div>
-  );
-}
-
 type ConnectTab = 'Overview' | 'Catalogue' | 'Conflicts';
 
 export function MerchantConnectPage() {
   const [integrations, setIntegrations] = useState<MerchantIntegrationDto[]>([]);
   const [selectedId, setSelectedId] = useState<string>('');
-  const [listError, setListError] = useState<ConnectError | null>(null);
+  const [listError, setListError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ConnectTab>('Overview');
 
@@ -2518,7 +2528,7 @@ export function MerchantConnectPage() {
       .catch((e: unknown) => {
         if (!live) return;
         // Not setIntegrations([]) — a refusal must not read as "no integrations".
-        setListError(toConnectError(e));
+        setListError(toLoadError(e));
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -2539,7 +2549,7 @@ export function MerchantConnectPage() {
 
       {loading && <ConnectEmpty text="Loading integrations…" />}
 
-      {!loading && listError && <ConnectNotice error={listError} />}
+      {!loading && listError && <LoadErrorNotice error={listError} />}
 
       {!loading && !listError && integrations.length === 0 && (
         <ConnectEmpty text="No point-of-sale system is connected to this store yet." />
@@ -2609,7 +2619,7 @@ export function MerchantConnectPage() {
 function ConnectOverview({ integration }: { integration: MerchantIntegrationDto }) {
   const [testing, setTesting] = useState(false);
   const [result, setResult] = useState<IntegrationTestResultDto | null>(null);
-  const [error, setError] = useState<ConnectError | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
 
   const statusColor =
     integration.status === 'ACTIVE' ? C_OK : integration.status === 'ERROR' ? C_ERR : C_WARN;
@@ -2623,7 +2633,7 @@ function ConnectOverview({ integration }: { integration: MerchantIntegrationDto 
     try {
       setResult(await api.merchant.connect.testIntegration(integration.integrationId));
     } catch (e: unknown) {
-      setError(toConnectError(e));
+      setError(toLoadError(e));
     } finally {
       setTesting(false);
     }
@@ -2696,7 +2706,7 @@ function ConnectOverview({ integration }: { integration: MerchantIntegrationDto 
         )}
       </MxCard>
 
-      {error && <ConnectNotice error={error} />}
+      {error && <LoadErrorNotice error={error} />}
     </div>
   );
 }
@@ -2712,7 +2722,7 @@ function ConnectOverview({ integration }: { integration: MerchantIntegrationDto 
 function ConnectCatalogue({ integrationId }: { integrationId: string }) {
   const [page, setPage] = useState(1);
   const [data, setData] = useState<ConnectPage<ImportedProductDto> | null>(null);
-  const [error, setError] = useState<ConnectError | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [publishing, setPublishing] = useState(false);
@@ -2728,8 +2738,8 @@ function ConnectCatalogue({ integrationId }: { integrationId: string }) {
         setData(res);
         setError(null);
       } catch (e: unknown) {
-        // Not setData({items: []}) — see toConnectError.
-        setError(toConnectError(e));
+        // Not setData({items: []}) — see toLoadError.
+        setError(toLoadError(e));
       } finally {
         setLoading(false);
       }
@@ -2794,7 +2804,7 @@ function ConnectCatalogue({ integrationId }: { integrationId: string }) {
 
       {loading && <ConnectEmpty text="Loading imported products…" />}
 
-      {!loading && error && <ConnectNotice error={error} />}
+      {!loading && error && <LoadErrorNotice error={error} />}
 
       {!loading && !error && rows.length === 0 && (
         <ConnectEmpty text="This integration has not imported any products yet." />
@@ -2879,7 +2889,7 @@ function ConnectCatalogue({ integrationId }: { integrationId: string }) {
                             await api.merchant.publishProduct(r.productId as string);
                             setFlash(`Published ${r.productName ?? r.externalSku}`);
                           } catch (e: unknown) {
-                            setFlash(toConnectError(e).message);
+                            setFlash(toLoadError(e).message);
                           } finally {
                             setPublishing(false);
                             await load(page);
@@ -2929,7 +2939,7 @@ function ConnectCatalogue({ integrationId }: { integrationId: string }) {
  */
 function ConnectConflicts({ integrationId }: { integrationId: string }) {
   const [data, setData] = useState<ConnectPage<IntegrationConflictDto> | null>(null);
-  const [error, setError] = useState<ConnectError | null>(null);
+  const [error, setError] = useState<LoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [flash, setFlash] = useState('');
@@ -2940,7 +2950,7 @@ function ConnectConflicts({ integrationId }: { integrationId: string }) {
       setData(await api.merchant.connect.listConflicts(integrationId));
       setError(null);
     } catch (e: unknown) {
-      setError(toConnectError(e));
+      setError(toLoadError(e));
     } finally {
       setLoading(false);
     }
@@ -2961,7 +2971,7 @@ function ConnectConflicts({ integrationId }: { integrationId: string }) {
       // state the merchant wanted, so this reports rather than alarms, and the
       // reload below shows it as RESOLVED.
       setFlash(
-        err.status === 409 ? 'This conflict was already acknowledged.' : toConnectError(e).message,
+        err.status === 409 ? 'This conflict was already acknowledged.' : toLoadError(e).message,
       );
     } finally {
       setBusyId(null);
@@ -2976,7 +2986,7 @@ function ConnectConflicts({ integrationId }: { integrationId: string }) {
       {flash && <div style={{ fontFamily: IT, fontSize: 13, color: C_OK }}>{flash}</div>}
 
       {loading && <ConnectEmpty text="Loading conflicts…" />}
-      {!loading && error && <ConnectNotice error={error} />}
+      {!loading && error && <LoadErrorNotice error={error} />}
       {!loading && !error && rows.length === 0 && (
         <ConnectEmpty text="No conflicts raised by this integration." />
       )}
@@ -3033,7 +3043,7 @@ function ConnectConflicts({ integrationId }: { integrationId: string }) {
   );
 }
 
-function ProductsPage() {
+export function ProductsPage() {
   const [products, setProducts] = useState<MerchantProductDto[]>([]);
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -3047,6 +3057,7 @@ function ProductsPage() {
     sku: '',
     description: '',
   });
+  const [loadError, setLoadError] = useState<LoadError | null>(null);
   const [showDeleteId, setShowDeleteId] = useState<string | null>(null);
   // Variant editor (only meaningful once a product exists).
   const [variantDraft, setVariantDraft] = useState({ name: '', priceOverride: '', sku: '' });
@@ -3062,8 +3073,10 @@ function ProductsPage() {
   const fetchProducts = useCallback(async () => {
     try {
       setProducts((await api.merchant.getProducts()).items ?? []);
-    } catch {
-      setProducts([]);
+      setLoadError(null);
+    } catch (e: unknown) {
+      // Deliberately NOT setProducts([]) — see toLoadError.
+      setLoadError(toLoadError(e));
     } finally {
       setLoading(false);
     }
@@ -3273,6 +3286,8 @@ function ProductsPage() {
         >
           Loading products…
         </div>
+      ) : loadError ? (
+        <LoadErrorNotice error={loadError} />
       ) : products.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🍽️</div>
@@ -6057,6 +6072,8 @@ function RoomsPage() {
     void load();
   }, [load]);
 
+  const [calendarError, setCalendarError] = useState<LoadError | null>(null);
+
   const loadCalendar = useCallback(async (roomTypeId: string, from: string) => {
     setCalendarLoading(true);
     try {
@@ -6064,8 +6081,11 @@ function RoomsPage() {
       setCalendar(
         await api.merchant.bookings.getCalendar(roomTypeId, from, addNights(from, CALENDAR_DAYS)),
       );
-    } catch {
-      setCalendar([]);
+      setCalendarError(null);
+    } catch (e: unknown) {
+      // Deliberately NOT setCalendar([]) — an empty rate calendar reads as
+      // "no availability", which is a different and costly claim.
+      setCalendarError(toLoadError(e));
     } finally {
       setCalendarLoading(false);
     }
@@ -6316,6 +6336,8 @@ function RoomsPage() {
                     <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
                       Loading calendar…
                     </span>
+                  ) : calendarError ? (
+                    <LoadErrorNotice error={calendarError} />
                   ) : (
                     <div
                       style={{
