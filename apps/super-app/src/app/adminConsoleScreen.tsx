@@ -1136,6 +1136,154 @@ function Header({
 }
 
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
+/**
+ * A KPI card whose number Operations can change, for the two on the acquisition
+ * incentive that are settings rather than measurements.
+ *
+ * Reported 2026-09-13: the 20% discount and the ₦150 new-customer reward sat on
+ * the console as text nobody could touch. They are configuration — the founder
+ * reprices them — so showing them as a readout made the page look finished
+ * while offering no way to do the thing it was describing.
+ *
+ * Only these two. "Discounted rides" and "Discount given" are counted from real
+ * rides and must stay read-only: a measurement you can type over is not a
+ * measurement. The three-ride cap stays read-only too — it is a founder ruling
+ * of 2026-09-12 enforced under a row lock at ride creation, not a console
+ * setting, and making it editable here would imply an authority this screen
+ * does not have.
+ *
+ * The server rules on the value. This sends what was typed and reports back
+ * whatever it says, rather than deciding locally what a legal discount is.
+ */
+function EditableKpiCard({
+  label,
+  value,
+  sub,
+  icon,
+  canEdit,
+  inputLabel,
+  initial,
+  onSave,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  icon: string;
+  canEdit: boolean;
+  inputLabel: string;
+  initial: string;
+  onSave: (raw: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const start = (): void => {
+    setDraft(initial);
+    setError(null);
+    setEditing(true);
+  };
+
+  const save = async (): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSave(draft.trim());
+      setEditing(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not save that.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="dx-card"
+      style={{
+        background: NAVY_CARD,
+        border: `1px solid ${BORDER}`,
+        borderRadius: 10,
+        padding: '14px 16px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        flex: 1,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span
+          style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif', fontWeight: 500 }}
+        >
+          {label}
+        </span>
+        <span style={{ fontSize: 18, background: `${G3}18`, borderRadius: 7, padding: '4px 6px' }}>
+          {icon}
+        </span>
+      </div>
+
+      {editing ? (
+        <>
+          <input
+            className="dx-input"
+            aria-label={inputLabel}
+            value={draft}
+            autoFocus
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void save();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+            style={{ fontSize: 18, fontFamily: 'Poppins, sans-serif', fontWeight: 700 }}
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Btn
+              small
+              label={busy ? 'Saving…' : 'Save'}
+              disabled={busy}
+              onClick={() => void save()}
+            />
+            <Btn small outline label="Cancel" onClick={() => setEditing(false)} />
+          </div>
+        </>
+      ) : (
+        <div
+          style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 700, fontSize: 22, color: WHITE }}
+        >
+          {value}
+        </div>
+      )}
+
+      {!editing && sub !== undefined && (
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>{sub}</div>
+      )}
+      {!editing && canEdit && (
+        <button
+          type="button"
+          onClick={start}
+          style={{
+            alignSelf: 'flex-start',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
+            fontSize: 11,
+            color: G3,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          Change
+        </button>
+      )}
+      {error !== null && (
+        <div style={{ fontSize: 11, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>{error}</div>
+      )}
+    </div>
+  );
+}
+
 function KpiCard({
   label,
   value,
@@ -11834,7 +11982,11 @@ function PageCampaigns() {
         </Card>
       )}
 
-      <AcquisitionIncentivePanel incentive={incentive} error={incentiveError} />
+      <AcquisitionIncentivePanel
+        incentive={incentive}
+        error={incentiveError}
+        onChanged={() => load()}
+      />
 
       {canCreate && (
         <CreateCampaignForm
@@ -12034,9 +12186,11 @@ function CreateCampaignForm({ onCreated }: { onCreated: (name: string) => void }
 function AcquisitionIncentivePanel({
   incentive,
   error,
+  onChanged,
 }: {
   incentive: AcquisitionIncentiveDto | null;
   error: string | null;
+  onChanged: () => Promise<void> | void;
 }) {
   if (error !== null) {
     return (
@@ -12082,19 +12236,43 @@ function AcquisitionIncentivePanel({
           gap: 12,
         }}
       >
-        <KpiCard
+        {/* The discount lives on the seeded promotion row, so this edits that
+            row through the same endpoint the campaign screens use. The ride cap
+            beneath it is not editable: it is a founder ruling of 2026-09-12
+            enforced under a row lock, and is stated rather than offered. */}
+        <EditableKpiCard
           label="Discount"
           value={incentive.percentOff === null ? '—' : `${String(incentive.percentOff)}%`}
-          sub={`First ${String(incentive.maxDiscountedRides)} rides`}
-          color={G3}
+          sub={`First ${String(incentive.maxDiscountedRides)} rides · cap is a founder ruling`}
           icon="🏷️"
+          canEdit={hasPerm('admin:promotions:manage')}
+          inputLabel="Discount percent"
+          initial={incentive.percentOff === null ? '' : String(incentive.percentOff)}
+          onSave={async (raw) => {
+            const percentOff = Number(raw);
+            if (!Number.isFinite(percentOff)) throw new Error('Enter a number.');
+            // Sent as typed. What a legal discount is, is the server's ruling.
+            await api.admin.updatePromotion(incentive.promotionId, { percentOff });
+            await onChanged();
+          }}
         />
-        <KpiCard
+        {/* The referee's signup reward is the customer referral programme's,
+            not this promotion's — the same row the Referral Programmes desk
+            edits, so the two cannot drift apart. */}
+        <EditableKpiCard
           label="New-customer reward"
           value={incentive.refereeRewardNgn === null ? '—' : naira(incentive.refereeRewardNgn)}
           sub="Paid on qualifying"
-          color={G3}
           icon="🎁"
+          canEdit={hasPerm('admin:referrals:manage')}
+          inputLabel="New-customer reward in naira"
+          initial={incentive.refereeRewardNgn === null ? '' : String(incentive.refereeRewardNgn)}
+          onSave={async (raw) => {
+            const refereeRewardAmount = Number(raw);
+            if (!Number.isFinite(refereeRewardAmount)) throw new Error('Enter a number.');
+            await api.admin.updateReferralProgramme('CUSTOMER', { refereeRewardAmount });
+            await onChanged();
+          }}
         />
         <KpiCard
           label="Discounted rides"
