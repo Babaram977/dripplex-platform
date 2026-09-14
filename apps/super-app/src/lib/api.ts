@@ -859,6 +859,98 @@ export interface AdminCommissionAccountDto extends CommissionAccountDto {
   ownerPhone: string | null;
 }
 
+// ─── Merchant Connect (POS integrations) ──────────────────────────────────────
+//
+// Declared here by hand rather than in `packages/types` on purpose: that path
+// is inside Railway's backend watch patterns (`packages/**`), so a shared type
+// for a screen would redeploy the production API. This file already declares
+// most of its DTOs by hand for the same class of reason.
+
+export type IntegrationStatus = 'ACTIVE' | 'PAUSED' | 'REVOKED' | 'ERROR';
+
+/** One POS credential, as the merchant may see it — never the secret itself. */
+export interface IntegrationCredentialDto {
+  id: string;
+  createdAt: string;
+  status: 'ACTIVE' | 'REVOKED';
+  /** Masked. The plaintext key is returned once, at creation, and never again. */
+  publicSuffix: string;
+  scopes: string[];
+  lastUsedAt?: string;
+}
+
+export interface MerchantIntegrationDto {
+  integrationId: string;
+  merchantId: string;
+  vendorName: string;
+  vendorVersion?: string;
+  merchantContactEmail?: string;
+  status: IntegrationStatus;
+  webhookUrl?: string;
+  createdAt: string;
+  updatedAt?: string;
+  archivedAt?: string | null;
+  credentials: IntegrationCredentialDto[];
+  lastSync?: {
+    type: 'catalog' | 'inventory' | 'orders';
+    status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+    completedAt?: string;
+  };
+}
+
+export interface IntegrationTestResultDto {
+  status: 'SUCCESS' | 'FAILED' | 'UNCONFIGURED';
+  message: string;
+  latencyMs?: number;
+  httpStatus?: number;
+  testedAt: string;
+}
+
+/**
+ * One SKU a POS integration brought into the catalogue.
+ *
+ * `productId` is reported as stored, but the product fields are null when the
+ * product is unmapped or soft-deleted — the backend deliberately does not
+ * report a status it cannot publish, because the publish route resolves
+ * products through `requireOwnedProduct`, which filters `isDeleted`. So
+ * "publishable" is `status === 'DRAFT'`, which is null-safe by construction.
+ */
+export interface ImportedProductDto {
+  /** The import record's id (ProductSync), NOT the product's. */
+  id: string;
+  externalSku: string;
+  productId: string | null;
+  productName: string | null;
+  price: number | null;
+  status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED' | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IntegrationConflictDto {
+  id: string;
+  conflictType: string;
+  externalId: string | null;
+  dripplexValue: string | null;
+  externalValue: string | null;
+  status: 'OPEN' | 'RESOLVED' | 'ESCALATED';
+  resolution: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+/** The page envelope both Merchant Connect readers return. */
+export interface ConnectPage<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** Server-side ceiling on both Merchant Connect readers. */
+export const CONNECT_PAGE_SIZE = 50;
+
 /** DrippleX's whole financial position with one merchant, driver or rider.
  * Signs are from DrippleX's side: `walletAvailable` is money we owe out,
  * `commissionOutstanding` is money owed in, `netPosition` is what would change
@@ -3966,6 +4058,68 @@ export const api = {
         undefined,
         params,
       ),
+
+    // ── Merchant Connect ────────────────────────────────────────────────────
+    //
+    // Every route here sits behind `integrations:read`/`integrations:write`
+    // AND the Merchant Module guard, so a merchant whose module is disabled
+    // gets 403 rather than a working-looking empty screen.
+    //
+    // Publishing is deliberately absent: it stays on `publishProduct` above,
+    // the same endpoint the Products tab uses. Merchant Connect adds no second
+    // way to publish.
+    connect: {
+      // `dx` unwraps `{ data, pagination }` to just `data`, so the pagination
+      // block on this one route is dropped. Harmless here — a merchant has a
+      // handful of integrations, not pages of them — and the limit is stated
+      // rather than left to the server's default.
+      listIntegrations: () =>
+        dx<MerchantIntegrationDto[]>('GET', '/integrations', undefined, { limit: 100 }),
+      getIntegration: (integrationId: string) =>
+        dx<MerchantIntegrationDto>('GET', `/integrations/${integrationId}`),
+      testIntegration: (integrationId: string) =>
+        dx<IntegrationTestResultDto>('GET', `/integrations/${integrationId}/test`),
+
+      /** What one integration imported. Paginated explicitly — see CONNECT_PAGE_SIZE. */
+      listImportedProducts: (
+        integrationId: string,
+        params?: { page?: number; pageSize?: number },
+      ) =>
+        dx<ConnectPage<ImportedProductDto>>(
+          'GET',
+          `/integrations/catalogue/products/${integrationId}`,
+          undefined,
+          { page: params?.page ?? 1, pageSize: params?.pageSize ?? CONNECT_PAGE_SIZE },
+        ),
+
+      listConflicts: (
+        integrationId: string,
+        params?: { status?: string; page?: number; pageSize?: number },
+      ) =>
+        dx<ConnectPage<IntegrationConflictDto>>(
+          'GET',
+          `/integrations/conflicts/${integrationId}`,
+          undefined,
+          {
+            page: params?.page ?? 1,
+            pageSize: params?.pageSize ?? CONNECT_PAGE_SIZE,
+            ...(params?.status !== undefined ? { status: params.status } : {}),
+          },
+        ),
+
+      /**
+       * Acknowledge — records that a human saw the conflict. It remediates
+       * nothing, which is why the backend route is named `acknowledge` and not
+       * `resolve`, and why 409 on a second attempt is expected rather than an
+       * error to hide.
+       */
+      acknowledgeConflict: (conflictId: string, note?: string) =>
+        dx<IntegrationConflictDto>(
+          'PATCH',
+          `/integrations/conflicts/${conflictId}/acknowledge`,
+          note !== undefined && note !== '' ? { note } : {},
+        ),
+    },
   },
 
   // ── OPERATIONS CONSOLE (admin) ─────────────────────────────────────────────

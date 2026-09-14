@@ -41,6 +41,11 @@ import type {
   ResolvedBankAccountDto,
   OrderPaymentProofDto,
   WalletLedgerEntryDto,
+  MerchantIntegrationDto,
+  IntegrationTestResultDto,
+  IntegrationConflictDto,
+  ImportedProductDto,
+  ConnectPage,
 } from '../lib/api';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -118,6 +123,7 @@ type MerchantPage =
   | 'bookings'
   | 'payouts'
   | 'products'
+  | 'connect'
   | 'store'
   | 'earnings'
   | 'kyc'
@@ -580,6 +586,7 @@ const NAV_PRIMARY: { page: MerchantPage; icon: string; label: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
   { page: 'orders', icon: '📦', label: 'Orders' },
   { page: 'products', icon: '🏪', label: 'Products' },
+  { page: 'connect', icon: '🔌', label: 'Connect' },
   { page: 'store', icon: '🏬', label: 'Store' },
   { page: 'earnings', icon: '💰', label: 'Earnings' },
 ];
@@ -892,6 +899,7 @@ function MxHeader({
     bookings: 'Bookings',
     payouts: 'Hotel Payouts',
     products: 'Products & Catalogue',
+    connect: 'Merchant Connect',
     store: 'Store Setup',
     earnings: 'Earnings & Settlements',
     kyc: 'Merchant KYC',
@@ -2410,6 +2418,621 @@ function OrderDetailPage({ orderId, onBack }: { orderId: string; onBack: () => v
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 4 — PRODUCTS
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Merchant Connect — what a POS integration is doing to this merchant's
+ * catalogue, and the two things they can act on: publishing what it imported,
+ * and acknowledging what it flagged.
+ *
+ * The catalogue here is deliberately NOT "my DRAFT products". It is the
+ * products *this* integration imported, read from the ProductSync mapping —
+ * because a DRAFT list would blend manually created drafts and other
+ * integrations' imports into one undifferentiated pile and call it a POS
+ * catalogue (founder ruling 2026-09-14).
+ *
+ * Publishing goes through the ordinary merchant publish endpoint. Merchant
+ * Connect adds no second way to publish.
+ */
+
+/** What went wrong, in terms the merchant can act on. */
+interface ConnectError {
+  forbidden: boolean;
+  message: string;
+}
+
+/**
+ * A refusal is never an empty state.
+ *
+ * Every list on this page distinguishes "you cannot see this" from "there is
+ * nothing here". The merchant Products tab collapses both into an empty array,
+ * which renders a confident "no products" over the top of a 403 — the exact
+ * failure this page must not reproduce.
+ */
+function toConnectError(e: unknown): ConnectError {
+  const err = e as { status?: number; message?: string };
+  return {
+    forbidden: err.status === 403,
+    message: err.message ?? 'Something went wrong. Try again.',
+  };
+}
+
+function ConnectNotice({ error }: { error: ConnectError }) {
+  return (
+    <MxCard
+      style={{
+        borderColor: error.forbidden ? 'rgba(245,158,11,.35)' : 'rgba(239,68,68,.3)',
+        background: error.forbidden ? 'rgba(245,158,11,.07)' : 'rgba(239,68,68,.07)',
+      }}
+    >
+      <div
+        style={{
+          fontFamily: PP,
+          fontWeight: 600,
+          fontSize: 14,
+          color: error.forbidden ? C_WARN : C_ERR,
+          marginBottom: 6,
+        }}
+      >
+        {error.forbidden ? 'Not available to this account' : 'Could not load'}
+      </div>
+      <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.6)' }}>
+        {error.message}
+      </div>
+    </MxCard>
+  );
+}
+
+function ConnectEmpty({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        fontFamily: IT,
+        fontSize: 13,
+        color: MUTED,
+        padding: '18px 2px',
+      }}
+    >
+      {text}
+    </div>
+  );
+}
+
+type ConnectTab = 'Overview' | 'Catalogue' | 'Conflicts';
+
+export function MerchantConnectPage() {
+  const [integrations, setIntegrations] = useState<MerchantIntegrationDto[]>([]);
+  const [selectedId, setSelectedId] = useState<string>('');
+  const [listError, setListError] = useState<ConnectError | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<ConnectTab>('Overview');
+
+  useEffect(() => {
+    let live = true;
+    api.merchant.connect
+      .listIntegrations()
+      .then((rows) => {
+        if (!live) return;
+        setIntegrations(rows);
+        setSelectedId((current) => current || (rows[0]?.integrationId ?? ''));
+        setListError(null);
+      })
+      .catch((e: unknown) => {
+        if (!live) return;
+        // Not setIntegrations([]) — a refusal must not read as "no integrations".
+        setListError(toConnectError(e));
+      })
+      .finally(() => {
+        if (live) setLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const selected = integrations.find((i) => i.integrationId === selectedId) ?? null;
+
+  return (
+    <div
+      className="mx-scroll"
+      style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}
+    >
+      <SectionHead title="Merchant Connect" sub="Your point-of-sale integrations" />
+
+      {loading && <ConnectEmpty text="Loading integrations…" />}
+
+      {!loading && listError && <ConnectNotice error={listError} />}
+
+      {!loading && !listError && integrations.length === 0 && (
+        <ConnectEmpty text="No point-of-sale system is connected to this store yet." />
+      )}
+
+      {!loading && !listError && integrations.length > 0 && (
+        <>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+            {integrations.map((i) => (
+              <button
+                key={i.integrationId}
+                className="mx-btn"
+                onClick={() => setSelectedId(i.integrationId)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  fontFamily: IT,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: i.integrationId === selectedId ? WHITE : MUTED,
+                  background:
+                    i.integrationId === selectedId ? 'rgba(71,207,114,.14)' : 'transparent',
+                  border: `1px solid ${i.integrationId === selectedId ? 'rgba(71,207,114,.4)' : BORDER}`,
+                }}
+              >
+                {i.vendorName}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
+            {(['Overview', 'Catalogue', 'Conflicts'] as const).map((t) => (
+              <button
+                key={t}
+                className="mx-btn"
+                onClick={() => setTab(t)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  fontFamily: IT,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: t === tab ? G3 : MUTED,
+                  background: t === tab ? 'rgba(71,207,114,.1)' : 'transparent',
+                  border: 'none',
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {selected && tab === 'Overview' && <ConnectOverview integration={selected} />}
+          {selected && tab === 'Catalogue' && (
+            <ConnectCatalogue integrationId={selected.integrationId} />
+          )}
+          {selected && tab === 'Conflicts' && (
+            <ConnectConflicts integrationId={selected.integrationId} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Connection and credential state — what a merchant checks when the till stops syncing. */
+function ConnectOverview({ integration }: { integration: MerchantIntegrationDto }) {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<IntegrationTestResultDto | null>(null);
+  const [error, setError] = useState<ConnectError | null>(null);
+
+  const statusColor =
+    integration.status === 'ACTIVE' ? C_OK : integration.status === 'ERROR' ? C_ERR : C_WARN;
+
+  const activeCredentials = integration.credentials.filter((c) => c.status === 'ACTIVE');
+
+  const runTest = async () => {
+    setTesting(true);
+    setError(null);
+    setResult(null);
+    try {
+      setResult(await api.merchant.connect.testIntegration(integration.integrationId));
+    } catch (e: unknown) {
+      setError(toConnectError(e));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      <MxCard>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <div style={{ fontFamily: PP, fontWeight: 600, fontSize: 15, color: WHITE }}>
+            {integration.vendorName}
+          </div>
+          <MxChip label={integration.status} color={statusColor} />
+        </div>
+
+        <div style={{ fontFamily: IT, fontSize: 13, color: 'rgba(255,255,255,.6)' }}>
+          {/* Credential state is the thing that actually breaks a POS link, so it
+              is stated as a count and a state, not implied by its absence. */}
+          {activeCredentials.length === 0
+            ? 'No active API key. This integration cannot authenticate until a key is issued.'
+            : `${String(activeCredentials.length)} active API key${activeCredentials.length === 1 ? '' : 's'}`}
+        </div>
+
+        {activeCredentials.map((c) => (
+          <div
+            key={c.id}
+            style={{
+              marginTop: 10,
+              fontFamily: IT,
+              fontSize: 12,
+              color: MUTED,
+              display: 'flex',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <span>Key ending {c.publicSuffix.slice(-4)}</span>
+            <span>·</span>
+            <span>{c.lastUsedAt ? `last used ${c.lastUsedAt.slice(0, 10)}` : 'never used'}</span>
+          </div>
+        ))}
+
+        {integration.lastSync && (
+          <div style={{ marginTop: 12, fontFamily: IT, fontSize: 12, color: MUTED }}>
+            Last {integration.lastSync.type} sync: {integration.lastSync.status}
+          </div>
+        )}
+
+        <div style={{ marginTop: 14 }}>
+          <MxBtn
+            label={testing ? 'Testing…' : 'Test connection'}
+            variant="outline"
+            small
+            disabled={testing}
+            onClick={runTest}
+          />
+        </div>
+
+        {result && (
+          <div
+            style={{
+              marginTop: 12,
+              fontFamily: IT,
+              fontSize: 13,
+              color: result.status === 'SUCCESS' ? C_OK : C_WARN,
+            }}
+          >
+            {result.status}: {result.message}
+          </div>
+        )}
+      </MxCard>
+
+      {error && <ConnectNotice error={error} />}
+    </div>
+  );
+}
+
+/**
+ * What this integration imported, and the one action on it: publish.
+ *
+ * A row is publishable exactly when `status === 'DRAFT'`. That is null-safe by
+ * construction: the backend reports null product fields for a SKU whose product
+ * is unmapped or soft-deleted, precisely so this screen never offers a Publish
+ * control on a row where pressing it would 404.
+ */
+function ConnectCatalogue({ integrationId }: { integrationId: string }) {
+  const [page, setPage] = useState(1);
+  const [data, setData] = useState<ConnectPage<ImportedProductDto> | null>(null);
+  const [error, setError] = useState<ConnectError | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [publishing, setPublishing] = useState(false);
+  const [flash, setFlash] = useState('');
+
+  const load = useCallback(
+    async (target: number) => {
+      setLoading(true);
+      try {
+        const res = await api.merchant.connect.listImportedProducts(integrationId, {
+          page: target,
+        });
+        setData(res);
+        setError(null);
+      } catch (e: unknown) {
+        // Not setData({items: []}) — see toConnectError.
+        setError(toConnectError(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [integrationId],
+  );
+
+  useEffect(() => {
+    setSelected(new Set());
+    setPage(1);
+  }, [integrationId]);
+
+  useEffect(() => {
+    load(page);
+  }, [load, page]);
+
+  const rows = data?.items ?? [];
+  const publishable = (r: ImportedProductDto): boolean =>
+    r.status === 'DRAFT' && r.productId !== null;
+
+  const toggle = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const publishSelected = async () => {
+    const targets = rows.filter((r) => selected.has(r.id) && publishable(r));
+    if (targets.length === 0) return;
+    setPublishing(true);
+    let done = 0;
+    let failed = 0;
+    for (const row of targets) {
+      try {
+        await api.merchant.publishProduct(row.productId as string);
+        done += 1;
+      } catch {
+        // A row that fails stays unpublished and stays visible as such; the
+        // reload below re-reads real state rather than assuming success.
+        failed += 1;
+      }
+    }
+    setSelected(new Set());
+    setPublishing(false);
+    setFlash(
+      failed === 0
+        ? `Published ${String(done)} product${done === 1 ? '' : 's'}`
+        : `Published ${String(done)}, ${String(failed)} failed`,
+    );
+    await load(page);
+  };
+
+  const selectedPublishable = rows.filter((r) => selected.has(r.id) && publishable(r)).length;
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1;
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      {flash && <div style={{ fontFamily: IT, fontSize: 13, color: C_OK }}>{flash}</div>}
+
+      {loading && <ConnectEmpty text="Loading imported products…" />}
+
+      {!loading && error && <ConnectNotice error={error} />}
+
+      {!loading && !error && rows.length === 0 && (
+        <ConnectEmpty text="This integration has not imported any products yet." />
+      )}
+
+      {!loading && !error && rows.length > 0 && (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+              {/* The count is stated because the page is capped: a merchant
+                  selecting products to publish must not believe the first page
+                  is the whole catalogue. */}
+              Showing {String(rows.length)} of {String(data?.total ?? 0)} imported products
+            </div>
+            <MxBtn
+              label={
+                publishing ? 'Publishing…' : `Publish selected (${String(selectedPublishable)})`
+              }
+              small
+              disabled={publishing || selectedPublishable === 0}
+              onClick={publishSelected}
+            />
+          </div>
+
+          {rows.map((r) => {
+            const canPublish = publishable(r);
+            return (
+              <MxCard key={r.id}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${r.productName ?? r.externalSku}`}
+                      checked={selected.has(r.id)}
+                      disabled={!canPublish}
+                      onChange={() => toggle(r.id)}
+                    />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: WHITE }}>
+                        {r.productName ?? r.externalSku}
+                      </div>
+                      <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                        SKU {r.externalSku}
+                        {r.price !== null && ` · ₦${r.price.toLocaleString()}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {r.status === 'PUBLISHED' && <MxChip label="Published" color={C_OK} />}
+                    {r.status === 'DRAFT' && <MxChip label="Unpublished" color={C_WARN} />}
+                    {r.status === null && <MxChip label="Not in catalogue" color={MUTED} />}
+
+                    {/* A published product is not actionable as "Publish" — the
+                        control is gone, not merely disabled, because the
+                        backend answers 409 to a second publish. */}
+                    {canPublish && (
+                      <MxBtn
+                        label="Publish"
+                        variant="outline"
+                        small
+                        disabled={publishing}
+                        onClick={async () => {
+                          setPublishing(true);
+                          try {
+                            await api.merchant.publishProduct(r.productId as string);
+                            setFlash(`Published ${r.productName ?? r.externalSku}`);
+                          } catch (e: unknown) {
+                            setFlash(toConnectError(e).message);
+                          } finally {
+                            setPublishing(false);
+                            await load(page);
+                          }
+                        }}
+                      />
+                    )}
+                  </div>
+                </div>
+              </MxCard>
+            );
+          })}
+
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <MxBtn
+                label="Previous"
+                variant="ghost"
+                small
+                disabled={page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              />
+              <span style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                Page {String(page)} of {String(totalPages)}
+              </span>
+              <MxBtn
+                label="Next"
+                variant="ghost"
+                small
+                disabled={page >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * What the integration flagged, and the one thing a merchant may do: say they
+ * have seen it.
+ *
+ * Acknowledgement is not remediation — it changes the conflict row and nothing
+ * about the product, mapping, price or order. The button says so.
+ */
+function ConnectConflicts({ integrationId }: { integrationId: string }) {
+  const [data, setData] = useState<ConnectPage<IntegrationConflictDto> | null>(null);
+  const [error, setError] = useState<ConnectError | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [flash, setFlash] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      setData(await api.merchant.connect.listConflicts(integrationId));
+      setError(null);
+    } catch (e: unknown) {
+      setError(toConnectError(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [integrationId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const acknowledge = async (id: string) => {
+    setBusyId(id);
+    try {
+      await api.merchant.connect.acknowledgeConflict(id);
+      setFlash('Acknowledged');
+    } catch (e: unknown) {
+      const err = e as { status?: number; message?: string };
+      // 409 means someone already acknowledged it — the row is already in the
+      // state the merchant wanted, so this reports rather than alarms, and the
+      // reload below shows it as RESOLVED.
+      setFlash(
+        err.status === 409 ? 'This conflict was already acknowledged.' : toConnectError(e).message,
+      );
+    } finally {
+      setBusyId(null);
+      await load();
+    }
+  };
+
+  const rows = data?.items ?? [];
+
+  return (
+    <div style={{ display: 'grid', gap: 12 }}>
+      {flash && <div style={{ fontFamily: IT, fontSize: 13, color: C_OK }}>{flash}</div>}
+
+      {loading && <ConnectEmpty text="Loading conflicts…" />}
+      {!loading && error && <ConnectNotice error={error} />}
+      {!loading && !error && rows.length === 0 && (
+        <ConnectEmpty text="No conflicts raised by this integration." />
+      )}
+
+      {!loading &&
+        !error &&
+        rows.map((c) => {
+          const open = c.status === 'OPEN';
+          return (
+            <MxCard key={c.id}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ fontFamily: PP, fontSize: 14, fontWeight: 600, color: WHITE }}>
+                      {c.conflictType}
+                    </span>
+                    <MxChip label={c.status} color={open ? C_WARN : C_OK} />
+                  </div>
+                  <div style={{ fontFamily: IT, fontSize: 12, color: MUTED }}>
+                    {c.externalId && <>SKU {c.externalId} · </>}
+                    DrippleX: {c.dripplexValue ?? '—'} · POS: {c.externalValue ?? '—'}
+                  </div>
+                  {c.resolution && (
+                    <div style={{ fontFamily: IT, fontSize: 12, color: MUTED, marginTop: 6 }}>
+                      {c.resolution}
+                    </div>
+                  )}
+                </div>
+
+                {/* Gone once resolved, not disabled: a second acknowledge is a
+                    409, so leaving the control present would offer an action
+                    that cannot succeed. */}
+                {open && (
+                  <MxBtn
+                    label={busyId === c.id ? 'Saving…' : 'Acknowledge'}
+                    variant="outline"
+                    small
+                    disabled={busyId !== null}
+                    onClick={() => acknowledge(c.id)}
+                  />
+                )}
+              </div>
+            </MxCard>
+          );
+        })}
+    </div>
+  );
+}
+
 function ProductsPage() {
   const [products, setProducts] = useState<MerchantProductDto[]>([]);
   const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
@@ -5289,6 +5912,8 @@ export function MerchantPortalScreen({
         return <HotelPayoutsPage />;
       case 'products':
         return <ProductsPage />;
+      case 'connect':
+        return <MerchantConnectPage />;
       case 'store':
         return (
           <StoreSetupPage
