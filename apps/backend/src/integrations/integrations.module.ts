@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { ProductsModule } from '../products/products.module';
 
 import { CatalogueSyncController } from './controllers/catalogue-sync.controller';
+import { IntegrationConflictsController } from './controllers/integration-conflicts.controller';
 import { IntegrationsCController } from './controllers/integrations-c.controller';
 import { IntegrationsController } from './controllers/integrations.controller';
 import { InventorySyncController } from './controllers/inventory-sync.controller';
@@ -16,6 +17,7 @@ import { CatalogueIngestionService } from './services/catalogue-ingestion.servic
 import { CategoryMappingService } from './services/category-mapping.service';
 import { CredentialsService } from './services/credentials.service';
 import { EncryptionService } from './services/encryption.service';
+import { IntegrationConflictsService } from './services/integration-conflicts.service';
 import { IntegrationsService } from './services/integrations.service';
 import { InventoryIngestionService } from './services/inventory-ingestion.service';
 import { MerchantProfileResolver } from './services/merchant-profile-resolver.service';
@@ -34,6 +36,7 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
   controllers: [
     IntegrationsCController, // MKT-INT-001-C: Integration CRUD API (6 endpoints)
     IntegrationsController, // Legacy: Credential management endpoints (D phase, future)
+    IntegrationConflictsController, // merchant-facing conflict reader + acknowledge
     CatalogueSyncController, // P1: catalogue ingestion (POS push) + job history
     InventorySyncController, // MKT-INT-001-J: stock level push + current levels
     OrderSyncController, // MKT-INT-001-L: POS order status sync + POS order reads
@@ -44,6 +47,7 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
     EncryptionService,
     SsrfProtectionService,
     CatalogueIngestionService,
+    IntegrationConflictsService,
     CategoryMappingService,
     InventoryIngestionService,
     OrderStatusIngestionService,
