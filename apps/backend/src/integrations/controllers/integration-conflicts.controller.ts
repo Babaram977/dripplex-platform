@@ -14,6 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
 import { AcknowledgeConflictDto } from '../dtos/acknowledge-conflict.dto';
 import { IntegrationConflictsService } from '../services/integration-conflicts.service';
@@ -44,7 +45,7 @@ export class IntegrationConflictsController {
   ) {}
 
   @Get(':integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: "List one integration's reconciliation conflicts" })
   @ApiResponse({ status: 200, description: 'Conflicts, newest first' })
@@ -75,7 +76,7 @@ export class IntegrationConflictsController {
    * `resolve` would invite a later reader to assume otherwise.
    */
   @Patch(':conflictId/acknowledge')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:write')
   @ApiOperation({ summary: 'Acknowledge a conflict — records review, changes no data' })
   @ApiResponse({ status: 200, description: 'Acknowledged' })

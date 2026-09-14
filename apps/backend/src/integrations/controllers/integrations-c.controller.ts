@@ -31,6 +31,7 @@ import { Prisma } from '@prisma/client';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
 import {
   CreateIntegrationCDto,
@@ -86,7 +87,7 @@ function toMetadataRecord(value: Prisma.JsonValue | null): Record<string, unknow
 @ApiTags('Integrations')
 @ApiBearerAuth()
 @Controller('integrations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
 export class IntegrationsCController {
   constructor(
     private readonly integrationsService: IntegrationsService,

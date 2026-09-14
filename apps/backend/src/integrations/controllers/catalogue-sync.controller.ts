@@ -19,6 +19,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Public, RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { CATALOGUE_WRITE_SCOPE } from '../catalogue-ingestion.constants';
 import { RequireIntegrationScope } from '../decorators/integration-scope.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
@@ -46,6 +47,17 @@ import type { ImportedProductPage } from '../services/imported-products.service'
  * - the merchant reads their own sync history, authenticating as a signed-in
  *   user (`JwtAuthGuard` + `PermissionsGuard`) like every other route here.
  *
+ *
+ * `MerchantModuleEnabledGuard` is applied **per route, never at controller
+ * level**, and that placement is load-bearing. This controller serves two
+ * audiences: the merchant reads with a JWT, and the POS pushes with an
+ * integration credential. Gating the class would take POS ingestion down with
+ * the merchant UI — a machine-to-machine contract answering "The merchant
+ * module is not enabled" to an integrator who has no merchant module and no
+ * way to act on that. Founder ruling 2026-09-14: module off gates the merchant
+ * surfaces and leaves ingestion running. The guard rides the authentication
+ * scheme — every JWT route here is merchant-facing, every credential route is
+ * not.
  * `main.ts` calls `setGlobalPrefix('api/v1')`, so the prefix must NOT be
  * repeated here — doing so previously mounted an entire controller at
  * `/api/v1/api/v1/...`, where it answered 401 rather than 404 and so looked
@@ -114,7 +126,7 @@ export class CatalogueSyncController {
    * `integrations:read` permission the rest of the module already uses.
    */
   @Get('jobs/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: 'List catalogue sync jobs for an integration' })
   @ApiResponse({ status: 200, description: 'Sync jobs, newest first' })
@@ -147,7 +159,7 @@ export class CatalogueSyncController {
    * from a silently truncated catalogue is the failure this avoids.
    */
   @Get('products/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: 'List the products one integration imported' })
   @ApiResponse({ status: 200, description: 'Imported products, newest first' })
@@ -178,7 +190,7 @@ export class CatalogueSyncController {
    * forever. The engine worked; the data it reads had no author.
    */
   @Get('mappings/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: 'List category mappings for an integration' })
   @ApiResponse({ status: 200, description: 'Mappings, by external category name' })
@@ -197,7 +209,7 @@ export class CatalogueSyncController {
    * retry is not an error and re-pointing is the same call as first mapping.
    */
   @Put('mappings/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Create or replace a category mapping' })
@@ -235,7 +247,7 @@ export class CatalogueSyncController {
    * route.
    */
   @Delete('mappings/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:write')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove a category mapping' })
