@@ -1,0 +1,565 @@
+import { randomUUID } from 'node:crypto';
+
+import { Test } from '@nestjs/testing';
+import {
+  MerchantStatus,
+  OrderStatus,
+  PaymentStatus,
+  PrismaClient,
+  ProductStatus,
+  UserStatus,
+  WalletOwnerType,
+} from '@prisma/client';
+import * as bcrypt from 'bcrypt';
+
+import { CartService } from '../cart/cart.service';
+import { AppConfigService } from '../config/app-config.service';
+import { CheckoutService } from '../orders/checkout.service';
+import { OrderPaymentMethodDtoEnum } from '../payments/dto/payment.dto';
+import { PaymentService } from '../payments/payment.service';
+import { WalletService } from '../wallet/wallet.service';
+
+import type { INestApplication } from '@nestjs/common';
+
+/**
+ * 8C — POS order reads and fulfilment transitions, over real HTTP.
+ *
+ * The orders are real. Each one is built the way a customer builds one — cart,
+ * checkout, then a payment method selected through PaymentService — rather than
+ * by inserting a terminal state. That matters most for R3: the whole point is
+ * that CASH and MERCHANT_DIRECT orders reach CONFIRMED while paymentStatus is
+ * still PENDING, and writing that row directly would assert the fixture rather
+ * than the behaviour.
+ *
+ * The fixture is smaller than the merchant-customer journey spec's because this
+ * one never trades. MerchantProfile.status defaults to PENDING and the cart
+ * refuses only SUSPENDED or REJECTED, so no Business, no MerchantKyc and no
+ * approval are needed. Nothing here settles money.
+ */
+
+const databaseUrl = process.env['DATABASE_URL'] ?? '';
+const suite = databaseUrl === '' ? describe.skip : describe;
+
+/** The exact key set a POS may see. Order-sync contract §5.2, ruled 2026-09-12. */
+const POS_ORDER_KEYS = [
+  'orderNumber',
+  'status',
+  'paymentStatus',
+  'fulfillmentType',
+  'currency',
+  'subtotal',
+  'discount',
+  'tax',
+  'total',
+  'placedAt',
+  'estimatedReadyAt',
+  'readyAt',
+  'items',
+].sort();
+
+const POS_ITEM_KEYS = ['name', 'quantity', 'unitPrice', 'subtotal', 'externalSku'].sort();
+
+suite('POS order flow over HTTP (8C)', () => {
+  let prisma: PrismaClient;
+  let app: INestApplication;
+  let baseUrl: string;
+
+  let carts: CartService;
+  let checkout: CheckoutService;
+  let payments: PaymentService;
+  let wallets: WalletService;
+
+  const password = 'Password1!';
+  const roleName = `pos-8c-${randomUUID().slice(0, 8)}`;
+  let roleId = '';
+  const userIds: string[] = [];
+  const profileIds: string[] = [];
+  const integrationIds: string[] = [];
+  const productIds: string[] = [];
+
+  let tokenA = '';
+  let profileA = '';
+  let profileB = '';
+  let customerId = '';
+  let addressId = '';
+
+  let integrationA = ''; // orders:read + orders:write
+  let integrationC = ''; // orders:read ONLY — the scope refusal
+  const keyA = 'pos-8c-integration-a-secret';
+  const keyC = 'pos-8c-integration-c-secret';
+
+  const externalSku = `SKU-8C-${randomUUID().slice(0, 8)}`;
+  let walletOrderNumber = '';
+  let cashOrderNumber = '';
+  let merchantDirectOrderNumber = '';
+  let foreignOrderNumber = '';
+
+  const ctx = {};
+  const unitPrice = 4_500;
+
+  let callerSeq = 0;
+  const nextCaller = (): string => `192.0.2.${String((callerSeq += 1) % 240)}:${String(callerSeq)}`;
+
+  type Init = Omit<RequestInit, 'headers'> & { headers?: Record<string, string> };
+
+  const asMerchant = (token: string, path: string, init: Init = {}): Promise<Response> =>
+    fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${token}`,
+        'x-forwarded-for': nextCaller(),
+        ...(init.headers ?? {}),
+      },
+    });
+
+  const asPos = (path: string, id: string, key: string, init: Init = {}): Promise<Response> =>
+    fetch(`${baseUrl}${path}`, {
+      ...init,
+      headers: {
+        'content-type': 'application/json',
+        'x-integration-id': id,
+        'x-integration-key': key,
+        'x-forwarded-for': nextCaller(),
+        ...(init.headers ?? {}),
+      },
+    });
+
+  const push = (
+    orderNumber: string,
+    status: string,
+    id = integrationA,
+    key = keyA,
+  ): Promise<Response> =>
+    asPos(`/integrations/orders/status/${orderNumber}`, id, key, {
+      method: 'PUT',
+      headers: { 'idempotency-key': randomUUID() },
+      body: JSON.stringify({
+        externalOrderId: `POS-${randomUUID().slice(0, 8)}`,
+        status,
+        sourceTimestamp: new Date().toISOString(),
+      }),
+    });
+
+  async function makeMerchant(): Promise<{ token: string; profileId: string }> {
+    const email = `pos-8c-m-${randomUUID()}@example.com`;
+    const merchantRole = await prisma.role.findUniqueOrThrow({ where: { name: 'merchant' } });
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash: await bcrypt.hash(password, 10),
+        firstName: 'POS',
+        lastName: 'Orders',
+        status: UserStatus.ACTIVE,
+        emailVerifiedAt: new Date(),
+        phoneVerifiedAt: new Date(),
+        roles: { create: [{ roleId: merchantRole.id }, { roleId }] },
+      },
+    });
+    userIds.push(user.id);
+    // APPROVED, set directly. CheckoutService.assertMerchantApproved demands it
+    // — the cart gates only on SUSPENDED/REJECTED, checkout separately requires
+    // APPROVED, and that is a fixture precondition here rather than the thing
+    // under test. The journey spec goes through approveMerchant because it is
+    // asserting approval behaviour; this file asserts POS transitions.
+    const profile = await prisma.merchantProfile.create({
+      data: { userId: user.id, status: MerchantStatus.APPROVED },
+    });
+    profileIds.push(profile.id);
+
+    const login = await fetch(`${baseUrl}/auth/login/merchant`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': nextCaller() },
+      body: JSON.stringify({ email, password }),
+    });
+    const body = (await login.json()) as { data?: { accessToken?: string } };
+    if (login.status !== 200 || typeof body.data?.accessToken !== 'string') {
+      throw new Error(`Merchant login failed: HTTP ${String(login.status)}`);
+    }
+    return { token: body.data.accessToken, profileId: profile.id };
+  }
+
+  async function makeIntegration(token: string, scopes: string[], secret: string): Promise<string> {
+    const created = await asMerchant(token, '/integrations', {
+      method: 'POST',
+      body: JSON.stringify({ vendorName: `Orders POS ${randomUUID().slice(0, 6)}` }),
+    });
+    const id = ((await created.json()) as Record<string, unknown>)['integrationId'] as string;
+    integrationIds.push(id);
+    // Issued the supported-today way: the generated key authenticates nothing,
+    // which 8A pins at E2E-008 and owns.
+    await asMerchant(token, `/integrations/${id}/credentials`, {
+      method: 'POST',
+      body: JSON.stringify({ credentialType: 'INCOMING_API_KEY', secret, scopes }),
+    });
+    return id;
+  }
+
+  async function makeProduct(merchantProfileId: string): Promise<string> {
+    const product = await prisma.product.create({
+      data: {
+        merchantId: merchantProfileId,
+        name: `Jollof Rice ${randomUUID().slice(0, 6)}`,
+        slug: `jollof-8c-${randomUUID().slice(0, 8)}`,
+        basePrice: unitPrice,
+        status: ProductStatus.PUBLISHED,
+        publishedAt: new Date(),
+        inventory: { create: { quantity: 500 } },
+      },
+    });
+    productIds.push(product.id);
+    return product.id;
+  }
+
+  /** One real order, built the way a customer builds one. */
+  async function makeOrder(
+    merchantProfileId: string,
+    productId: string,
+    provider: OrderPaymentMethodDtoEnum,
+  ): Promise<string> {
+    await carts.addItem(
+      customerId,
+      {
+        merchantId: merchantProfileId,
+        productId,
+        productName: 'Jollof Rice',
+        unitPrice,
+        quantity: 2,
+      },
+      ctx,
+    );
+    const result = await checkout.checkout(customerId, { deliveryAddressId: addressId }, ctx);
+    const orderId = result.order.id;
+
+    if (provider === OrderPaymentMethodDtoEnum.WALLET) {
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+      await wallets.credit({
+        ownerType: WalletOwnerType.CUSTOMER,
+        ownerId: customerId,
+        amount: Number(order.total) + 1_000,
+        referenceType: 'pos_8c_test_topup',
+        referenceId: randomUUID(),
+        description: '8C funding',
+      });
+    }
+
+    await payments.initializePayment(customerId, orderId, { provider }, ctx);
+    const confirmed = await prisma.order.findUniqueOrThrow({ where: { id: orderId } });
+    if (confirmed.status !== OrderStatus.CONFIRMED) {
+      throw new Error(`Fixture order did not reach CONFIRMED: ${confirmed.status}`);
+    }
+    return confirmed.orderNumber;
+  }
+
+  beforeAll(async () => {
+    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    await prisma.$connect();
+
+    const { AppModule } = await import('../app.module');
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication({ bufferLogs: true });
+    const config = app.get(AppConfigService);
+    app.setGlobalPrefix(config.apiGlobalPrefix);
+    await app.listen(0);
+    baseUrl = `${(await app.getUrl()).replace('[::1]', '127.0.0.1')}/${config.apiGlobalPrefix}`;
+
+    carts = moduleRef.get(CartService);
+    checkout = moduleRef.get(CheckoutService);
+    payments = moduleRef.get(PaymentService);
+    wallets = moduleRef.get(WalletService);
+
+    const read = await prisma.permission.upsert({
+      where: { code: 'integrations:read' },
+      update: {},
+      create: { code: 'integrations:read', description: 'POS 8C HTTP proof' },
+    });
+    const write = await prisma.permission.upsert({
+      where: { code: 'integrations:write' },
+      update: {},
+      create: { code: 'integrations:write', description: 'POS 8C HTTP proof' },
+    });
+    await prisma.role.upsert({
+      where: { name: 'merchant' },
+      update: {},
+      create: { name: 'merchant', description: 'Merchant (POS 8C HTTP proof)' },
+    });
+    const grantRole = await prisma.role.create({
+      data: { name: roleName, description: 'POS 8C HTTP proof' },
+    });
+    roleId = grantRole.id;
+    await prisma.rolePermission.createMany({
+      data: [
+        { roleId: grantRole.id, permissionId: read.id },
+        { roleId: grantRole.id, permissionId: write.id },
+      ],
+    });
+
+    const merchantA = await makeMerchant();
+    const merchantB = await makeMerchant();
+    tokenA = merchantA.token;
+    profileA = merchantA.profileId;
+    profileB = merchantB.profileId;
+
+    integrationA = await makeIntegration(tokenA, ['orders:read', 'orders:write'], keyA);
+    integrationC = await makeIntegration(tokenA, ['orders:read'], keyC);
+
+    // The customer. A plain active user; nothing here needs a portal login.
+    const customer = await prisma.user.create({
+      data: {
+        email: `pos-8c-c-${randomUUID()}@example.com`,
+        passwordHash: 'not-a-real-hash',
+        firstName: 'Eight',
+        lastName: 'Cee',
+        phone: `+23480${String(Math.floor(Math.random() * 89999999) + 10000000)}`,
+        status: UserStatus.ACTIVE,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    customerId = customer.id;
+    userIds.push(customer.id);
+
+    const address = await prisma.customerAddress.create({
+      data: {
+        customerId,
+        label: 'HOME',
+        recipientName: 'Eight Cee',
+        phone: '+2348100000000',
+        addressLine1: '1 Test Close',
+        city: 'Kano',
+        state: 'Kano',
+        country: 'Nigeria',
+        latitude: 12.01,
+        longitude: 8.54,
+      },
+    });
+    addressId = address.id;
+
+    const productA = await makeProduct(profileA);
+    const productB = await makeProduct(profileB);
+
+    // externalSku reaches the POS view through ProductSync, so the allow-list
+    // assertion below covers a populated value rather than a null.
+    await prisma.productSync.create({
+      data: {
+        integrationId: integrationA,
+        externalSku,
+        productId: productA,
+        mappingStatus: 'ACTIVE',
+      },
+    });
+
+    walletOrderNumber = await makeOrder(profileA, productA, OrderPaymentMethodDtoEnum.WALLET);
+    // CASH requires a DELIVERY order; checkout defaults to DELIVERY when an
+    // address is supplied, which is what selectCashOnDelivery insists on.
+    cashOrderNumber = await makeOrder(profileA, productA, OrderPaymentMethodDtoEnum.CASH);
+    merchantDirectOrderNumber = await makeOrder(
+      profileA,
+      productA,
+      OrderPaymentMethodDtoEnum.MERCHANT_DIRECT,
+    );
+    foreignOrderNumber = await makeOrder(profileB, productB, OrderPaymentMethodDtoEnum.WALLET);
+  }, 300_000);
+
+  afterAll(async () => {
+    if (databaseUrl === '') return;
+    await prisma.orderStatusUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } });
+    await prisma.integrationConflict.deleteMany({
+      where: { integrationId: { in: integrationIds } },
+    });
+    await prisma.integrationLog.deleteMany({ where: { integrationId: { in: integrationIds } } });
+    await prisma.productSync.deleteMany({ where: { integrationId: { in: integrationIds } } });
+    await prisma.integrationCredential.deleteMany({
+      where: { integrationId: { in: integrationIds } },
+    });
+    await prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } });
+    // CartItem and OrderItem both RESTRICT product deletion, and a cart
+    // survives checkout as CHECKED_OUT with its items intact.
+    await prisma.cartItem.deleteMany({ where: { cart: { customerId } } });
+    await prisma.cart.deleteMany({ where: { customerId } });
+    await prisma.orderItem.deleteMany({ where: { order: { customerId } } });
+    await prisma.order.deleteMany({ where: { customerId } });
+    await prisma.customerAddress.deleteMany({ where: { customerId } });
+    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
+    await prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.rolePermission.deleteMany({ where: { roleId } });
+    await prisma.userRole.deleteMany({ where: { userId: { in: userIds } } });
+    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    await prisma.role.deleteMany({ where: { id: roleId } });
+    await app.close();
+    await prisma.$disconnect();
+  }, 120_000);
+
+  // ── reads ─────────────────────────────────────────────────────────────
+
+  it('E2E-039/042 · a POS lists and reads its merchant’s orders', async () => {
+    const list = await asPos('/integrations/orders/list', integrationA, keyA);
+    expect(list.status).toBe(200);
+
+    const detail = await asPos(
+      `/integrations/orders/detail/${walletOrderNumber}`,
+      integrationA,
+      keyA,
+    );
+    expect(detail.status).toBe(200);
+  });
+
+  it('E2E-045 · the view carries exactly the ruled key set, and nothing else', async () => {
+    const response = await asPos(
+      `/integrations/orders/detail/${walletOrderNumber}`,
+      integrationA,
+      keyA,
+    );
+    const body = (await response.json()) as { data: Record<string, unknown> };
+
+    // Equality, not presence. A field added to Order tomorrow is invisible here
+    // until somebody decides on purpose that a third-party POS may see it.
+    expect(Object.keys(body.data).sort()).toEqual(POS_ORDER_KEYS);
+
+    const items = body.data['items'] as Record<string, unknown>[];
+    expect(items.length).toBeGreaterThan(0);
+    expect(Object.keys(items[0] ?? {}).sort()).toEqual(POS_ITEM_KEYS);
+    expect(items[0]?.['externalSku']).toBe(externalSku);
+  });
+
+  it('E2E-046..050 · no customer, address, payment detail, delivery fee or notes crosses the wire', async () => {
+    const detail = await asPos(
+      `/integrations/orders/detail/${walletOrderNumber}`,
+      integrationA,
+      keyA,
+    );
+    const detailText = await detail.text();
+    const list = await asPos('/integrations/orders/list', integrationA, keyA);
+    const listText = await list.text();
+
+    for (const text of [detailText, listText]) {
+      for (const forbidden of [
+        'customerId',
+        'deliveryAddress',
+        'addressLine1',
+        'paymentMethod',
+        'deliveryFee',
+        'notes',
+        'driver',
+        'rideId',
+        customerId,
+      ]) {
+        expect(text).not.toContain(forbidden);
+      }
+    }
+
+    // paymentStatus is an order-level state and nothing more.
+    const body = JSON.parse(detailText) as { data: Record<string, unknown> };
+    expect(Object.values(PaymentStatus)).toContain(body.data['paymentStatus']);
+  });
+
+  it('E2E-043/044 · unknown and foreign orders are both 404', async () => {
+    const unknown = await asPos(
+      `/integrations/orders/detail/DPX-NOPE-${randomUUID().slice(0, 6)}`,
+      integrationA,
+      keyA,
+    );
+    expect(unknown.status).toBe(404);
+
+    // Another merchant's real order. Identical answer, so one integration key
+    // cannot enumerate which order numbers exist across the platform.
+    const foreign = await asPos(
+      `/integrations/orders/detail/${foreignOrderNumber}`,
+      integrationA,
+      keyA,
+    );
+    expect(foreign.status).toBe(404);
+  });
+
+  // ── transitions ───────────────────────────────────────────────────────
+
+  it('E2E-051/052 · CONFIRMED → PREPARING → READY on a paid order', async () => {
+    const preparing = await push(walletOrderNumber, OrderStatus.PREPARING);
+    expect(preparing.status).toBe(200);
+
+    const ready = await push(walletOrderNumber, OrderStatus.READY);
+    expect(ready.status).toBe(200);
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: walletOrderNumber },
+    });
+    expect(order.status).toBe(OrderStatus.READY);
+    expect(order.paymentStatus).toBe(PaymentStatus.PAID);
+  });
+
+  /**
+   * R3, and the reason this slice exists.
+   *
+   * CRIT-002 as written demands payment_confirmed before a fulfilment
+   * transition. DrippleX confirms CASH and MERCHANT_DIRECT orders with
+   * paymentStatus PENDING on purpose — that is what cash-on-delivery and
+   * pay-the-merchant-directly ARE — so implementing CRIT-002 literally would
+   * break both. These two assertions are what make that concrete.
+   */
+  it('E2E-058 · a CASH order fulfils while payment is still PENDING', async () => {
+    const before = await prisma.order.findFirstOrThrow({ where: { orderNumber: cashOrderNumber } });
+    expect(before.status).toBe(OrderStatus.CONFIRMED);
+    expect(before.paymentStatus).toBe(PaymentStatus.PENDING);
+
+    expect((await push(cashOrderNumber, OrderStatus.PREPARING)).status).toBe(200);
+    expect((await push(cashOrderNumber, OrderStatus.READY)).status).toBe(200);
+
+    const after = await prisma.order.findFirstOrThrow({ where: { orderNumber: cashOrderNumber } });
+    expect(after.status).toBe(OrderStatus.READY);
+    // Still unpaid. Fulfilment did not invent a payment.
+    expect(after.paymentStatus).toBe(PaymentStatus.PENDING);
+  });
+
+  it('E2E-059 · a MERCHANT_DIRECT order fulfils while payment is still PENDING', async () => {
+    const before = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: merchantDirectOrderNumber },
+    });
+    expect(before.status).toBe(OrderStatus.CONFIRMED);
+    expect(before.paymentStatus).toBe(PaymentStatus.PENDING);
+
+    expect((await push(merchantDirectOrderNumber, OrderStatus.PREPARING)).status).toBe(200);
+
+    const after = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: merchantDirectOrderNumber },
+    });
+    expect(after.status).toBe(OrderStatus.PREPARING);
+    expect(after.paymentStatus).toBe(PaymentStatus.PENDING);
+  });
+
+  // ── the boundary ──────────────────────────────────────────────────────
+
+  it('E2E-055 · a POS cannot cancel an order', async () => {
+    // CANCELLED refunds the customer's wallet inside MerchantOrdersService, so
+    // a POS being able to request it would be a POS being able to move money.
+    const response = await push(merchantDirectOrderNumber, OrderStatus.CANCELLED);
+    expect(response.status).toBe(400);
+
+    const order = await prisma.order.findFirstOrThrow({
+      where: { orderNumber: merchantDirectOrderNumber },
+    });
+    expect(order.status).not.toBe(OrderStatus.CANCELLED);
+  });
+
+  it('E2E-056 · a POS cannot create a DrippleX order', async () => {
+    // R1: DrippleX is the order system of record. No route, and the 404 here is
+    // the wire-level proof of that ruling.
+    const response = await asPos('/integrations/orders/create', integrationA, keyA, {
+      method: 'POST',
+      body: JSON.stringify({ items: [] }),
+    });
+    expect(response.status).toBe(404);
+  });
+
+  it('E2E-041 · an invalid credential cannot read orders', async () => {
+    const response = await asPos('/integrations/orders/list', integrationA, 'wrong-secret');
+    expect(response.status).toBe(401);
+  });
+
+  it.failing(
+    'E2E-040 · a read-only credential is refused a transition as 403, not 401 [PENDING B6]',
+    async () => {
+      // integrationC holds orders:read and not orders:write.
+      const response = await push(walletOrderNumber, OrderStatus.PREPARING, integrationC, keyC);
+      expect(response.status).toBe(403);
+    },
+  );
+});
