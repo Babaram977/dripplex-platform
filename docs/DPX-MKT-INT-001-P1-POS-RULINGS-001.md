@@ -112,29 +112,30 @@ arriving from the other direction.
 
 ## 5 · What is still open
 
-| Item                      | Nature                            | Blocked on                                                                                                                                     |
-| ------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **R6**                    | ✅ Closed                         | — Implemented, merged `681f74db`, deployed `c6a668c5` on 2026-09-14.                                                                           |
-| **R7**                    | ✅ Ruled · implementation pending | Engineering work only: the ruling sets 500/60 s, the code still enforces **100**. Threshold and keying are settled and should not be reopened. |
-| **P4**                    | Decision taken, input missing     | The production inventory in §4. **Five output values** — see §4. Requires an authorized operator; unreachable from an engineering session.     |
-| **P3 vs merchant policy** | ⚠️ **Rulings in conflict**        | A founder decision on which supersedes — see §6. Implemented code currently follows **P3**.                                                    |
+| Item                | Nature                            | Blocked on                                                                                                                                     |
+| ------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **R6**              | ✅ Closed                         | — Implemented, merged `681f74db`, deployed `c6a668c5` on 2026-09-14.                                                                           |
+| **R7**              | ✅ Ruled · implementation pending | Engineering work only: the ruling sets 500/60 s, the code still enforces **100**. Threshold and keying are settled and should not be reopened. |
+| **P4**              | Decision taken, input missing     | The production inventory in §4. **Five output values** — see §4. Requires an authorized operator; unreachable from an engineering session.     |
+| **P3 → superseded** | ✅ **Ruled 2026-09-14**           | Superseded by the 99-year lifetime — see §6. Implemented in PR #406. **Existing credentials remain an open decision.**                         |
 
 ---
 
-## 6 · P3 conflicts with the merchant credential-lifetime policy stated on 2026-09-14
+## 6 · P3 superseded — the 99-year credential lifetime
 
-A business policy was stated on 2026-09-14 that **contradicts P3 directly**, and it is recorded
-here rather than acted on, because P3 is a founder ruling and only a founder ruling supersedes it.
+**Ruled 2026-09-14: P3 is superseded by a 99-year credential lifetime.** The conflict and its
+resolution are both kept here, because the reasoning is what makes `c4_no_expiry` readable.
 
-|                                       | Position                                                                                                                                                                                                                     |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P3 (ruled, implemented, deployed)** | Platform-generated integration credentials carry a **90-day expiry**, enforced.                                                                                                                                              |
-| **Policy stated 2026-09-14**          | Each merchant holds its own integration credential. It **remains valid without automatic expiry** while the merchant relationship/contract stands, and ceases to be valid when that relationship is legitimately terminated. |
+|                                       | Position                                                                                                                                                                                                                                                                             |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **P3 (ruled, implemented, deployed)** | Platform-generated integration credentials carry a **90-day expiry**, enforced.                                                                                                                                                                                                      |
+| **Ruling 2026-09-14 — supersedes P3** | Credentials are issued with a **99-year validity period**. They remain active unless explicitly revoked or rotated, or the merchant relationship/contract is terminated. **Long-lived, deliberately — not unbounded:** every issued credential still carries a concrete `expiresAt`. |
 
-These cannot both govern. **No code, test or policy has been changed.** The implemented behaviour
-still follows P3.
+**99 years is an expiry; `NULL` is not.** That was chosen deliberately and is load-bearing — see
+the c4 reading below. Implemented in PR #406; **existing credentials remain a separate open
+decision.**
 
-### Where the 90-day rule is actually encoded
+### Where the 90-day rule was encoded (all changed by PR #406 unless noted)
 
 This is not a documentation-only conflict. It is in shipped, deployed code:
 
@@ -173,5 +174,23 @@ the new policy it counts the intended steady state. **The same number means oppo
 depending on which ruling governs** — which is precisely why the conflict must be resolved
 _before_ the inventory is interpreted, not after.
 
-**Until a founder ruling supersedes P3, `c4_no_expiry` must not be read as either a defect or a
-clean result.**
+### How c4 reads under the 99-year ruling
+
+Because issuance still stamps a concrete expiry, **`c4_no_expiry` keeps its meaning**: a row with
+`expiresAt = NULL` was not issued under policy — it came through the legacy `createCredential`
+path, which defaults the field to `null`. So `c4` counts **policy bypass**, both before and after
+the ruling.
+
+Had the ruling been "no expiry at all", `c4` would have become uninterpretable: the intended
+state and the bypassed state would count identically. It stays readable precisely because
+99 years was chosen over `NULL`.
+
+### Still open: existing credentials
+
+The ruling governs **issuance**. It says nothing about credentials already issued, which keep
+their original 90-day expiry. Whether those are left to lapse, extended, or handled
+conditionally is a **separate decision**, and extending them would be a production write against
+live credentials. PR #406 deliberately changes no existing row.
+
+CRIT-005 (`DPX-MKT-INT-001-RISK-MITIGATION-REGISTER.md:343`, `:843`) still states a 90-day
+rotation control. It needs **restating rather than silently contradicting** — not yet done.
