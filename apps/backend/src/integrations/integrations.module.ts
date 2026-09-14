@@ -17,6 +17,7 @@ import { CatalogueIngestionService } from './services/catalogue-ingestion.servic
 import { CategoryMappingService } from './services/category-mapping.service';
 import { CredentialsService } from './services/credentials.service';
 import { EncryptionService } from './services/encryption.service';
+import { ImportedProductsService } from './services/imported-products.service';
 import { IntegrationConflictsService } from './services/integration-conflicts.service';
 import { IntegrationsService } from './services/integrations.service';
 import { InventoryIngestionService } from './services/inventory-ingestion.service';
@@ -48,6 +49,7 @@ import { SsrfProtectionService } from './services/ssrf-protection.service';
     SsrfProtectionService,
     CatalogueIngestionService,
     IntegrationConflictsService,
+    ImportedProductsService,
     CategoryMappingService,
     InventoryIngestionService,
     OrderStatusIngestionService,

@@ -30,9 +30,11 @@ import {
 } from '../guards/integration-credential.guard';
 import { CatalogueIngestionService } from '../services/catalogue-ingestion.service';
 import { CategoryMappingService } from '../services/category-mapping.service';
+import { ImportedProductsService } from '../services/imported-products.service';
 import { IntegrationsService } from '../services/integrations.service';
 
 import type { CatalogueSyncJobSummary } from '../services/catalogue-ingestion.service';
+import type { ImportedProductPage } from '../services/imported-products.service';
 
 /**
  * Catalogue synchronisation endpoints.
@@ -56,6 +58,7 @@ export class CatalogueSyncController {
     private readonly ingestion: CatalogueIngestionService,
     private readonly integrationsService: IntegrationsService,
     private readonly categoryMappings: CategoryMappingService,
+    private readonly importedProducts: ImportedProductsService,
   ) {}
 
   /**
@@ -124,6 +127,44 @@ export class CatalogueSyncController {
     // enumerate another's sync history by guessing an integration id.
     await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
     const data = await this.ingestion.listJobs(integrationId);
+    return { success: true, data };
+  }
+
+  /**
+   * The products this integration brought into the merchant's catalogue.
+   *
+   * Merchant Connect's question is narrower than the Products tab's: not "what
+   * do I sell" but "what did *this* integration import, and what still needs
+   * my attention". `GET /merchant/products?status=DRAFT` cannot answer it —
+   * it mixes manually created drafts with every integration's imports.
+   *
+   * Read-only. Publishing stays `POST /merchant/products/:id/publish`.
+   *
+   * Paginated explicitly, and capped at 50. The merchant Products list
+   * defaults to 20 with no way to ask for more from its client, so a POS
+   * catalogue of hundreds of SKUs silently renders as its first 20 — a list
+   * that looks complete and is not. A reviewer selecting products to publish
+   * from a silently truncated catalogue is the failure this avoids.
+   */
+  @Get('products/:integrationId')
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('integrations:read')
+  @ApiOperation({ summary: 'List the products one integration imported' })
+  @ApiResponse({ status: 200, description: 'Imported products, newest first' })
+  @ApiResponse({ status: 403, description: 'Integration belongs to another merchant' })
+  public async listImportedProducts(
+    @MerchantScoped() merchantId: string,
+    @Param('integrationId', ParseUUIDPipe) integrationId: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ): Promise<{ success: true; data: ImportedProductPage }> {
+    // Ownership before any read, so one merchant cannot enumerate another's
+    // catalogue by guessing an integration id.
+    await this.integrationsService.verifyMerchantAccess(merchantId, integrationId);
+    const data = await this.importedProducts.list(integrationId, {
+      ...(page !== undefined ? { page: Number(page) } : {}),
+      ...(pageSize !== undefined ? { pageSize: Number(pageSize) } : {}),
+    });
     return { success: true, data };
   }
 
