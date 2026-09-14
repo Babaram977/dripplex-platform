@@ -55,8 +55,8 @@ suite('POS catalogue and inventory over HTTP (8B)', () => {
   let integrationA = ''; // catalog:write + inventory:write
   let integrationB = ''; // merchant B, for the boundary test
   let integrationC = ''; // catalog:write ONLY — the scope refusals
-  const keyA = 'pos-8b-integration-a-secret';
-  const keyC = 'pos-8b-integration-c-secret';
+  let keyA = '';
+  let keyC = '';
 
   const MAPPED_CATEGORY = 'Fast Food';
   const skuMapped = `SKU-MAPPED-${randomUUID().slice(0, 8)}`;
@@ -152,31 +152,36 @@ suite('POS catalogue and inventory over HTTP (8B)', () => {
     return { token: body.data.accessToken, userId: user.id };
   }
 
+  /**
+   * An integration and the credential DrippleX generates for it.
+   *
+   * The workaround this used to carry — discard the returned apiKey, then issue
+   * a merchant-chosen INCOMING_API_KEY through the legacy route — is gone: the
+   * generated credential now authenticates, which is the whole point of the
+   * correction. Scopes are narrowed on the stored row where a test needs less
+   * than the six defaults, because P5 refuses a second live credential.
+   */
   async function makeIntegration(
     token: string,
     name: string,
-    scopes: string[],
-    secret: string,
-  ): Promise<string> {
+    scopes?: string[],
+  ): Promise<{ id: string; key: string }> {
     const created = await asMerchant(token, '/integrations', {
       method: 'POST',
       body: JSON.stringify({ vendorName: name }),
     });
-    const id = ((await created.json()) as Record<string, unknown>)['integrationId'] as string;
+    const body = (await created.json()) as Record<string, unknown>;
+    const id = body['integrationId'] as string;
+    const key = body['apiKey'] as string;
     integrationIds.push(id);
 
-    // The generated apiKey that response carries is stored as OUTGOING_API_KEY
-    // and authenticates nothing — 8A pins that defect at E2E-008 and owns it.
-    // This file needs a credential that works in order to test catalogue and
-    // inventory at all, so it issues one the supported-today way. When the
-    // credential path is corrected, 8A's marker turns the suite red, and this
-    // helper is the other place to update: drop these six lines and use the
-    // returned key.
-    await asMerchant(token, `/integrations/${id}/credentials`, {
-      method: 'POST',
-      body: JSON.stringify({ credentialType: 'INCOMING_API_KEY', secret, scopes }),
-    });
-    return id;
+    if (scopes) {
+      await prisma.integrationCredential.updateMany({
+        where: { integrationId: id, credentialType: 'INCOMING_API_KEY' },
+        data: { scopes },
+      });
+    }
+    return { id, key };
   }
 
   beforeAll(async () => {
@@ -222,19 +227,13 @@ suite('POS catalogue and inventory over HTTP (8B)', () => {
     tokenA = merchantA.token;
     tokenB = merchantB.token;
 
-    integrationA = await makeIntegration(
-      tokenA,
-      'Acme POS A',
-      ['catalog:write', 'inventory:write'],
-      keyA,
-    );
-    integrationC = await makeIntegration(tokenA, 'Acme POS C', ['catalog:write'], keyC);
-    integrationB = await makeIntegration(
-      tokenB,
-      'Rival POS B',
-      ['catalog:write', 'inventory:write'],
-      'pos-8b-integration-b-secret',
-    );
+    const a = await makeIntegration(tokenA, 'Acme POS A');
+    integrationA = a.id;
+    keyA = a.key;
+    const c = await makeIntegration(tokenA, 'Acme POS C', ['catalog:write']);
+    integrationC = c.id;
+    keyC = c.key;
+    integrationB = (await makeIntegration(tokenB, 'Rival POS B')).id;
 
     // Category.slug is globally unique, so it is generated per run rather than
     // fixed — a fixed slug collides with the previous run's leftovers.
@@ -254,27 +253,71 @@ suite('POS catalogue and inventory over HTTP (8B)', () => {
     }
   }, 180_000);
 
+  /**
+   * Best-effort cleanup: one failing delete must not abandon the rest.
+   *
+   * This is not tidiness. An earlier run of this suite threw partway through
+   * afterAll — a product could not be deleted because a CartItem still
+   * referenced it — and every later delete was skipped, leaving orders,
+   * products and unassigned DeliveryJob rows in the shared test database. A
+   * later full-suite run then showed six failures in rides and delivery
+   * dispatch that had nothing to do with the code under test: dispatch-flow
+   * asserts on "the waiting delivery", singular, and there were four strays.
+   * Diagnosing that cost far more than this guard does.
+   */
+  const tidy = async (what: string, fn: () => Promise<unknown>): Promise<void> => {
+    try {
+      await fn();
+    } catch (error) {
+      console.warn(
+        `cleanup: ${what} failed — ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   afterAll(async () => {
     if (databaseUrl === '') return;
-    await prisma.inventoryUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.productSync.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.integrationConflict.deleteMany({
-      where: { integrationId: { in: integrationIds } },
-    });
-    await prisma.integrationLog.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.catalogSyncJob.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.categoryMapping.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.integrationCredential.deleteMany({
-      where: { integrationId: { in: integrationIds } },
-    });
-    await prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } });
-    await prisma.product.deleteMany({ where: { merchantId: { in: profileIds } } });
-    await prisma.category.deleteMany({ where: { id: categoryId } });
-    await prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.rolePermission.deleteMany({ where: { roleId } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await prisma.role.deleteMany({ where: { id: roleId } });
+    await tidy('inventoryUpdate', () =>
+      prisma.inventoryUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('productSync', () =>
+      prisma.productSync.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('integrationConflict', () =>
+      prisma.integrationConflict.deleteMany({
+        where: { integrationId: { in: integrationIds } },
+      }),
+    );
+    await tidy('integrationLog', () =>
+      prisma.integrationLog.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('catalogSyncJob', () =>
+      prisma.catalogSyncJob.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('categoryMapping', () =>
+      prisma.categoryMapping.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('integrationCredential', () =>
+      prisma.integrationCredential.deleteMany({
+        where: { integrationId: { in: integrationIds } },
+      }),
+    );
+    await tidy('merchantIntegration', () =>
+      prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } }),
+    );
+    await tidy('product', () =>
+      prisma.product.deleteMany({ where: { merchantId: { in: profileIds } } }),
+    );
+    await tidy('category', () => prisma.category.deleteMany({ where: { id: categoryId } }));
+    await tidy('merchantProfile', () =>
+      prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } }),
+    );
+    await tidy('rolePermission', () => prisma.rolePermission.deleteMany({ where: { roleId } }));
+    await tidy('userRole', () =>
+      prisma.userRole.deleteMany({ where: { userId: { in: userIds } } }),
+    );
+    await tidy('user', () => prisma.user.deleteMany({ where: { id: { in: userIds } } }));
+    await tidy('role', () => prisma.role.deleteMany({ where: { id: roleId } }));
     await app.close();
     await prisma.$disconnect();
   }, 60_000);

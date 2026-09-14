@@ -29,13 +29,16 @@ function check(label, ok, detail = '') {
   console.log(`  ${ok ? '✅' : '❌'} ${label}${detail ? ` — ${detail}` : ''}`);
 }
 
-async function call(method, path, { body, jwt, integration } = {}) {
+async function call(method, path, { body, jwt, integration, idempotencyKey } = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (jwt) headers.Authorization = `Bearer ${JWT}`;
   if (integration) {
     headers['x-integration-id'] = integration.id;
     headers['x-integration-key'] = integration.key;
   }
+  // Inventory and order pushes carry the key in a header; the catalogue push
+  // carries it in the body. Two conventions, both as their tickets specify.
+  if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   const res = await fetch(`${API}${path}`, {
     method,
     headers,
@@ -95,19 +98,45 @@ const run = async () => {
   }
 
   // 2 ─────────────────────────────────────────────────────────────────────────
-  head('Issue an incoming API key scoped catalog:write');
-  const SECRET = `acme-pos-live-key-${Date.now()}`;
-  const cred = await call('POST', `/integrations/${integrationId}/credentials`, {
-    jwt: true,
-    body: { credentialType: 'INCOMING_API_KEY', secret: SECRET, scopes: ['catalog:write'] },
-  });
-  check('credential created', cred.status === 201 || cred.status === 200, `HTTP ${cred.status}`);
+  head('Use the credential DrippleX generated');
+  // No workaround here any more. This used to discard the returned apiKey and
+  // issue a merchant-chosen INCOMING_API_KEY through POST /{id}/credentials,
+  // because the generated one was stored as OUTGOING_API_KEY and authenticated
+  // nothing. Routing around that defect is why nobody noticed it for so long.
+  // A reference client has to use the lifecycle a real merchant uses.
+  const apiKey = created.body?.apiKey ?? created.body?.data?.apiKey;
+  check('generated apiKey returned once', Boolean(apiKey), apiKey ? 'present' : 'absent');
   check(
-    'secret is not echoed back',
-    !JSON.stringify(cred.body ?? {}).includes(SECRET),
-    `publicSuffix=${cred.body?.data?.publicSuffix ?? cred.body?.publicSuffix ?? '?'}`,
+    'apiKey is 256 bits in the approved format',
+    /^dpx_integration_[0-9a-f]{64}$/.test(apiKey ?? ''),
+    (apiKey ?? '').slice(0, 24) + '…',
   );
-  const auth = { id: integrationId, key: SECRET };
+  if (!apiKey) {
+    console.error('cannot continue without the generated credential');
+    process.exit(1);
+  }
+  const auth = { id: integrationId, key: apiKey };
+
+  const listed = await call('GET', `/integrations/${integrationId}/credentials`, { jwt: true });
+  check(
+    'the secret is never returned again',
+    !JSON.stringify(listed.body ?? {}).includes(apiKey),
+    `publicSuffix=${listed.body?.data?.[0]?.publicSuffix ?? '?'}`,
+  );
+
+  const replaced = await call('POST', `/integrations/${integrationId}/credentials`, {
+    jwt: true,
+    body: {
+      credentialType: 'INCOMING_API_KEY',
+      secret: `would-replace-${Date.now()}`,
+      scopes: ['catalog:write'],
+    },
+  });
+  check(
+    'a live credential is not silently replaced',
+    replaced.status === 409,
+    `HTTP ${replaced.status}`,
+  );
 
   // 3 ─────────────────────────────────────────────────────────────────────────
   head('Authentication is actually enforced');
@@ -311,6 +340,53 @@ const run = async () => {
       `   ${j.jobStatus ?? j.status}  items=${j.itemsProcessed ?? j.processed ?? '?'}  key=${j.idempotencyKey ?? '?'}`,
     );
   }
+
+  // 10 ────────────────────────────────────────────────────────────────────────
+  head('The order half of the journey');
+  // Previously absent entirely: the reference client exercised catalogue and
+  // inventory and never touched orders, which is the newest code and the only
+  // part that moves an order's state.
+  const orders = await call('GET', '/integrations/orders/list', { integration: auth });
+  check('POS can list its merchant orders', orders.status === 200, `HTTP ${orders.status}`);
+
+  const first = orders.body?.data?.items?.[0];
+  if (!first) {
+    console.log('   no orders for this merchant yet — fulfilment steps skipped');
+  } else {
+    const detail = await call(`GET`, `/integrations/orders/detail/${first.orderNumber}`, {
+      integration: auth,
+    });
+    check('POS can read one order', detail.status === 200, `HTTP ${detail.status}`);
+    check(
+      'no customer identity on the wire',
+      !/customerId|deliveryAddress|paymentMethod|deliveryFee/.test(
+        JSON.stringify(detail.body ?? {}),
+      ),
+      'allow-list honoured',
+    );
+
+    const prep = await call('PUT', `/integrations/orders/status/${first.orderNumber}`, {
+      integration: auth,
+      idempotencyKey: `sim-${Date.now()}`,
+      body: {
+        externalOrderId: `POS-${Date.now()}`,
+        status: 'PREPARING',
+        sourceTimestamp: new Date().toISOString(),
+      },
+    });
+    check('accept transitions the order', [200, 409].includes(prep.status), `HTTP ${prep.status}`);
+  }
+
+  const cancel = await call('PUT', `/integrations/orders/status/DPX-DOES-NOT-EXIST`, {
+    integration: auth,
+    idempotencyKey: `sim-cancel-${Date.now()}`,
+    body: {
+      externalOrderId: `POS-${Date.now()}`,
+      status: 'CANCELLED',
+      sourceTimestamp: new Date().toISOString(),
+    },
+  });
+  check('a POS may never cancel', cancel.status === 400, `HTTP ${cancel.status}`);
 
   hr();
   console.log(`RESULT  ${pass.length} passed, ${fail.length} failed`);

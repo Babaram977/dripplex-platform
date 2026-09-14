@@ -1,4 +1,4 @@
-import { randomUUID, createHash } from 'crypto';
+import { randomBytes } from 'crypto';
 
 /* eslint-disable @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument */
 
@@ -40,7 +40,7 @@ import {
   ListIntegrationsResponseCDto,
   TestIntegrationResponseCDto,
 } from '../dtos';
-import { CredentialsService } from '../services/credentials.service';
+import { CredentialsService, credentialExpiry } from '../services/credentials.service';
 import { IntegrationsService } from '../services/integrations.service';
 
 /**
@@ -141,20 +141,29 @@ export class IntegrationsCController {
       'orders:write',
     ];
 
-    // Generate plaintext key per C-PLAN line 844: dpx_integration_{uuid}_{base64hash}
-    const keyUuid = randomUUID();
-    const keyHash = createHash('sha256')
-      .update(`${integration.id}${keyUuid}${String(Date.now())}`)
-      .digest('base64')
-      .substring(0, 12); // truncate for readability
-    const plaintextKey = `dpx_integration_${keyUuid}_${keyHash}`;
+    // 256 bits from the CSPRNG, which is what every other security-bearing
+    // secret in this platform uses — the password reset token, the Google OAuth
+    // code and state, the email verification nonce. The previous construction
+    // was `dpx_integration_<uuid>_<12 chars of sha256(integrationId + uuid +
+    // Date.now())>`: the suffix looked like twelve more characters of secret
+    // and added no entropy at all, being a deterministic function of the
+    // integration id (returned to the caller), the uuid (already in the key)
+    // and the clock. The real strength was the uuid's ~122 bits.
+    const plaintextKey = `dpx_integration_${randomBytes(32).toString('hex')}`;
 
-    // Call B.1 CredentialsService to create hashed/encrypted credential
+    // INCOMING_API_KEY, and that is the whole defect this corrects. The key was
+    // stored as OUTGOING_API_KEY while incoming POS authentication reads
+    // INCOMING_API_KEY only — and the two storage formats differ as well, bcrypt
+    // against AES-256-GCM, so bcrypt.compare threw against ciphertext and was
+    // caught as a plain refusal. The credential DrippleX handed a merchant
+    // authenticated nothing, underneath a fully green suite. Incoming also means
+    // one-way: this key is returned once below and only its hash is kept.
     const credential = await this.credentialsService.createCredential(merchantId, {
       integrationId: integration.id,
-      credentialType: 'OUTGOING_API_KEY',
+      credentialType: 'INCOMING_API_KEY',
       secret: plaintextKey,
       scopes: defaultScopes,
+      expiresAt: credentialExpiry(),
     });
 
     // Build response with plaintext key (returned once only)

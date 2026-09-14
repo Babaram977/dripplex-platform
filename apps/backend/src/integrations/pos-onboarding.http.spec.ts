@@ -149,17 +149,43 @@ suite('POS onboarding over HTTP (8A)', () => {
     merchantToken = body.data.accessToken;
   }, 180_000);
 
+  /**
+   * Best-effort cleanup: one failing delete must not abandon the rest.
+   *
+   * This is not tidiness. An earlier run of this suite threw partway through
+   * afterAll — a product could not be deleted because a CartItem still
+   * referenced it — and every later delete was skipped, leaving orders,
+   * products and unassigned DeliveryJob rows in the shared test database. A
+   * later full-suite run then showed six failures in rides and delivery
+   * dispatch that had nothing to do with the code under test: dispatch-flow
+   * asserts on "the waiting delivery", singular, and there were four strays.
+   * Diagnosing that cost far more than this guard does.
+   */
+  const tidy = async (what: string, fn: () => Promise<unknown>): Promise<void> => {
+    try {
+      await fn();
+    } catch (error) {
+      console.warn(
+        `cleanup: ${what} failed — ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   afterAll(async () => {
     if (databaseUrl === '') return;
-    await prisma.integrationCredential.deleteMany({
-      where: { integrationId: { in: integrationIds } },
-    });
-    await prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } });
-    await prisma.merchantProfile.deleteMany({ where: { userId } });
-    await prisma.rolePermission.deleteMany({ where: { roleId } });
-    await prisma.userRole.deleteMany({ where: { userId } });
-    await prisma.user.deleteMany({ where: { id: userId } });
-    await prisma.role.deleteMany({ where: { id: roleId } });
+    await tidy('integrationCredential', () =>
+      prisma.integrationCredential.deleteMany({
+        where: { integrationId: { in: integrationIds } },
+      }),
+    );
+    await tidy('merchantIntegration', () =>
+      prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } }),
+    );
+    await tidy('merchantProfile', () => prisma.merchantProfile.deleteMany({ where: { userId } }));
+    await tidy('rolePermission', () => prisma.rolePermission.deleteMany({ where: { roleId } }));
+    await tidy('userRole', () => prisma.userRole.deleteMany({ where: { userId } }));
+    await tidy('user', () => prisma.user.deleteMany({ where: { id: userId } }));
+    await tidy('role', () => prisma.role.deleteMany({ where: { id: roleId } }));
     await app.close();
     await prisma.$disconnect();
   }, 60_000);
@@ -224,37 +250,32 @@ suite('POS onboarding over HTTP (8A)', () => {
   // ── The defect ────────────────────────────────────────────────────────
 
   /**
-   * THE regression test for this workstream, and it fails today.
+   * THE regression test for this workstream. It was `it.failing` while the
+   * generated credential was stored as OUTGOING_API_KEY and verified as
+   * INCOMING_API_KEY, and Jest turned the suite red the moment that was
+   * corrected — which is what forced this flip rather than leaving a stale
+   * marker behind.
    *
-   * `it.failing` passes while the defect stands and FAILS the day it is fixed,
-   * which forces this to be flipped to `it()` as part of the correction rather
-   * than left behind as a stale skip. CI stays green and still tells the truth.
-   *
-   * Do not "fix" this by issuing a credential through
+   * Do not satisfy this by issuing a credential through
    * `POST /integrations/:id/credentials`. That route takes a merchant-chosen
-   * secret and writes INCOMING_API_KEY, so it would pass — and would assert
-   * that a workaround works, which nobody needed proving.
+   * secret; this asserts the key DrippleX itself hands a merchant.
    */
-  it.failing(
-    'E2E-008 · the generated integration credential must authenticate [KNOWN DEFECT: stored as OUTGOING_API_KEY, verified as INCOMING_API_KEY]',
-    async () => {
-      const response = await asPos(
-        '/integrations/orders/list',
-        generatedIntegrationId,
-        generatedApiKey,
-      );
-      expect(response.status).toBe(200);
-    },
-  );
-
-  it('E2E-008b · and the failure is authentication, not a missing route', async () => {
-    // Pins the defect precisely. A 404 would mean something else broke; this
-    // asserts the observed failure mode so the eventual fix is provably the
-    // fix for THIS, and so the marker above cannot pass for the wrong reason.
+  it('E2E-008 · the generated integration credential authenticates', async () => {
     const response = await asPos(
       '/integrations/orders/list',
       generatedIntegrationId,
       generatedApiKey,
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it('E2E-008b · and it is the key that authenticates, not the route being open', async () => {
+    // The pair matters: E2E-008 alone would pass if the guard were removed.
+    // Same route, same integration, wrong secret — still refused.
+    const response = await asPos(
+      '/integrations/orders/list',
+      generatedIntegrationId,
+      `dpx_integration_${'0'.repeat(64)}`,
     );
     expect(response.status).toBe(401);
   });
@@ -277,11 +298,16 @@ suite('POS onboarding over HTTP (8A)', () => {
 
   // ── B · the compatibility guarantee ───────────────────────────────────
 
-  it('E2E-017 · an existing merchant-chosen INCOMING_API_KEY still authenticates', async () => {
-    // Its own integration, so it cannot contaminate E2E-008 above. This is the
-    // legacy route on purpose: it is the population R5.3 promises to preserve,
-    // and this assertion is what makes that promise falsifiable when the
-    // credential model changes.
+  it('E2E-017 · a pre-existing merchant-chosen credential still authenticates', async () => {
+    // The continuity-sensitive population: rows created before the credential
+    // path was corrected — a merchant-chosen secret, bcrypt, no expiry, narrow
+    // scopes. Written directly, because that shape can no longer be produced
+    // through the API: every integration is now issued a generated credential
+    // at creation, and P5 refuses a second live one.
+    //
+    // verifyIncomingCredential ends at bcrypt.compare and inspects no length,
+    // format or prefix, so this keeps working — and this assertion is what
+    // makes that promise falsifiable rather than merely stated.
     const created = await asMerchant('/integrations', {
       method: 'POST',
       body: JSON.stringify({ vendorName: 'Legacy POS' }),
@@ -292,18 +318,69 @@ suite('POS onboarding over HTTP (8A)', () => {
     integrationIds.push(integrationId);
 
     const legacySecret = 'legacy-merchant-chosen-secret';
-    const issued = await asMerchant(`/integrations/${integrationId}/credentials`, {
-      method: 'POST',
-      body: JSON.stringify({
-        credentialType: 'INCOMING_API_KEY',
-        secret: legacySecret,
+    await prisma.integrationCredential.updateMany({
+      where: { integrationId, credentialType: 'INCOMING_API_KEY' },
+      data: {
+        credentialHash: await bcrypt.hash(legacySecret, 10),
         scopes: ['orders:read'],
-      }),
+        expiresAt: null,
+      },
     });
-    expect([200, 201]).toContain(issued.status);
 
     const response = await asPos('/integrations/orders/list', integrationId, legacySecret);
     expect(response.status).toBe(200);
+  });
+
+  it('E2E-004 · the generated key is 256 bits in the approved format', () => {
+    // randomBytes(32) hex, no decorative suffix. The previous construction
+    // appended twelve characters derived from the integration id, the uuid and
+    // the clock — zero entropy, dressed as secret.
+    expect(generatedApiKey).toMatch(/^dpx_integration_[0-9a-f]{64}$/);
+  });
+
+  it('E2E-007 · the credential is stored one-way and never decrypted for display', async () => {
+    const response = await asMerchant(`/integrations/${generatedIntegrationId}/credentials`);
+    const body = (await response.json()) as { data?: { publicSuffix?: string }[] };
+
+    expect(response.status).toBe(200);
+    // Masked without decryption. Listing decrypts OUTGOING credentials to
+    // compute a display suffix; an incoming credential is a bcrypt hash, so
+    // there is nothing to decrypt and nothing to reveal.
+    expect(body.data?.[0]?.publicSuffix).toBe('****');
+  });
+
+  it('E2E-004b · a generated credential carries a 90-day expiry', async () => {
+    const credential = await prisma.integrationCredential.findFirstOrThrow({
+      where: { integrationId: generatedIntegrationId, credentialType: 'INCOMING_API_KEY' },
+    });
+    const expiresAt = credential.expiresAt;
+    if (expiresAt === null) throw new Error('generated credential carries no expiry');
+    const days = (expiresAt.getTime() - Date.now()) / 86_400_000;
+    expect(days).toBeGreaterThan(89);
+    expect(days).toBeLessThan(91);
+  });
+
+  it('P5 · a live credential is never silently replaced', async () => {
+    // Creating a second credential of the same type used to overwrite the
+    // secret in place, so a POS stopped working mid-shift with nothing to say
+    // why. Rotation is the explicit route and archives first, so it still works.
+    const response = await asMerchant(`/integrations/${generatedIntegrationId}/credentials`, {
+      method: 'POST',
+      body: JSON.stringify({
+        credentialType: 'INCOMING_API_KEY',
+        secret: 'a-replacement-secret-value',
+        scopes: ['orders:read'],
+      }),
+    });
+    expect(response.status).toBe(409);
+
+    // And the original key still works, which is the point.
+    const stillWorks = await asPos(
+      '/integrations/orders/list',
+      generatedIntegrationId,
+      generatedApiKey,
+    );
+    expect(stillWorks.status).toBe(200);
   });
 
   it.failing(
@@ -321,14 +398,12 @@ suite('POS onboarding over HTTP (8A)', () => {
       ] as string;
       integrationIds.push(integrationId);
 
+      // Narrowed on the generated credential rather than issued separately:
+      // P5 now refuses a second live credential of the same type.
       const secret = 'scope-probe-secret-value';
-      await asMerchant(`/integrations/${integrationId}/credentials`, {
-        method: 'POST',
-        body: JSON.stringify({
-          credentialType: 'INCOMING_API_KEY',
-          secret,
-          scopes: ['orders:read'],
-        }),
+      await prisma.integrationCredential.updateMany({
+        where: { integrationId, credentialType: 'INCOMING_API_KEY' },
+        data: { credentialHash: await bcrypt.hash(secret, 10), scopes: ['orders:read'] },
       });
 
       const response = await fetch(`${baseUrl}/integrations/inventory/sync`, {

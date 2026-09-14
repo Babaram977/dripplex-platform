@@ -22,17 +22,22 @@ DPX_JWT="<merchant access token>" node tools/pos-simulator/pos-sim.mjs
 
 ## What it exercises
 
-| Step                      | Contract rule                                              |
-| ------------------------- | ---------------------------------------------------------- |
-| Connect integration       | merchant-owned, JWT                                        |
-| Issue `catalog:write` key | secret hashed, never echoed back                           |
-| Refuse absent / wrong key | identical refusal, no id enumeration                       |
-| Push catalogue            | products created `DRAFT` — `autoPublish` off (decision #7) |
-| Replay identical batch    | original job returned, `replayed: true` (decision #3)      |
-| Inventory update          | writes `quantity` only, never `reserved`                   |
-| Mixed batch               | `PARTIAL`; one bad row never fails the batch (decision #8) |
-| Archive at source         | soft archive, never a hard delete                          |
-| Merchant sync history     | jobs visible to the owning merchant                        |
+| Step                         | Contract rule                                                  |
+| ---------------------------- | -------------------------------------------------------------- |
+| Connect integration          | merchant-owned, JWT                                            |
+| Use the generated credential | 256-bit `dpx_integration_<64 hex>`, returned once, hashed      |
+| Never returned again         | listing shows `****`, no decryption                            |
+| No silent replacement        | a second live credential is refused; rotate explicitly         |
+| Refuse absent / wrong key    | identical refusal, no id enumeration                           |
+| Order list / detail          | allow-list honoured, no customer identity on the wire          |
+| Accept an order              | CONFIRMED → PREPARING through the same service the portal uses |
+| Never cancel                 | a POS may not reach a wallet refund                            |
+| Push catalogue               | products created `DRAFT` — `autoPublish` off (decision #7)     |
+| Replay identical batch       | original job returned, `replayed: true` (decision #3)          |
+| Inventory update             | writes `quantity` only, never `reserved`                       |
+| Mixed batch                  | `PARTIAL`; one bad row never fails the batch (decision #8)     |
+| Archive at source            | soft archive, never a hard delete                              |
+| Merchant sync history        | jobs visible to the owning merchant                            |
 
 ## verify-category-mappings.mjs
 

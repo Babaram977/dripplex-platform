@@ -88,8 +88,8 @@ suite('POS order flow over HTTP (8C)', () => {
 
   let integrationA = ''; // orders:read + orders:write
   let integrationC = ''; // orders:read ONLY — the scope refusal
-  const keyA = 'pos-8c-integration-a-secret';
-  const keyC = 'pos-8c-integration-c-secret';
+  let keyA = '';
+  let keyC = '';
 
   const externalSku = `SKU-8C-${randomUUID().slice(0, 8)}`;
   let walletOrderNumber = '';
@@ -189,20 +189,30 @@ suite('POS order flow over HTTP (8C)', () => {
     return { token: body.data.accessToken, profileId: profile.id, userId: user.id };
   }
 
-  async function makeIntegration(token: string, scopes: string[], secret: string): Promise<string> {
+  /** An integration and the credential DrippleX generates for it. */
+  async function makeIntegration(
+    token: string,
+    scopes?: string[],
+  ): Promise<{ id: string; key: string }> {
     const created = await asMerchant(token, '/integrations', {
       method: 'POST',
       body: JSON.stringify({ vendorName: `Orders POS ${randomUUID().slice(0, 6)}` }),
     });
-    const id = ((await created.json()) as Record<string, unknown>)['integrationId'] as string;
+    const body = (await created.json()) as Record<string, unknown>;
+    const id = body['integrationId'] as string;
+    const key = body['apiKey'] as string;
     integrationIds.push(id);
-    // Issued the supported-today way: the generated key authenticates nothing,
-    // which 8A pins at E2E-008 and owns.
-    await asMerchant(token, `/integrations/${id}/credentials`, {
-      method: 'POST',
-      body: JSON.stringify({ credentialType: 'INCOMING_API_KEY', secret, scopes }),
-    });
-    return id;
+
+    // Narrowed on the stored row rather than issued separately: P5 refuses a
+    // second live credential of the same type, and the generated one already
+    // carries the six defaults.
+    if (scopes) {
+      await prisma.integrationCredential.updateMany({
+        where: { integrationId: id, credentialType: 'INCOMING_API_KEY' },
+        data: { scopes },
+      });
+    }
+    return { id, key };
   }
 
   async function makeProduct(merchantProfileId: string): Promise<string> {
@@ -312,8 +322,12 @@ suite('POS order flow over HTTP (8C)', () => {
     merchantUserA = merchantA.userId;
     profileB = merchantB.profileId;
 
-    integrationA = await makeIntegration(tokenA, ['orders:read', 'orders:write'], keyA);
-    integrationC = await makeIntegration(tokenA, ['orders:read'], keyC);
+    const a = await makeIntegration(tokenA);
+    integrationA = a.id;
+    keyA = a.key;
+    const c = await makeIntegration(tokenA, ['orders:read']);
+    integrationC = c.id;
+    keyC = c.key;
 
     // The customer. A plain active user; nothing here needs a portal login.
     const customer = await prisma.user.create({
@@ -400,36 +414,94 @@ suite('POS order flow over HTTP (8C)', () => {
     );
   }, 300_000);
 
+  /**
+   * Best-effort cleanup: one failing delete must not abandon the rest.
+   *
+   * This is not tidiness. An earlier run of this suite threw partway through
+   * afterAll — a product could not be deleted because a CartItem still
+   * referenced it — and every later delete was skipped, leaving orders,
+   * products and unassigned DeliveryJob rows in the shared test database. A
+   * later full-suite run then showed six failures in rides and delivery
+   * dispatch that had nothing to do with the code under test: dispatch-flow
+   * asserts on "the waiting delivery", singular, and there were four strays.
+   * Diagnosing that cost far more than this guard does.
+   */
+  const tidy = async (what: string, fn: () => Promise<unknown>): Promise<void> => {
+    try {
+      await fn();
+    } catch (error) {
+      console.warn(
+        `cleanup: ${what} failed — ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  };
+
   afterAll(async () => {
     if (databaseUrl === '') return;
-    await prisma.orderStatusUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.integrationConflict.deleteMany({
-      where: { integrationId: { in: integrationIds } },
-    });
-    await prisma.integrationLog.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.productSync.deleteMany({ where: { integrationId: { in: integrationIds } } });
-    await prisma.integrationCredential.deleteMany({
-      where: { integrationId: { in: integrationIds } },
-    });
-    await prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } });
+    await tidy('orderStatusUpdate', () =>
+      prisma.orderStatusUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('integrationConflict', () =>
+      prisma.integrationConflict.deleteMany({
+        where: { integrationId: { in: integrationIds } },
+      }),
+    );
+    await tidy('integrationLog', () =>
+      prisma.integrationLog.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    // 8E pushes a catalogue and a stock batch through this fixture, so the
+    // rows those create must go before the mappings and integration they point
+    // at — InventoryUpdate restricts ProductSync, and CatalogSyncJob restricts
+    // the integration.
+    await tidy('inventoryUpdate', () =>
+      prisma.inventoryUpdate.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('catalogSyncJob', () =>
+      prisma.catalogSyncJob.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('productSync', () =>
+      prisma.productSync.deleteMany({ where: { integrationId: { in: integrationIds } } }),
+    );
+    await tidy('integrationCredential', () =>
+      prisma.integrationCredential.deleteMany({
+        where: { integrationId: { in: integrationIds } },
+      }),
+    );
+    await tidy('merchantIntegration', () =>
+      prisma.merchantIntegration.deleteMany({ where: { id: { in: integrationIds } } }),
+    );
     // CartItem and OrderItem both RESTRICT product deletion, and a cart
     // survives checkout as CHECKED_OUT with its items intact.
     // READY dispatches a rider: OrderReadySubscriber creates a DeliveryJob for
     // every DELIVERY order. DeliveryJob.orderId is unique and its children
     // cascade, so one deleteMany here, ahead of the orders it points at.
-    await prisma.deliveryJob.deleteMany({ where: { customerId } });
-    await prisma.cartItem.deleteMany({ where: { cart: { customerId } } });
-    await prisma.cart.deleteMany({ where: { customerId } });
-    await prisma.orderItem.deleteMany({ where: { order: { customerId } } });
-    await prisma.order.deleteMany({ where: { customerId } });
-    await prisma.customerAddress.deleteMany({ where: { customerId } });
-    await prisma.product.deleteMany({ where: { id: { in: productIds } } });
-    await prisma.business.deleteMany({ where: { merchantId: { in: userIds } } });
-    await prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.rolePermission.deleteMany({ where: { roleId } });
-    await prisma.userRole.deleteMany({ where: { userId: { in: userIds } } });
-    await prisma.user.deleteMany({ where: { id: { in: userIds } } });
-    await prisma.role.deleteMany({ where: { id: roleId } });
+    await tidy('deliveryJob', () => prisma.deliveryJob.deleteMany({ where: { customerId } }));
+    await tidy('cartItem', () => prisma.cartItem.deleteMany({ where: { cart: { customerId } } }));
+    await tidy('cart', () => prisma.cart.deleteMany({ where: { customerId } }));
+    await tidy('orderItem', () =>
+      prisma.orderItem.deleteMany({ where: { order: { customerId } } }),
+    );
+    await tidy('order', () => prisma.order.deleteMany({ where: { customerId } }));
+    await tidy('customerAddress', () =>
+      prisma.customerAddress.deleteMany({ where: { customerId } }),
+    );
+    // By merchant, not by tracked id: the 8E catalogue push creates a product
+    // this fixture never recorded.
+    await tidy('product', () =>
+      prisma.product.deleteMany({ where: { merchantId: { in: profileIds } } }),
+    );
+    await tidy('business', () =>
+      prisma.business.deleteMany({ where: { merchantId: { in: userIds } } }),
+    );
+    await tidy('merchantProfile', () =>
+      prisma.merchantProfile.deleteMany({ where: { userId: { in: userIds } } }),
+    );
+    await tidy('rolePermission', () => prisma.rolePermission.deleteMany({ where: { roleId } }));
+    await tidy('userRole', () =>
+      prisma.userRole.deleteMany({ where: { userId: { in: userIds } } }),
+    );
+    await tidy('user', () => prisma.user.deleteMany({ where: { id: { in: userIds } } }));
+    await tidy('role', () => prisma.role.deleteMany({ where: { id: roleId } }));
     await app.close();
     await prisma.$disconnect();
   }, 120_000);
