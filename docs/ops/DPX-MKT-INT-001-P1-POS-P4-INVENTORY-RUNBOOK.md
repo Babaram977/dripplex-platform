@@ -18,6 +18,12 @@ The ruling record (`docs/DPX-MKT-INT-001-P1-POS-RULINGS-001.md` §4) fixes the m
 > production code, no new privileged endpoint, no exposed database credentials, no Operations
 > Console change, no deployment and no migration.
 
+**A wording note, because it is the easiest thing to get wrong.** The ruling says "four
+integers". There are **four inventory questions but five output values** — question 2 is stated
+as a comparison (`INCOMING_API_KEY` _vs_ `OUTGOING_API_KEY`) and so has two answers, not one.
+Report all five. Collapsing them to four, or dropping either side of that comparison, destroys
+the only question P4 asks that is a comparison.
+
 This runbook exists so that the operator's step is a copy-paste rather than a drafting
 exercise, and so the statement has been proven correct against the real schema _before_ it is
 pointed at production.
@@ -41,7 +47,8 @@ to be worked around.
 
 ## 3 · The statement
 
-Run against the production database. It returns a single row of five integers.
+Run against the production database. It returns **a single row of five output values** — four
+inventory questions, five answers. Report every one.
 
 ```sql
 SELECT
@@ -68,11 +75,21 @@ SELECT
        AND expires_at IS NULL)                                 AS c4_no_expiry;
 ```
 
-### Why five integers for four questions
+### Five output values from four inventory questions
 
 Count 2 is stated in the ruling as a comparison — _"active `INCOMING_API_KEY` vs
-`OUTGOING_API_KEY`"_ — so it necessarily yields two numbers. The four questions are otherwise
-answered one-for-one.
+`OUTGOING_API_KEY`"_ — so it necessarily yields **two** numbers. The other three are answered
+one-for-one.
+
+| Inventory question                                      | Output value(s)                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------- |
+| 1 · existing `http://` webhook URLs                     | `c1_http_webhooks`                                                  |
+| 2 · active `INCOMING_API_KEY` **vs** `OUTGOING_API_KEY` | `c2a_active_incoming_api_key` **and** `c2b_active_outgoing_api_key` |
+| 3 · credentials carrying scopes outside R4's six        | `c3_out_of_vocabulary_scopes`                                       |
+| 4 · credentials with no `expiresAt`                     | `c4_no_expiry`                                                      |
+
+Four questions · **five values**. If the returned row has four numbers in it, one has been
+dropped.
 
 ### Interpretations made explicit
 
@@ -122,7 +139,18 @@ discriminate. **It says nothing about production's contents,** which are unknown
 
 ## 5 · Recording the result
 
-Return only the integers. Record alongside them:
+Return only the integers — **all five of them**, labelled with the column names the statement
+assigns, so a missing value is visible rather than ambiguous:
+
+```
+c1_http_webhooks            = ____
+c2a_active_incoming_api_key = ____
+c2b_active_outgoing_api_key = ____
+c3_out_of_vocabulary_scopes = ____
+c4_no_expiry                = ____
+```
+
+Record alongside them:
 
 - the exact timestamp (UTC) and the environment the statement ran against;
 - the statement as actually executed, if it was modified in any way;
