@@ -47,9 +47,23 @@ export interface CredentialResponse {
 /**
  * How long a platform-generated integration credential is valid.
  *
- * 90 days, as CRIT-005's preventive controls already specify ("API keys must
- * rotate every 90 days") — stated there since the risk register was written and
- * never enforced until now.
+ * **99 years — founder ruling, 2026-09-14, superseding P3's 90 days.**
+ *
+ * A POS credential is a machine credential held by a merchant for as long as
+ * the merchant relationship lasts. Expiring it on a timer meant a till stopped
+ * working mid-shift for a reason nobody in the shop could act on, so validity
+ * now ends the way the relationship does: by explicit revocation or rotation,
+ * or when the contract is terminated.
+ *
+ * This is a **long-lived credential, deliberately — not an unbounded one.**
+ * Every issued credential still carries a concrete `expiresAt`, so a row with
+ * `expiresAt = NULL` remains **non-compliant with issuance policy** rather than
+ * becoming the new normal. That distinction is what keeps P4's `c4_no_expiry`
+ * a meaningful signal instead of an expected value.
+ *
+ * CRIT-005's "API keys must rotate every 90 days" is therefore no longer the
+ * lifetime control. Rotation remains available and explicit; it is simply no
+ * longer forced on a timer.
  */
 /**
  * The three outcomes of authenticating an incoming POS request (R6).
@@ -62,11 +76,24 @@ export type IncomingAuthResult =
   | { outcome: 'unauthenticated' }
   | { outcome: 'unscoped' };
 
-export const CREDENTIAL_LIFETIME_DAYS = 90;
+export const CREDENTIAL_LIFETIME_YEARS = 99;
 
-/** The expiry a freshly issued or freshly rotated credential carries. */
+/**
+ * The expiry a freshly issued or freshly rotated credential carries.
+ *
+ * Calendar arithmetic rather than a day count: 99 × 365 days lands roughly
+ * three weeks short of 99 years, because it silently drops the ~24 leap days in
+ * between. At this scale the difference never matters operationally, but a
+ * constant that says "99 years" should mean it.
+ *
+ * A credential issued on 29 February lands on 1 March of the target year, since
+ * `setFullYear` rolls a date that does not exist. That is the intended
+ * behaviour and not worth special-casing.
+ */
 export function credentialExpiry(from: Date = new Date()): Date {
-  return new Date(from.getTime() + CREDENTIAL_LIFETIME_DAYS * 24 * 60 * 60 * 1000);
+  const expiry = new Date(from.getTime());
+  expiry.setFullYear(expiry.getFullYear() + CREDENTIAL_LIFETIME_YEARS);
+  return expiry;
 }
 
 @Injectable()

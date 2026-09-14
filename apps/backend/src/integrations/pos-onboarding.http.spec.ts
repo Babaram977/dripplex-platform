@@ -6,6 +6,8 @@ import * as bcrypt from 'bcrypt';
 
 import { AppConfigService } from '../config/app-config.service';
 
+import { CREDENTIAL_LIFETIME_YEARS } from './services/credentials.service';
+
 import type { INestApplication } from '@nestjs/common';
 
 /**
@@ -364,15 +366,26 @@ suite('POS onboarding over HTTP (8A)', () => {
     expect(body.data?.[0]?.publicSuffix).toBe('****');
   });
 
-  it('E2E-004b · a generated credential carries a 90-day expiry', async () => {
+  it('E2E-004b · a generated credential carries a 99-year expiry, not a null one', async () => {
     const credential = await prisma.integrationCredential.findFirstOrThrow({
       where: { integrationId: generatedIntegrationId, credentialType: 'INCOMING_API_KEY' },
     });
     const expiresAt = credential.expiresAt;
+
+    // The assertion that carries the policy. 99 years is a long-lived
+    // credential, deliberately — it is NOT "no expiry". A null here would mean
+    // issuance had stopped stamping one at all, which is the state P4's
+    // `c4_no_expiry` counts as non-compliant, so it must fail loudly rather
+    // than read as a generously long life.
     if (expiresAt === null) throw new Error('generated credential carries no expiry');
-    const days = (expiresAt.getTime() - Date.now()) / 86_400_000;
-    expect(days).toBeGreaterThan(89);
-    expect(days).toBeLessThan(91);
+
+    const years = expiresAt.getFullYear() - new Date().getFullYear();
+    expect(years).toBe(CREDENTIAL_LIFETIME_YEARS);
+
+    // And it survived the round trip through Postgres: a date this far out is
+    // the one thing about this change that could have failed at the storage
+    // layer rather than in the arithmetic.
+    expect(expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('P5 · a live credential is never silently replaced', async () => {
