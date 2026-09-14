@@ -96,6 +96,62 @@ service, the audit controller, the authoritative-write boundary trigger, and
 everything B8 (legal holds, control events, archive manifests, retention
 policies, the archive engine).
 
+### 4a. Why five migration files and not one
+
+Merging this PR runs `prisma migrate deploy` against the production database —
+Railway invokes it as the backend's `preDeployCommand`. So the shape of the
+migration is not a stylistic matter: it is what production experiences.
+
+Written the obvious way, three statements each scan `audit_logs` under
+`ACCESS EXCLUSIVE`: the CHECK constraint, the foreign key, and the index
+builds. That lock blocks every write to the table for the length of the scan,
+and **404 call sites in this backend write audit rows** — so the stall reaches
+enrolment, payouts and KYC decisions. The cost is proportional to how large
+`audit_logs` has grown, which cannot be read from here.
+
+Split as follows, each step taking a lock that does not block writes:
+
+| Migration | Contains                                                             | Lock                                                     |
+| --------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
+| `…090000` | Tables, genesis rows, columns, CHECK **NOT VALID**, FK **NOT VALID** | ACCESS EXCLUSIVE, but no scan — brief                    |
+| `…090100` | `CREATE UNIQUE INDEX CONCURRENTLY` (global sequence)                 | concurrent build                                         |
+| `…090200` | `CREATE INDEX CONCURRENTLY` (segment)                                | concurrent build                                         |
+| `…090300` | `CREATE INDEX CONCURRENTLY` (segment, sequence)                      | concurrent build                                         |
+| `…090400` | `VALIDATE CONSTRAINT` ×2                                             | SHARE UPDATE EXCLUSIVE — blocks neither reads nor writes |
+
+Two things forced the split, and both were found by running it rather than by
+reasoning about it:
+
+1. **`CREATE INDEX CONCURRENTLY` cannot run inside a transaction block**, and
+   Prisma wraps any multi-statement migration in one. A first probe appeared to
+   show CONCURRENTLY working under `migrate deploy` — it passed only because
+   that probe file held a single statement. The real migration failed with
+   `SqlState(E25001)`. Hence one index per file.
+2. **`NOT VALID` and `VALIDATE` must be in different transactions.** Together in
+   one, the `ACCESS EXCLUSIVE` taken by `ADD CONSTRAINT` is held until commit —
+   so the validation scan happens under the strong lock anyway, defeating the
+   entire purpose.
+
+The end state is identical to the single-file version: both constraints fully
+valid (`convalidated = t`), all three indexes valid (`indisvalid = t`), verified
+by querying `pg_constraint` and `pg_index` after applying.
+
+The indexes are **partial** (`WHERE … IS NOT NULL`). Every existing row has NULL
+in these columns, so a plain index would copy the whole table into an index that
+holds nothing useful. Prisma cannot express partial indexes, so they live in the
+migration and not in the datamodel — and the bidirectional drift check confirms
+Prisma is content with that.
+
+There is deliberately **no** `UNIQUE (segment_id, sequence)`. Global uniqueness
+already implies per-segment uniqueness, and a non-partial unique constraint
+would have indexed every legacy NULL row — a full-size index on a hot table
+bought for nothing.
+
+**Residual risk:** a `CONCURRENTLY` build that fails midway leaves an INVALID
+index behind, which must be dropped and rebuilt. It does not block writes and it
+does not corrupt data, but it is the one failure mode this shape introduces that
+the simple version does not have.
+
 ## 5. Test evidence
 
 `src/audit/audit-segments.db.spec.ts` — **16 tests, real PostgreSQL**.

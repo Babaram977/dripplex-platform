@@ -115,31 +115,30 @@ ALTER TABLE "audit_logs"
 -- unverifiable and a row with a hash but no sequence has no place in the
 -- chain; either would be discovered at verification time, which is far too
 -- late. Existing rows take the all-NULL branch unchanged.
+--
+-- NOT VALID here, VALIDATE in a later migration. `ADD CONSTRAINT ... CHECK` on
+-- its own scans the whole table under ACCESS EXCLUSIVE, stalling every audited
+-- write for the length of the scan — and 404 call sites in this backend write
+-- audit rows, so that stall reaches enrolment, payouts and KYC. NOT VALID takes
+-- the lock only long enough to record the constraint.
+--
+-- The VALIDATE must be a SEPARATE migration, not the next statement here:
+-- Prisma runs a multi-statement migration inside one transaction, and a
+-- transaction holds the ACCESS EXCLUSIVE lock taken above until it commits. The
+-- scan would then happen under the strong lock anyway, which is the problem
+-- this split exists to avoid.
 ALTER TABLE "audit_logs"
   ADD CONSTRAINT "audit_logs_authoritative_atomicity"
   CHECK (
     (segment_id IS NOT NULL AND sequence IS NOT NULL AND hash IS NOT NULL AND predecessor_hash IS NOT NULL)
     OR
     (segment_id IS NULL AND sequence IS NULL AND hash IS NULL AND predecessor_hash IS NULL)
-  );
+  ) NOT VALID;
 
--- The sequence is GLOBAL, not per-segment. A partial unique index rather than a
--- plain one so the existing rows, whose sequence is NULL, are not competing for
--- uniqueness with each other.
-CREATE UNIQUE INDEX "audit_logs_sequence_global_key"
-  ON "audit_logs"("sequence")
-  WHERE "sequence" IS NOT NULL;
-
--- Per-segment uniqueness as well: cheap, and it makes a segment's own numbering
--- verifiable without consulting the global index.
-ALTER TABLE "audit_logs"
-  ADD CONSTRAINT "audit_logs_segment_id_sequence_key"
-  UNIQUE ("segment_id", "sequence");
-
-CREATE INDEX "audit_logs_segment_id_idx" ON "audit_logs"("segment_id");
-CREATE INDEX "audit_logs_segment_id_sequence_idx" ON "audit_logs"("segment_id", "sequence");
-
+-- Same reasoning: adding a foreign key outright scans the table under ACCESS
+-- EXCLUSIVE to validate it.
 ALTER TABLE "audit_logs"
   ADD CONSTRAINT "audit_logs_segment_id_fkey"
   FOREIGN KEY ("segment_id")
-  REFERENCES "audit_segments"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+  REFERENCES "audit_segments"("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  NOT VALID;

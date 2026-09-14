@@ -1136,11 +1136,14 @@ model AuditLog {
   predecessorHash String?       @map("predecessor_hash") @db.Char(64)
   segment         AuditSegment? @relation(fields: [segmentId], references: [id], onDelete: Restrict)
 
-  @@unique([segmentId, sequence])
+  // The indexes on segmentId and sequence are deliberately not declared here.
+  // They are PARTIAL (`WHERE segment_id IS NOT NULL`), which Prisma cannot
+  // express, so they live in the migration: a plain index would copy every
+  // legacy NULL row into a full-size index on a hot table. Global uniqueness of
+  // `sequence` is likewise a partial unique index there, and it already implies
+  // per-segment uniqueness, so no @@unique is needed either.
   @@index([userId, createdAt(sort: Desc)])
   @@index([action, createdAt(sort: Desc)])
-  @@index([segmentId])
-  @@index([segmentId, sequence])
   @@map("audit_logs")
 }
 
