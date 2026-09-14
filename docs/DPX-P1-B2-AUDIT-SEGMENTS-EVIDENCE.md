@@ -2,15 +2,32 @@
 
 **Evidence report.** Supersedes the B2 portion of PR #351.
 
-|                    |                                                                                          |
-| ------------------ | ---------------------------------------------------------------------------------------- |
-| Branch             | `claude/p1-b2-audit-segments`                                                            |
-| Base               | `main` @ `48e687fd`                                                                      |
-| Migration          | `20260914090000_p1_b2_audit_segments_and_global_sequence`                                |
-| Scope              | B2 foundation only. **No B8.2, no B8.3.**                                                |
-| Production changes | **None.** No DNS, Cloudflare, Railway, TLS, Worker or domain change. No financial write. |
+|                    |                                                                                                                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch             | `claude/p1-b2-audit-segments`                                                                                                                                                                                                             |
+| Base               | `main` @ `48e687fd`                                                                                                                                                                                                                       |
+| Migrations         | Five files, `20260914090000` – `20260914090400` (see §4a)                                                                                                                                                                                 |
+| Scope              | B2 foundation **and segment closure** (historically B4) — see the correction below. No B8.2, no B8.3.                                                                                                                                     |
+| Merged             | 2026-09-14 as `c2affb7c`; the five migrations applied to the production database on deploy                                                                                                                                                |
+| Production changes | None were made **by the work in this PR**. Merging it applied the migrations above, since Railway runs `prisma migrate deploy` as the backend's `preDeployCommand`. No DNS, Cloudflare, TLS, Worker or domain change. No financial write. |
 
 ---
+
+> **Correction, 2026-09-14 — scope.** This PR is described as the B2 foundation.
+> It also implements **segment closure**, which the historical decomposition
+> assigned to **B4**: `docs/DPX-P1-B2-VERIFICATION.md` on the #351 branch lists
+> "Segment closure logic (deferred to P1-B4)" under _What P1-B2 Does NOT
+> Implement_. The code is tested, mutation-checked and deployed and is not being
+> undone; the record is corrected so nobody opens B4 expecting closure to be
+> missing. What remains unimplemented from B4's historical scope is the
+> **lifecycle state machine** — every transition beyond `ACTIVE → CLOSED`.
+>
+> A further correction: `append()` is **P1-B1**, and migrating the existing
+> audit writers is **P1-B7**. Section 9 below calls `append()` "the piece
+> between B2 and B8", which understates it — both are named increments.
+>
+> See `docs/DPX-P1-B-SERIES-STATUS.md`, which also records that **no formal
+> B-series or Contract 14 specification exists on `main`.**
 
 ## 1. Why this is a re-cut and not a rebase of #351
 
