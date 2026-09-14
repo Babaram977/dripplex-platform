@@ -191,10 +191,20 @@ recorded gaps until a decision is taken explicitly.
 2. **`trackInventory = false` from a POS.** Every write forces `true`, carried over from the
    catalogue path, so a POS cannot express "not stock-tracked at source" (catalogue contract §5).
    **Not introduced** — that would be adding a POS capability implicitly.
-3. **Rate limiting on the stock push.** None, and the catalogue push has none either. This is an
-   **outstanding operational control**, not a number for an engineer to pick: a permanent
-   business limit chosen silently in code is a business decision made by accident. To be
-   implemented once the appropriate limit is determined.
+3. **Rate limiting on the stock push.** **Corrected 2026-09-14 — "none" was wrong.** Both this
+   route and the catalogue push are throttled by the global `ProxyAwareThrottlerGuard` at
+   **100 requests per 60 seconds** per source IP, and no integrations route opts out. Verified in
+   production against `POST /api/v1/integrations/catalogue/sync` (`x-ratelimit-limit: 100`).
+
+   The reasoning below was right and is unchanged: there is still no **POS-specific** limit, and a
+   permanent business limit must not be chosen silently in code. What changed is only the factual
+   claim that no limit applies at all — it does, it is generic, and it is keyed on source IP
+   rather than on the credential, so several tills behind one NAT share one allowance. See the
+   order-sync contract §"Rate limiting" for the full finding, including why an IP-keyed bucket
+   does not satisfy the D plan's credential-enumeration requirement.
+
+   Still an **outstanding operational control**, to be implemented once the appropriate limit and
+   keying are determined.
 
 ---
 
