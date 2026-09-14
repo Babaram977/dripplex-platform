@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { IntegrationsService } from './integrations.service';
 import { SsrfProtectionService } from './ssrf-protection.service';
 
+import type { Server } from 'node:http';
+
 describe('IntegrationsService', () => {
   let service: IntegrationsService;
   let prisma: jest.Mocked<PrismaService>;
@@ -396,5 +398,103 @@ describe('IntegrationsService', () => {
       const isActive = await service.isIntegrationActive('int-archived');
       expect(isActive).toBe(false);
     });
+  });
+});
+
+/**
+ * B2 — a validated webhook URL must not become an unvalidated one via a redirect.
+ *
+ * `validateUrl` inspects the merchant-supplied URL and nothing else. With
+ * fetch's default `redirect: 'follow'`, a merchant could point the webhook at
+ * a host they control, answer `302 Location: http://<internal>/`, and have
+ * DrippleX issue that second request from inside the production network —
+ * defeating the guard entirely.
+ *
+ * The assertion is the security invariant itself: **the redirect target is
+ * never contacted**. It deliberately does not assert a status code or anything
+ * about how the HTTP client represents a redirect, so it keeps holding if the
+ * runtime's representation changes; it fails only if someone makes DrippleX
+ * follow the hop again.
+ *
+ * `SsrfProtectionService` is stubbed here so the test can use loopback servers
+ * — the real validator rejects 127.0.0.1, which would refuse the URL before
+ * the redirect is ever exercised. What is under test is what happens to a URL
+ * that has *already passed* validation.
+ */
+describe('IntegrationsService — webhook test does not follow redirects (B2)', () => {
+  let service: IntegrationsService;
+  let target: Server;
+  let redirector: Server;
+  let targetHits = 0;
+  let entryUrl = '';
+
+  beforeEach(async () => {
+    const http = await import('node:http');
+
+    targetHits = 0;
+    target = http.createServer((_req, res) => {
+      targetHits += 1;
+      res.writeHead(200);
+      res.end('internal');
+    });
+    await new Promise<void>((resolve) => target.listen(0, '127.0.0.1', resolve));
+    const targetPort = (target.address() as { port: number }).port;
+
+    redirector = http.createServer((_req, res) => {
+      res.writeHead(302, { Location: `http://127.0.0.1:${String(targetPort)}/internal` });
+      res.end();
+    });
+    await new Promise<void>((resolve) => redirector.listen(0, '127.0.0.1', resolve));
+    entryUrl = `http://127.0.0.1:${String((redirector.address() as { port: number }).port)}/hook`;
+
+    const prisma = {
+      merchantIntegration: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'int-1',
+          merchantId: 'merchant-1',
+          vendorName: 'Probe POS',
+          webhookUrl: entryUrl,
+          status: 'ACTIVE',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          archivedAt: null,
+          credentials: [],
+        }) as any,
+      },
+    } as unknown as jest.Mocked<PrismaService>;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IntegrationsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: AuditService, useValue: { record: jest.fn().mockResolvedValue(undefined) } },
+        { provide: SsrfProtectionService, useValue: { validateUrl: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<IntegrationsService>(IntegrationsService);
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) =>
+      target.close(() => {
+        resolve();
+      }),
+    );
+    await new Promise<void>((resolve) =>
+      redirector.close(() => {
+        resolve();
+      }),
+    );
+  });
+
+  it('B2-001 · never issues a request to the redirect target', async () => {
+    const result = await service.testIntegrationC('merchant-1', 'int-1');
+
+    // The whole point: the second hop was never made.
+    expect(targetHits).toBe(0);
+    // And the merchant is told the check did not succeed, rather than being
+    // shown a green tick earned by an endpoint they did not nominate.
+    expect(result?.status).not.toBe('SUCCESS');
   });
 });

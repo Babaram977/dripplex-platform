@@ -355,7 +355,6 @@ export class IntegrationsService {
     });
     return !!integration;
   }
-   
 
   /**
    * MKT-INT-001-C: List integrations with C API contract
@@ -461,7 +460,7 @@ export class IntegrationsService {
    *
    * Returns true if deleted, false if merchant doesn't own this integration.
    */
-   
+
   public async deleteIntegrationC(merchantId: string, integrationId: string): Promise<boolean> {
     // Verify merchant access
     const existing = await this.getIntegrationC(merchantId, integrationId);
@@ -496,7 +495,6 @@ export class IntegrationsService {
 
     return true;
   }
-   
 
   /**
    * MKT-INT-001-C: Test integration connectivity
@@ -507,7 +505,7 @@ export class IntegrationsService {
    * SSRF Protection: Validates destination URL before making any request.
    * Blocks loopback, private IPs, cloud metadata endpoints, and other internal ranges.
    */
-   
+
   public async testIntegrationC(
     merchantId: string,
     integrationId: string,
@@ -540,7 +538,6 @@ export class IntegrationsService {
 
     // SSRF Protection: Validate URL before making request
     try {
-       
       this.ssrfProtection.validateUrl(integration.webhookUrl);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'URL validation failed';
@@ -574,10 +571,26 @@ export class IntegrationsService {
         controller.abort();
       }, 5000); // 5 second timeout
 
-       
+      // `redirect: 'manual'` is load-bearing, not a default worth leaving to
+      // chance. `validateUrl` above inspects the merchant-supplied URL and
+      // nothing else, so with fetch's default (`follow`, up to 20 hops) a
+      // merchant could point the webhook at a host they control, answer
+      // `302 Location: http://169.254.169.254/...`, and have this request
+      // reach the production network from inside it — defeating the very
+      // guard the line above exists to apply.
+      //
+      // A connectivity test has no reason to chase a redirect: a 3xx is a
+      // result to report. Node returns the real 3xx here (not an opaque
+      // response), so the `isSuccess` check below reports it as FAILED with
+      // no extra handling, and the redirect target is never contacted.
+      //
+      // Re-validating each hop and following was considered and rejected: it
+      // reintroduces a TOCTOU window (DNS can change between the check and
+      // the connection) for no benefit to a reachability test.
       const response = await fetch(integration.webhookUrl, {
         method: 'GET',
         signal: controller.signal,
+        redirect: 'manual',
       });
 
       clearTimeout(timeoutId);
@@ -633,7 +646,6 @@ export class IntegrationsService {
       };
     }
   }
-   
 
   /**
    * Internal: Convert database model to DTO
