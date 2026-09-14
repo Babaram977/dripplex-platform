@@ -87,6 +87,16 @@ export class IntegrationsService {
     input: CreateIntegrationDto,
     idempotencyKey?: string,
   ): Promise<IntegrationResponseDto> {
+    // SSRF validation before persistence. The C path has always done this;
+    // this one never did, so a webhook URL written through the legacy
+    // controller was stored with no safety check at all. `testIntegrationC`
+    // validates the stored value before fetching, so nothing unsafe was ever
+    // *contacted* — but a write contract where two paths accept different
+    // things is a gap in its own right, and this is the weaker one.
+    if (input.webhookUrl !== undefined) {
+      this.ssrfProtection.validateUrl(input.webhookUrl);
+    }
+
     // Check idempotency
     if (idempotencyKey) {
       const existing = await this.prisma.merchantIntegration.findFirst({
@@ -144,6 +154,16 @@ export class IntegrationsService {
   ): Promise<IntegrationResponseDto> {
     // Verify access before update
     await this.getIntegration(merchantId, integrationId);
+
+    // SSRF validation before persistence. The C path has always done this;
+    // this one never did, so a webhook URL written through the legacy
+    // controller was stored with no safety check at all. `testIntegrationC`
+    // validates the stored value before fetching, so nothing unsafe was ever
+    // *contacted* — but a write contract where two paths accept different
+    // things is a gap in its own right, and this is the weaker one.
+    if (input.webhookUrl !== undefined) {
+      this.ssrfProtection.validateUrl(input.webhookUrl);
+    }
 
     // Build update data (only include provided fields)
     const data: Prisma.MerchantIntegrationUpdateInput = {};

@@ -43,7 +43,14 @@ export class CreateIntegrationDto {
   public readonly posProvider!: PosProvider;
 
   @IsOptional()
-  @IsUrl()
+  // Was a bare `@IsUrl()`, which accepts `ftp:` and even a protocol-less
+  // string — weaker than the C DTO beside it, and reachable, because
+  // `PATCH /integrations/:id` is served by this controller. Same HTTPS rule
+  // as the C path so a merchant cannot route around it.
+  @IsUrl(
+    { require_protocol: true, protocols: ['https'] },
+    { message: 'webhookUrl must be a valid HTTPS URL' },
+  )
   public readonly webhookUrl?: string;
 }
 
@@ -56,7 +63,14 @@ export class UpdateIntegrationDto {
   public readonly status?: IntegrationStatus;
 
   @IsOptional()
-  @IsUrl()
+  // Was a bare `@IsUrl()`, which accepts `ftp:` and even a protocol-less
+  // string — weaker than the C DTO beside it, and reachable, because
+  // `PATCH /integrations/:id` is served by this controller. Same HTTPS rule
+  // as the C path so a merchant cannot route around it.
+  @IsUrl(
+    { require_protocol: true, protocols: ['https'] },
+    { message: 'webhookUrl must be a valid HTTPS URL' },
+  )
   public readonly webhookUrl?: string;
 }
 
