@@ -271,9 +271,18 @@ suite('POS order flow over HTTP (8C)', () => {
     return confirmed.orderNumber;
   }
 
+  const priorMerchantModule = process.env['MERCHANT_MODULE_ENABLED'];
+
   beforeAll(async () => {
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     await prisma.$connect();
+
+    // Merchant-facing integrations routes now sit behind
+    // MerchantModuleEnabledGuard (founder ruling 2026-09-14), and this suite
+    // sets its fixtures up through those routes — so it must run as a merchant
+    // whose module is on. POS ingestion's independence from the flag is proved
+    // separately, in merchant-module-guard-off.http.spec.ts.
+    process.env['MERCHANT_MODULE_ENABLED'] = 'true';
 
     const { AppModule } = await import('../app.module');
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -503,6 +512,12 @@ suite('POS order flow over HTTP (8C)', () => {
     await tidy('user', () => prisma.user.deleteMany({ where: { id: { in: userIds } } }));
     await tidy('role', () => prisma.role.deleteMany({ where: { id: roleId } }));
     await app.close();
+    if (priorMerchantModule === undefined) {
+      delete process.env['MERCHANT_MODULE_ENABLED'];
+    } else {
+      process.env['MERCHANT_MODULE_ENABLED'] = priorMerchantModule;
+    }
+
     await prisma.$disconnect();
   }, 120_000);
 

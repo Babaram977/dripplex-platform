@@ -17,6 +17,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { Public, RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { INVENTORY_WRITE_SCOPE } from '../catalogue-ingestion.constants';
 import { RequireIntegrationScope } from '../decorators/integration-scope.decorator';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
@@ -41,6 +42,17 @@ import type { InventoryLevel, InventorySyncSummary } from '../services/inventory
  * route requires `inventory:write` and the catalogue route requires
  * `catalog:write`.
  *
+ *
+ * `MerchantModuleEnabledGuard` is applied **per route, never at controller
+ * level**, and that placement is load-bearing. This controller serves two
+ * audiences: the merchant reads with a JWT, and the POS pushes with an
+ * integration credential. Gating the class would take POS ingestion down with
+ * the merchant UI — a machine-to-machine contract answering "The merchant
+ * module is not enabled" to an integrator who has no merchant module and no
+ * way to act on that. Founder ruling 2026-09-14: module off gates the merchant
+ * surfaces and leaves ingestion running. The guard rides the authentication
+ * scheme — every JWT route here is merchant-facing, every credential route is
+ * not.
  * `main.ts` calls `setGlobalPrefix('api/v1')`, so the prefix must NOT be
  * repeated here — doing so previously mounted an entire controller at
  * `/api/v1/api/v1/...`, where it answered 401 rather than 404 and so looked
@@ -119,7 +131,7 @@ export class InventorySyncController {
   // `levels/:integrationId` for the same reason, and for symmetry with
   // `catalogue/jobs/:integrationId`.
   @Get('levels/:integrationId')
-  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
   @RequirePermissions('integrations:read')
   @ApiOperation({ summary: 'List current stock levels for an integration' })
   @ApiResponse({ status: 200, description: 'Stock levels by external SKU' })

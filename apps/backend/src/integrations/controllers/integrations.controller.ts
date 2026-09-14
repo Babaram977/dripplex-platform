@@ -25,6 +25,7 @@ import {
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../auth/guards/permissions.guard';
 import { RequirePermissions } from '../../common/decorators/permissions.decorator';
+import { MerchantModuleEnabledGuard } from '../../merchants/guards/merchant-module-enabled.guard';
 import { MerchantScoped } from '../decorators/merchant-scoped.decorator';
 import {
   CreateIntegrationDto,
@@ -51,7 +52,7 @@ import { IntegrationsService } from '../services/integrations.service';
 // path answered 401 rather than 404. The C-phase contract amendment lists
 // "No duplicate /api/v1/api/v1/ prefix in actual routes" as an unchecked box.
 @Controller('integrations')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, MerchantModuleEnabledGuard)
 export class IntegrationsController {
   constructor(
     private readonly integrationsService: IntegrationsService,

@@ -58,11 +58,20 @@ suite('POS onboarding over HTTP (8A)', () => {
   const nextCaller = (): string =>
     `203.0.113.${String((callerSeq += 1) % 240)}:${String(callerSeq)}`;
 
+  const priorMerchantModule = process.env['MERCHANT_MODULE_ENABLED'];
+
   beforeAll(async () => {
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     // Loud. A DATABASE_URL that is set but unreachable is a broken run, not an
     // absent one, and must not be confused with the skip above.
     await prisma.$connect();
+
+    // Merchant-facing integrations routes now sit behind
+    // MerchantModuleEnabledGuard (founder ruling 2026-09-14), and this suite
+    // sets its fixtures up through those routes — so it must run as a merchant
+    // whose module is on. POS ingestion's independence from the flag is proved
+    // separately, in merchant-module-guard-off.http.spec.ts.
+    process.env['MERCHANT_MODULE_ENABLED'] = 'true';
 
     const { AppModule } = await import('../app.module');
     // No provider overrides: the real validation pipe, the real exception
@@ -187,6 +196,12 @@ suite('POS onboarding over HTTP (8A)', () => {
     await tidy('user', () => prisma.user.deleteMany({ where: { id: userId } }));
     await tidy('role', () => prisma.role.deleteMany({ where: { id: roleId } }));
     await app.close();
+    if (priorMerchantModule === undefined) {
+      delete process.env['MERCHANT_MODULE_ENABLED'];
+    } else {
+      process.env['MERCHANT_MODULE_ENABLED'] = priorMerchantModule;
+    }
+
     await prisma.$disconnect();
   }, 60_000);
 
