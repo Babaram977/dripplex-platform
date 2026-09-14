@@ -686,14 +686,38 @@ suite('POS order flow over HTTP (8C)', () => {
     expect(response.status).toBe(401);
   });
 
-  it.failing(
-    'E2E-040 · a read-only credential is refused a transition as 403, not 401 [PENDING B6]',
-    async () => {
-      // integrationC holds orders:read and not orders:write.
-      const response = await push(walletOrderNumber, OrderStatus.PREPARING, integrationC, keyC);
-      expect(response.status).toBe(403);
-    },
-  );
+  /**
+   * The control R6 must not cost us.
+   *
+   * R6 makes a *missing scope* distinguishable, and the reason that is safe is
+   * that it is only reachable once the caller has proved they hold a working
+   * credential. Everything before that point must stay indistinguishable, or
+   * the endpoint becomes an integration-id oracle.
+   *
+   * So this asserts the negative: an integration that does not exist and a real
+   * integration with the wrong key answer **identically** — same status and the
+   * same body, not merely the same code. It is the test that fails if anyone
+   * later "improves" the error messages into an enumeration channel.
+   */
+  it('E2E-041b · an unknown integration is indistinguishable from a wrong key', async () => {
+    const unknown = await asPos('/integrations/orders/list', randomUUID(), 'any-secret');
+    const wrongKey = await asPos('/integrations/orders/list', integrationA, 'wrong-secret');
+
+    expect(unknown.status).toBe(401);
+    expect(wrongKey.status).toBe(401);
+    expect(unknown.status).toBe(wrongKey.status);
+
+    const unknownBody = (await unknown.json()) as { message?: string; errorCode?: string };
+    const wrongKeyBody = (await wrongKey.json()) as { message?: string; errorCode?: string };
+    expect(unknownBody.message).toBe(wrongKeyBody.message);
+    expect(unknownBody.errorCode).toBe(wrongKeyBody.errorCode);
+  });
+
+  it('E2E-040 · a read-only credential is refused a transition as 403, not 401', async () => {
+    // integrationC holds orders:read and not orders:write.
+    const response = await push(walletOrderNumber, OrderStatus.PREPARING, integrationC, keyC);
+    expect(response.status).toBe(403);
+  });
 
   // ── 8E · the financial boundary ───────────────────────────────────────
 

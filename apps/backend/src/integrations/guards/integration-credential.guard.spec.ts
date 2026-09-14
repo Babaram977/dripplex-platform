@@ -1,4 +1,4 @@
-import { UnauthorizedException, type ExecutionContext } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException, type ExecutionContext } from '@nestjs/common';
 
 import { CATALOGUE_WRITE_SCOPE, INVENTORY_WRITE_SCOPE } from '../catalogue-ingestion.constants';
 
@@ -56,7 +56,7 @@ describe('IntegrationCredentialGuard', () => {
   });
 
   it('admits a request whose credential authenticates', async () => {
-    authenticateIncoming.mockResolvedValue(integration);
+    authenticateIncoming.mockResolvedValue({ outcome: 'authenticated', integration });
     const context = contextWith({
       [INTEGRATION_ID_HEADER]: 'integration-1',
       [INTEGRATION_KEY_HEADER]: 'secret',
@@ -71,7 +71,7 @@ describe('IntegrationCredentialGuard', () => {
   });
 
   it('attaches the verified integration to the request', async () => {
-    authenticateIncoming.mockResolvedValue(integration);
+    authenticateIncoming.mockResolvedValue({ outcome: 'authenticated', integration });
     const request: { headers: Record<string, string>; integration?: MerchantIntegration } = {
       headers: {
         [INTEGRATION_ID_HEADER]: 'integration-1',
@@ -109,7 +109,7 @@ describe('IntegrationCredentialGuard', () => {
   });
 
   it('rejects when the credential does not authenticate', async () => {
-    authenticateIncoming.mockResolvedValue(null);
+    authenticateIncoming.mockResolvedValue({ outcome: 'unauthenticated' });
     await expect(
       guard.canActivate(
         contextWith({
@@ -139,7 +139,7 @@ describe('IntegrationCredentialGuard', () => {
     // would have let a stock-only key rewrite a catalogue and forced an
     // inventory key to carry catalogue write.
     declaredScope = INVENTORY_WRITE_SCOPE;
-    authenticateIncoming.mockResolvedValue(integration);
+    authenticateIncoming.mockResolvedValue({ outcome: 'authenticated', integration });
 
     await guard.canActivate(
       contextWith({
@@ -159,7 +159,7 @@ describe('IntegrationCredentialGuard', () => {
     // Fails closed. A forgotten decorator must not inherit whichever scope the
     // guard last happened to need.
     declaredScope = undefined;
-    authenticateIncoming.mockResolvedValue(integration);
+    authenticateIncoming.mockResolvedValue({ outcome: 'authenticated', integration });
 
     await expect(
       guard.canActivate(
@@ -172,8 +172,23 @@ describe('IntegrationCredentialGuard', () => {
     expect(authenticateIncoming).not.toHaveBeenCalled();
   });
 
+  it('refuses a verified credential that lacks the scope as 403, not 401 (R6)', async () => {
+    // The distinction R6 draws. `unscoped` is only reachable after the secret
+    // has verified, so it is an authorization answer, not an authentication
+    // one — and saying so tells the caller nothing they had not already proved.
+    authenticateIncoming.mockResolvedValue({ outcome: 'unscoped' });
+    await expect(
+      guard.canActivate(
+        contextWith({
+          [INTEGRATION_ID_HEADER]: 'integration-1',
+          [INTEGRATION_KEY_HEADER]: 'valid-but-unscoped',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
   it('does not disclose why it refused', async () => {
-    authenticateIncoming.mockResolvedValue(null);
+    authenticateIncoming.mockResolvedValue({ outcome: 'unauthenticated' });
     // "Invalid" for a wrong key and for an unknown integration alike, so the
     // endpoint cannot be used to confirm which integration ids exist.
     await expect(
