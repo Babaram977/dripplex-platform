@@ -49,3 +49,27 @@ export { MERCHANT_AUDIT_ACTIONS } from '../merchants/merchant.constants';
 export { ADDRESS_AUDIT_ACTIONS } from '../addresses/address.constants';
 export { CART_AUDIT_ACTIONS } from '../cart/cart.constants';
 export { KYC_AUDIT_ACTIONS } from '../kyc/kyc.constants';
+
+/**
+ * P1-B2 — the single audit stream.
+ *
+ * One row, one id. The stream is global rather than per-tenant or per-module
+ * because a sequence that is only unique within a partition cannot answer
+ * "what happened next" across the platform, which is the question an audit is
+ * for.
+ */
+export const STREAM_STATE_ID = 'main';
+
+/**
+ * The chain's genesis anchor: 64 zeroes.
+ *
+ * Used as the predecessor of the very first event, and as the placeholder
+ * first/last hash of a segment that has not yet received one. It is not a real
+ * digest and nothing should verify against it — a segment still carrying it
+ * has no events, which its eventCount says plainly.
+ */
+export const GENESIS_HASH = '0'.repeat(64);
+
+/** The fixed id of the first segment, so genesis is identifiable in any
+ *  environment without a lookup. */
+export const GENESIS_SEGMENT_ID = '00000000-0000-0000-0000-000000000001';

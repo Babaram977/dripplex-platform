@@ -1124,9 +1124,101 @@ model AuditLog {
   createdAt  DateTime @default(now()) @map("created_at")
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  /// P1-B2 — the authoritative fields. All four together or none at all,
+  /// enforced by a CHECK constraint: a row with a sequence but no hash cannot
+  /// be verified, and a row with a hash but no sequence has no place in the
+  /// chain. Nullable because every row written before P1-B2, and every row
+  /// still written through the deprecated record() path, has none of them.
+  segmentId       String?       @map("segment_id") @db.Uuid
+  /// Globally unique and monotonic across ALL segments, not per segment.
+  sequence        BigInt?
+  hash            String?       @db.Char(64)
+  predecessorHash String?       @map("predecessor_hash") @db.Char(64)
+  segment         AuditSegment? @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+
+  @@unique([segmentId, sequence])
   @@index([userId, createdAt(sort: Desc)])
   @@index([action, createdAt(sort: Desc)])
+  @@index([segmentId])
+  @@index([segmentId, sequence])
   @@map("audit_logs")
+}
+
+/// P1-B2 — the lifecycle of one segment of the audit stream.
+///
+/// A segment is the unit that is closed, archived and eventually purged. The
+/// states are ordered and one-way: nothing returns to ACTIVE, and PURGED is
+/// only reachable from ARCHIVED_VERIFIED via PURGE_AUTHORIZED, so no segment
+/// can be purged before its archive has been verified.
+enum AuditSegmentLifecycle {
+  ACTIVE
+  CLOSED
+  ARCHIVE_PENDING
+  ARCHIVED_VERIFIED
+  PURGE_AUTHORIZED
+  PURGED
+}
+
+/// P1-B2 — one segment of the audit stream.
+///
+/// Exactly one segment is ACTIVE at a time, enforced by a partial unique index
+/// rather than by the application remembering: two ACTIVE segments would mean
+/// two places to append and no answer to which holds the tail.
+model AuditSegment {
+  id        String                @id @db.Uuid
+  lifecycle AuditSegmentLifecycle @default(ACTIVE)
+
+  /// The global sequence range this segment covers. `lastSequence` is null
+  /// until the segment's first event lands.
+  firstSequence BigInt  @map("first_sequence")
+  lastSequence  BigInt? @map("last_sequence")
+
+  /// The hash of this segment's first and last event. Both are immutable once
+  /// the segment closes — they are what an archive is later verified against.
+  firstHash  String @map("first_hash") @db.Char(64)
+  lastHash   String @map("last_hash") @db.Char(64)
+  eventCount Int    @default(0) @map("event_count")
+
+  /// The chain across the segment boundary. `predecessorTailHash` is the
+  /// predecessor's last hash captured at closure, so the join between two
+  /// segments is verifiable without reading the predecessor's rows — which is
+  /// the point, since those rows are what a purge eventually removes.
+  predecessorSegmentId String?        @map("predecessor_segment_id") @db.Uuid
+  predecessorTailHash  String?        @map("predecessor_tail_hash") @db.Char(64)
+  predecessor          AuditSegment?  @relation("SegmentChain", fields: [predecessorSegmentId], references: [id], onDelete: Restrict)
+  successors           AuditSegment[] @relation("SegmentChain")
+
+  closedAt      DateTime? @map("closed_at")
+  closureReason String?   @map("closure_reason") @db.VarChar(500)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  auditLogs   AuditLog[]
+  streamState AuditStreamState[]
+
+  @@index([lifecycle, createdAt(sort: Desc)])
+  @@index([predecessorSegmentId])
+  @@map("audit_segments")
+}
+
+/// P1-B2 — the head of the audit stream. Exactly one row, id = "main".
+///
+/// This row is the lock. An appender takes `SELECT ... FOR UPDATE` on it before
+/// reading `nextSequence`, which is what stops two concurrent appends being
+/// handed the same number. `tailHash` is the hash of the most recent event in
+/// the whole stream, and is what the next event chains to.
+model AuditStreamState {
+  id                  String       @id @db.VarChar(50)
+  nextSequence        BigInt       @default(1) @map("next_sequence")
+  tailHash            String       @map("tail_hash") @db.Char(64)
+  activeSegmentId     String       @map("active_segment_id") @db.Uuid
+  activeSegment       AuditSegment @relation(fields: [activeSegmentId], references: [id], onDelete: Restrict)
+  lastSegmentClosedAt DateTime?    @map("last_segment_closed_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at")
+
+  @@map("audit_stream_state")
 }
 
 model MerchantOnboarding {
