@@ -59,6 +59,33 @@ export const RESERVATION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 /** How long a DELIVERED/COMPLETED-eligible order waits for the customer to
  * either confirm receipt or raise a dispute before the sweep auto-completes
  * it. Mirrors the reservation-cleanup sweep pattern. */
+/**
+ * 8D-C — how long an order may sit in CONFIRMED, unactioned, before it is
+ * considered **potentially** stranded.
+ *
+ * 30 minutes. Founder ruling, 2026-09-15 — a product decision, not an
+ * engineering default. Changing this value changes the policy, which is why it
+ * is a named constant rather than a literal inside a query.
+ *
+ * Chosen because 30 minutes is the platform's existing standard for how long an
+ * unactioned order may hold stock at the PENDING stage (RESERVATION_TTL_MS),
+ * reused here as a consistent principle: a confirmed order is no more entitled
+ * to sit unactioned than an unpaid one. It is NOT derived from the reservation
+ * TTL applying to CONFIRMED orders — it does not. A CONFIRMED order's
+ * reservation is never released by expiry, because the cleanup sweep filters on
+ * PENDING.
+ *
+ * "Potentially" is load-bearing. The data cannot tell an order the POS failed to
+ * advance from one the merchant simply never accepted; both look identical.
+ * Attribution needs separate evidence.
+ *
+ * Nothing acts on this constant yet. It defines a measurement
+ * (docs/ops/DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md); it does not authorise
+ * cancelling, declining or advancing any order. Remediation is a separate
+ * ruling, and detection must stay separate from state mutation.
+ */
+export const ORDER_POTENTIALLY_STRANDED_AFTER_MS = 30 * 60 * 1000;
+
 export const ORDER_AUTO_COMPLETE_AFTER_MS = 24 * 60 * 60 * 1000;
 export const ORDER_COMPLETION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
 

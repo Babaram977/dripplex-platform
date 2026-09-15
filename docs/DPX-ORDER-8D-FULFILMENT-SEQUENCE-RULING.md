@@ -104,18 +104,26 @@ The measurement should travel with the **P4 operator session** (see
 `docs/ops/DPX-MKT-INT-001-P1-POS-P4-INVENTORY-RUNBOOK.md`) — same operator, same access, one
 extra `SELECT` — rather than causing a second production-access round trip.
 
-**No C query has been prepared or executed.** Deliberately: preparing one before the definition
-is ruled would embed the unruled threshold.
+**Ruled 2026-09-15 at 30 minutes**, so the measurement could then be prepared without embedding an
+unruled threshold. It is schema-verified and fixture-tested but **not executed against
+production** — see `ops/DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md`.
+
+The definition gained one clause that only became visible on inspecting the code:
+**`fulfillmentType = DELIVERY`**. `OrderReadySubscriber` skips anything else, so a `PICKUP` order
+never gets a `DeliveryJob` **by design** — without that clause every pickup order would have been
+counted as stranded.
 
 ---
 
 ## 5 · Status
 
-| Part                          | State                                                        |
-| ----------------------------- | ------------------------------------------------------------ |
-| **A vs B**                    | ✅ **Ruled — A (strict).** No implicit acceptance.           |
-| Governing rule                | ✅ **Ruled** — orders must not silently strand.              |
-| Detection/surfacing mechanism | ⏸ Engineering design, authorised by A, not yet specified.    |
-| **C**                         | ⏸ **Open** — definition, then measurement, then remediation. |
+| Part                          | State                                                                                                                          |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| **A vs B**                    | ✅ **Ruled — A (strict).** No implicit acceptance.                                                                             |
+| Governing rule                | ✅ **Ruled** — orders must not silently strand.                                                                                |
+| Detection/surfacing mechanism | ⏸ Engineering design, authorised by A, not yet specified.                                                                      |
+| **C — definition**            | ✅ **Ruled 2026-09-15 — 30 minutes.** `ORDER_POTENTIALLY_STRANDED_AFTER_MS`; see `ops/DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md`. |
+| **C — measurement**           | ⏸ Ready — schema-verified and fixture-tested. Requires an authorized operator.                                                 |
+| **C — remediation**           | ⏸ **Open.** A separate ruling. Detection does not authorise mutation.                                                          |
 
 **Nothing in this ruling has been implemented.** It records a decision; it changes no behaviour.
