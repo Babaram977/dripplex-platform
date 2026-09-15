@@ -242,6 +242,12 @@ compared against one measured under another.
 - **No `--apply`.** Extending live credentials is a production write and needs its own explicit
   authorization **against the `WILL EXTEND` figure**, which does not exist until step B runs.
   Running the dry run does not authorize the write and does not imply approval of it.
+
+  **Having the shell does not authorize it either.** `--apply` is one word away from the command
+  you just ran, and the script is right there — that proximity is the whole risk. Access is not
+  permission: the write is a separate decision, taken outside this session, against a number that
+  does not exist until step B has produced it. Leave the shell without it.
+
 - **No order mutation.** 8D-C is detection only: nothing cancels, declines, advances, releases
   inventory or otherwise touches an order. Remediation is an undecided separate ruling.
 - **No credential values, hashes, plaintext secrets, webhook URLs or merchant-identifying
