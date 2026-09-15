@@ -1,6 +1,7 @@
 # DPX-PRODUCTION-READ-SESSION-001 · the three production reads, in one operator session
 
 **Status:** ready to run · **not yet run**
+**Scope:** an operator convenience that sequences three _separate_ reads. It does not merge them.
 **Audience:** an authorized DrippleX operator with production database access
 **Nothing in this document writes anything.** Every step is a `SELECT` or a dry run.
 
@@ -21,6 +22,20 @@ sessions cannot be reconciled with each other afterwards:
 **B must be measured in the same session as A**, because B's `WILL EXTEND` figure and A's `c5`
 reconcile against each other (`c5 = WILL EXTEND + LEFT ALONE`). Taken hours apart they will not
 agree, and the disagreement would look like a defect rather than elapsed time.
+
+### Sharing a session is not sharing a gate
+
+This document is an **operator convenience** — one sitting, one set of timestamps. It does not
+merge these three into a single piece of work, and nothing here should be read as widening P4:
+
+|                           |                                                                                                                                                                                           |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P4 is A, and only A.**  | P4 is the credential/integration **inventory** gate. Its outputs are the six values in step A — no more, no fewer. It is what criterion 4 of the 8H launch gate is re-assessed against.   |
+| **B is not a P4 output.** | It shares the session because it must reconcile with `c5`. It informs the **existing-credential decision**, which is downstream of P4, not part of it.                                    |
+| **C is not a P4 output.** | 8D-C is valuable launch evidence about order fulfilment. It is a **separate measurement with its own ruling**, and it rides along only for timestamp consistency and operator efficiency. |
+
+So: a completed 8D-C count does **not** advance P4, and an incomplete one does **not** hold it
+back. If only A is run, P4 is answered. If C is run and A is not, P4 is untouched.
 
 ---
 
@@ -123,12 +138,26 @@ compared against one measured under another.
 
 ## 5 · After the session
 
-1. Report the six P4 values, the three dry-run figures, and the 8D-C count — each with its UTC
-   timestamp.
-2. Update `DPX-MKT-INT-001-P1-POS-RULINGS-001.md` §4 and the P4 row in §5.
-3. Re-assess criterion 4 of `DPX-MKT-INT-001-P1-POS-LAUNCH-GATE-8H.md`.
-4. The credential migration decision is taken **then**, against the real `WILL EXTEND` number —
-   not before.
+Report every figure with its UTC timestamp. Then act on each read **in its own track** — they
+were measured together, but they land in different places:
+
+**A → the P4 gate.**
+
+1. Update `DPX-MKT-INT-001-P1-POS-RULINGS-001.md` §4 and the P4 row in §5.
+2. Re-assess criterion 4 of `DPX-MKT-INT-001-P1-POS-LAUNCH-GATE-8H.md`.
+
+**B → the existing-credential decision, which is downstream of P4 and still a separate write.**
+
+3. Record the three figures against `DPX-CREDENTIAL-LEGACY-EXTENSION-001.md` §6.
+4. Knowing `WILL EXTEND` **does not authorize `--apply`.** The count exists so the decision is
+   not taken blind to its size; the decision itself is still to be taken, explicitly, against
+   that number. A dry run that produced a comfortable figure is not an approval.
+
+**C → 8D-C's own record. It does not touch the P4 gate.**
+
+5. Record `s1` and its threshold against `DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md` §6.
+6. Remediation remains undecided. The number describes a population; it does not authorize
+   doing anything to it.
 
 **Do not infer, estimate, or carry any of these counts forward from another environment.**
 Each of these numbers exists so a decision is not taken blind to its size; a guessed one defeats
