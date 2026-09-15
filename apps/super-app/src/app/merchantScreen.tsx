@@ -1102,7 +1102,7 @@ function MxHeader({
 // ─────────────────────────────────────────────────────────────────────────────
 // PAGE 1 — DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
-function DashboardPage({
+export function DashboardPage({
   onNav,
   business,
   wallet,
@@ -1445,20 +1445,26 @@ function DashboardPage({
                   borderBottom: `1px solid ${BORDER}`,
                 }}
               >
-                <div
+                {/* The merchant's own photo, not a decoration. This slot used
+                    to be a hard-coded 🍛, so every product in the list wore the
+                    same plate of food — a merchant who had uploaded a photo could
+                    not see it, and one who had not was told their product was
+                    food. ImageWithFallback is the same component the Products
+                    page uses, so the two surfaces agree about what a product
+                    with no photo looks like. */}
+                <ImageWithFallback
+                  src={p.imageUrl ?? undefined}
+                  alt={p.name}
                   style={{
                     width: 32,
                     height: 32,
                     borderRadius: 7,
                     background: NAVY_SURFACE,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
+                    objectFit: 'cover',
+                    display: 'block',
+                    flexShrink: 0,
                   }}
-                >
-                  🍛
-                </div>
+                />
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
