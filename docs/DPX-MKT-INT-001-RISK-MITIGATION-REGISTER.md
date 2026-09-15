@@ -340,7 +340,7 @@ A **low-probability risk can still be a release blocker** if its impact is archi
 
 - API key usage monitoring: log all requests (timestamp, endpoint, merchant_id)
 - Unusual pattern detection: alert if key used from unexpected IP, unusual endpoints, high volume
-- Credential rotation enforcement: API keys must rotate every 90 days
+- ~~Credential rotation enforcement: API keys must rotate every 90 days~~ — **superseded 2026-09-14.** Credentials are issued with a **99-year lifetime**; there is no automatic rotation deadline. Rotation remains available and explicit, it is simply no longer forced on a timer. See `DPX-MKT-INT-001-P1-POS-RULINGS-001.md` §6 and `ops/DPX-CREDENTIAL-LEGACY-EXTENSION-001.md`. The original 90-day control is struck rather than deleted, because it was the stated basis for P3 and for the expiry that shipped before the supersession.
 - Access logs: who generated key, who last rotated it
 - Comparison with baseline: alert if key usage pattern changes
 
@@ -352,7 +352,7 @@ A **low-probability risk can still be a release blocker** if its impact is archi
 4. **Key format** — prefix keys with "dpx_" so they're identifiable in logs
 5. **Logging filter** — redact API keys from all logs automatically
 6. **Scope limitation** — each key has minimum scopes needed (catalog:read/write, not all scopes)
-7. **Rate limiting** — per-API-key rate limits; alert on sudden spike
+7. **Rate limiting** — **corrected 2026-09-14 (R7).** The limit that exists is **500 requests / 60 s keyed by client IP**, not per API key. Because the key is the client IP, merchants and tills behind one public IP or CGNAT **share a bucket** — so it is 500 per client IP, _not_ per merchant and _not_ per credential. IP keying is an accepted Phase-1 trade-off. Rate limiting is an abuse/availability control and is **not** part of the authentication boundary; the credential remains that. "Alert on sudden spike" stays an **alert** criterion and must not be conflated with the limit.
 
 **Mitigation**:
 
@@ -840,7 +840,7 @@ A **low-probability risk can still be a release blocker** if its impact is archi
 - Price override not reflected in invoice
 - Incomplete inventory data (partial sync failure)
 - Webhook timeout (long processing)
-- Credential expiration (auto-revoke after 90 days)
+- Credential expiration — **restated 2026-09-14.** No longer applies to new issuance: credentials carry a 99-year lifetime, so there is no 90-day auto-revoke. The risk survives **only for the legacy population** issued under P3, which still carries its original 90-day date, and only until the approved one-time extension is executed (`ops/DPX-CREDENTIAL-LEGACY-EXTENSION-001.md`). Already-expired legacy credentials stay expired by ruling.
 - Schema migration failure
 - Rate limiting not enforced
 - Cross-region latency (if DrippleX distributed)

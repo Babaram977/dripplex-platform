@@ -116,8 +116,10 @@ What _is_ established:
 
 - Pre-existing merchant-chosen `INCOMING_API_KEY` credentials still authenticate — pinned by
   `E2E-017`, which is the compatibility guarantee in executable form.
-- The new policy (256-bit, `dpx_integration_` prefix, 90-day expiry, explicit rotation) applies to
-  newly issued credentials and does not retroactively touch stored ones.
+- The new policy (256-bit, `dpx_integration_` prefix, **99-year expiry** — 90-day until superseded
+  on 2026-09-14 — explicit rotation) applies to newly issued credentials and does not
+  retroactively touch stored ones. A one-time extension of the non-expired legacy population has
+  since been ruled and built, but **not executed**: `ops/DPX-CREDENTIAL-LEGACY-EXTENSION-001.md`.
 
 What is **not** established, and is exactly what the counts would settle: how many live
 credentials predate the policy, how many carry scopes R4 does not recognise, and how many have no
