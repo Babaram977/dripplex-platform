@@ -44,6 +44,101 @@ scales with the number, not because one order is an incident.
 No cancellation, no inventory release, no status mutation, no remediation. **Remediation remains
 an undecided separate ruling** (§7), and a measured population does not authorize acting on it.
 
+### Next step — inspect the one order (read-only, NOT yet run)
+
+Founder sequence, 2026-09-15: understand the single order **before** any remediation ruling. This
+statement is prepared and locally verified; it has **not** been run against production.
+
+Run in the production backend container, single-quoted, same mechanism as the measurement:
+
+```sql
+SELECT
+  o.order_number, o.status, o.payment_status, o.payment_method, o.fulfillment_type,
+  round(extract(epoch FROM (now() - COALESCE(o.confirmed_at, o.created_at)))/60) AS minutes_waiting,
+  o.created_at, o.confirmed_at, o.currency, o.total,
+  (SELECT count(*) FROM order_items oi WHERE oi.order_id = o.id)   AS item_count,
+  o.merchant_id,
+  (SELECT count(*) FROM merchant_integrations mi WHERE mi.merchant_id = o.merchant_id) AS merchant_integration_rows,
+  (SELECT count(*) FROM delivery_jobs dj WHERE dj.order_id = o.id) AS delivery_jobs
+FROM orders o
+WHERE o.status = 'CONFIRMED'
+  AND o.fulfillment_type = 'DELIVERY'
+  AND COALESCE(o.confirmed_at, o.created_at) < now() - interval '30 minutes'
+  AND NOT EXISTS (SELECT 1 FROM delivery_jobs dj WHERE dj.order_id = o.id)
+ORDER BY COALESCE(o.confirmed_at, o.created_at) ASC;
+```
+
+**Read-only. No customer-identifying value is selected** — no name, phone, email or delivery
+address. `order_number` and `merchant_id` are returned because remediation cannot be discussed
+without knowing which order and which merchant; if even that is too much, drop `merchant_id` and
+the diagnosis narrows accordingly.
+
+| Founder's question                  | Answered by                                                                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| order age                           | `minutes_waiting`, `created_at`, `confirmed_at`                                                                                                                             |
+| fulfilment / payment context        | `payment_status`, `payment_method`, `fulfillment_type`, `total`, `item_count`                                                                                               |
+| merchant / integration relationship | `merchant_id`, `merchant_integration_rows`                                                                                                                                  |
+| why no `DeliveryJob` exists         | **already answered from the code** — see the correction below. The order never reached `READY`, so none was ever created. `delivery_jobs` is returned only to confirm that. |
+| real customer-facing failure?       | Needs `minutes_waiting` **and** `payment_status` together — see below                                                                                                       |
+| recoverable?                        | `status = CONFIRMED` and `cancelled_at IS NULL` mean the merchant can still accept it                                                                                       |
+
+**The reading to watch for.** `payment_method = MERCHANT_DIRECT` with `payment_status = PENDING`
+is the known stranding class recorded at `merchant-orders.service.ts:177` — a bank-transfer order
+the merchant must confirm before it can progress. If that is what this order is, the cause is a
+documented gap with a known handling path, not a new defect. Any other combination points at
+merchant inaction or a notification failure.
+
+**Nothing in this statement mutates anything**, and running it does not authorize remediation —
+that ruling comes after, per §7.
+
+### ⚠️ Correction to this document's own reasoning — what `s1` actually measures
+
+Established from the code on 2026-09-15, while preparing the single-order investigation. **This
+corrects §2's justification for one of the clauses, and it sharpens §4's attribution.**
+
+A `DeliveryJob` is created from exactly **one** trigger: the `ORDER_READY` domain event.
+
+| Path                                                             | Guard                                                                   |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `markReady` (`merchant-orders.service.ts:140`)                   | requires `status === PREPARING`, sets `READY`, then emits `ORDER_READY` |
+| `confirmPaymentReceived` re-emit (`:252`)                        | guarded on `order.status === READY`                                     |
+| `OrderReadySubscriber` (`delivery/order-ready.subscriber.ts:38`) | the only caller of `createDeliveryJob`                                  |
+
+`CONFIRMED` precedes `PREPARING`, which precedes `READY`. So **a `CONFIRMED` order cannot have a
+`DeliveryJob`** — not "usually doesn't", but cannot, structurally.
+
+**Therefore `NOT EXISTS (delivery_jobs …)` is non-discriminating when combined with
+`status = 'CONFIRMED'`.** It is always true. The count is correct, but the clause contributes
+nothing, and §2's description of it — _"A job means dispatch happened"_ — describes a state this
+predicate can never encounter.
+
+Fixture **A-4** (§3) inserted a `delivery_job` against a `CONFIRMED` order and confirmed it was
+excluded. That fixture constructed a state **the application cannot produce**, so it validated a
+defensive clause rather than a real discriminator. It is left in place — the clause is harmless and
+guards against a future second dispatch trigger — but it should not be read as evidence the
+measurement distinguishes dispatched from undispatched orders at this stage.
+
+**What the statement measures, stated accurately:**
+
+> `DELIVERY` orders that have sat in `CONFIRMED` for 30+ minutes — that is, **the merchant has not
+> accepted them.** Accepting moves an order to `PREPARING`, which this predicate excludes.
+
+### This makes attribution sharper, not vaguer
+
+§4 says the data cannot distinguish a POS failure from merchant inaction. That hedge was too
+cautious. **At `CONFIRMED`, no dispatch has been attempted at all**, so a dispatch or POS failure is
+not in the candidate set. The remaining explanations are:
+
+- the merchant has not acted on the order, or
+- the merchant never saw it (notification, device, or store-state problem).
+
+The P4 result taken in the same session reinforces this: with **zero integration credentials in
+production**, no POS was authenticated to advance this order in the first place.
+
+So `s1 = 1` should be read as **one order awaiting merchant acceptance for over 30 minutes**, and
+the investigation belongs on the merchant side. It remains _potentially_ stranded — a merchant
+about to accept at minute 31 is not a failure — and it is still not evidence of a defect.
+
 ### It is an as-of value that moves both ways
 
 Unlike `c5`, `s1` can rise as well as fall — orders enter and leave this population continuously
