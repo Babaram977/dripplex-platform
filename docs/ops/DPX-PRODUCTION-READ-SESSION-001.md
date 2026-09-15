@@ -1,8 +1,8 @@
 # DPX-PRODUCTION-READ-SESSION-001 · the three production reads, in one operator session
 
-**Status:** ready to run · **not yet run**
+**Status:** execution-ready · **candidate execution channel identified** (`railway ssh`, §2b) · not yet run
 **Scope:** an operator convenience that sequences three _separate_ reads. It does not merge them.
-**Audience:** an authorized DrippleX operator with production database access
+**Audience:** an authorized DrippleX operator with an authorized production database **execution channel**
 **Nothing in this document writes anything.** Every step is a `SELECT` or a dry run.
 
 ---
@@ -52,6 +52,121 @@ Re-verified **2026-09-15** against the actual tooling, not carried forward as a 
 
 This is a **deliberate constraint, not a missing capability to be worked around.** The reads
 require an authorized operator.
+
+### 2b · The channel that does exist: `railway ssh`
+
+Found **2026-09-15**. The Railway CLI opens an interactive shell **inside the running container**
+(`railway ssh`, via `ssh.railway.com`, authenticated by an SSH key registered to the Railway
+account). Railway's own documented use cases for it include _"running database migrations"_.
+
+This is categorically different from the excluded routes above, and satisfies every prohibition:
+
+|                                                           |     |
+| --------------------------------------------------------- | --- |
+| runs inside the existing backend container                | ✅  |
+| `DATABASE_URL` never leaves the service environment       | ✅  |
+| no credential rendered into chat, a ticket or a document  | ✅  |
+| no public database proxy                                  | ✅  |
+| no new endpoint, no new code, no deployment, no migration | ✅  |
+
+> **It is not `railway run` / `railway shell`.** Those are _local_ commands: the CLI **fetches the
+> environment's variables onto the operator's own machine**. That pulls `DATABASE_URL` out of the
+> service environment, and — because the production `DATABASE_URL` resolves over Railway's private
+> network — it would also not reach the database without the TCP proxy this programme forbids.
+> Use `railway ssh`, which executes _in_ the container.
+
+#### Operator prerequisites
+
+1. Railway CLI installed, and `railway login`.
+2. An SSH key registered: `railway ssh keys add`, or `railway ssh keys github`.
+3. `railway ssh --service @dripplex/backend --environment production`
+
+**Registering the key is a credential action and was deliberately not performed by the
+engineering session.** No key was registered, and `railway ssh` was not attempted from here.
+
+#### The container has no `psql`
+
+Verified against `apps/backend/Dockerfile`: the runtime stage installs **only `openssl`**
+(line 35). There is no `postgresql-client`, so steps A and C cannot be run as raw SQL in that
+shell. They go through the already-present Prisma client instead.
+
+What _is_ present, verified in the same Dockerfile: the whole `prisma/` directory (line 46) —
+so step B's script is in the image — plus `node_modules` with the generated client (line 47),
+and `WORKDIR` is already `/app/apps/backend` (line 59).
+
+#### ⚠️ Use single quotes around `node -e`
+
+The statements below use PostgreSQL dollar-quoting (`$$…$$`) to avoid nested-quote escaping.
+In **double** quotes bash expands `$$` to the shell's PID and the SQL silently becomes wrong.
+**Single quotes only.**
+
+#### A — the P4 six values, in-container
+
+```bash
+node -e '
+const { PrismaClient } = require("@prisma/client");
+const p = new PrismaClient();
+p.$queryRaw`
+SELECT
+  (SELECT count(*) FROM merchant_integrations
+     WHERE webhook_url LIKE $$http://%$$)                       AS c1_http_webhooks,
+  (SELECT count(*) FROM integration_credentials
+     WHERE archived_at IS NULL
+       AND credential_type = $$INCOMING_API_KEY$$)              AS c2a_active_incoming_api_key,
+  (SELECT count(*) FROM integration_credentials
+     WHERE archived_at IS NULL
+       AND credential_type = $$OUTGOING_API_KEY$$)              AS c2b_active_outgoing_api_key,
+  (SELECT count(*) FROM integration_credentials
+     WHERE archived_at IS NULL
+       AND EXISTS (SELECT 1 FROM unnest(scopes) AS s
+         WHERE s <> ALL (ARRAY[$$catalog:read$$,$$catalog:write$$,$$inventory:read$$,$$inventory:write$$,$$orders:read$$,$$orders:write$$]))
+       )                                                        AS c3_out_of_vocabulary_scopes,
+  (SELECT count(*) FROM integration_credentials
+     WHERE archived_at IS NULL AND expires_at IS NULL)          AS c4_no_expiry,
+  (SELECT count(*) FROM integration_credentials
+     WHERE archived_at IS NULL AND expires_at IS NOT NULL
+       AND expires_at < COALESCE(rotated_at, created_at) + interval $$1 year$$)
+                                                                AS c5_legacy_short_lifetime
+`.then(r => {
+  for (const [k, v] of Object.entries(r[0])) console.log(k.padEnd(28), "=", String(v));
+  console.log("as of", new Date().toISOString());
+}).catch(e => { console.error("FAILED:", e.message); process.exitCode = 1; })
+ .finally(() => p.$disconnect());
+'
+```
+
+`String(v)` is load-bearing: Postgres `count(*)` arrives as a **BigInt**, which `JSON.stringify`
+throws on. Printing the values this way avoids it.
+
+#### C — the 8D-C measurement, in-container
+
+```bash
+node -e '
+const { PrismaClient } = require("@prisma/client");
+const p = new PrismaClient();
+p.$queryRaw`
+SELECT count(*) AS s1_potentially_stranded_confirmed
+FROM orders o
+WHERE o.status = $$CONFIRMED$$
+  AND o.fulfillment_type = $$DELIVERY$$
+  AND COALESCE(o.confirmed_at, o.created_at) < now() - interval $$30 minutes$$
+  AND NOT EXISTS (SELECT 1 FROM delivery_jobs dj WHERE dj.order_id = o.id)
+`.then(r => {
+  console.log("s1_potentially_stranded_confirmed =", String(r[0].s1_potentially_stranded_confirmed));
+  console.log("threshold in force                = 30 minutes");
+  console.log("as of", new Date().toISOString());
+}).catch(e => { console.error("FAILED:", e.message); process.exitCode = 1; })
+ .finally(() => p.$disconnect());
+'
+```
+
+Both invocations were **executed successfully against a local database carrying this schema**, so
+the syntax, the BigInt handling and the dollar-quoting are proven rather than drafted. The numbers
+they returned locally were fixture data and are **not** production values — nothing here reports
+or implies any production count.
+
+`DATABASE_URL` is read from the container's own environment by `new PrismaClient()`. It is never
+typed, printed or echoed.
 
 ---
 

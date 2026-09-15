@@ -1,8 +1,8 @@
 # DPX-MKT-INT-001-P1 · P4 production inventory runbook
 
-**Status:** ready to run · **not yet run**
+**Status:** execution-ready · **candidate execution channel identified** (`railway ssh` — see `DPX-PRODUCTION-READ-SESSION-001.md` §2b) · not yet run
 **Blocks:** P4, and criterion 4 of the 8H POS launch gate
-**Audience:** an authorized DrippleX operator with production database access
+**Audience:** an authorized DrippleX operator with an authorized production database **execution channel**
 
 ---
 
@@ -51,6 +51,11 @@ to be worked around.
 >
 > The operator hand-off, sequencing this run with the two other outstanding production reads,
 > is `DPX-PRODUCTION-READ-SESSION-001.md`.
+>
+> **A channel was subsequently found for the _operator_** — `railway ssh`, an interactive shell
+> inside the running backend container. It changes nothing above: the engineering session still
+> cannot run this, and did not attempt to. See `DPX-PRODUCTION-READ-SESSION-001.md` §2b, which
+> also carries the exact in-container invocation, because that container has no `psql`.
 
 ---
 
