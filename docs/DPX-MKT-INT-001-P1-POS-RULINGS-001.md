@@ -49,13 +49,13 @@ Whoever closes R7 is therefore choosing **two** things — a threshold and a key
 
 ## 2 · Credential policy
 
-| #      | Ruling                                                                                                                                 | Status                                        | Evidence                                                                                                                                                            |
-| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **P1** | 256-bit entropy, via the project's existing `randomBytes(32)` convention rather than a newly invented standard.                        | ✅ Implemented                                | `integrations-c.controller.ts`                                                                                                                                      |
-| **P2** | Format `dpx_integration_<random>`, with the misleading zero-entropy suffix removed.                                                    | ✅ Implemented                                | same call site; the superseded format is documented in the comment above it                                                                                         |
-| **P3** | 90-day expiry, enforced.                                                                                                               | ✅ Implemented                                | `CREDENTIAL_LIFETIME_DAYS = 90` / `credentialExpiry()` in `credentials.service.ts`                                                                                  |
-| **P4** | **Inventory first**, then decide the migration/expiry treatment of existing credentials. Do not automatically invalidate working ones. | ⏸ **Open — the inventory has not been taken** | The four counts in §4 remain ungated-and-unrun. P4 is a decision _to look before deciding_; recording it as settled would assert something untrue about production. |
-| **P5** | Explicit rotation only. Never silently replace a live credential.                                                                      | ✅ Implemented                                | `credentials.service.ts` — a second active credential of the same type is refused with 409                                                                          |
+| #      | Ruling                                                                                                                                 | Status                                        | Evidence                                                                                                                                                                         |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **P1** | 256-bit entropy, via the project's existing `randomBytes(32)` convention rather than a newly invented standard.                        | ✅ Implemented                                | `integrations-c.controller.ts`                                                                                                                                                   |
+| **P2** | Format `dpx_integration_<random>`, with the misleading zero-entropy suffix removed.                                                    | ✅ Implemented                                | same call site; the superseded format is documented in the comment above it                                                                                                      |
+| **P3** | ~~90-day expiry, enforced.~~ **Superseded 2026-09-14** by a **99-year** credential lifetime — see §6.                                  | ⛔ Superseded                                 | `CREDENTIAL_LIFETIME_YEARS = 99` / `credentialExpiry()` in `credentials.service.ts` (PR #406, deployed `c6a668c5`). The former `CREDENTIAL_LIFETIME_DAYS = 90` no longer exists. |
+| **P4** | **Inventory first**, then decide the migration/expiry treatment of existing credentials. Do not automatically invalidate working ones. | ⏸ **Open — the inventory has not been taken** | The four counts in §4 remain ungated-and-unrun. P4 is a decision _to look before deciding_; recording it as settled would assert something untrue about production.              |
+| **P5** | Explicit rotation only. Never silently replace a live credential.                                                                      | ✅ Implemented                                | `credentials.service.ts` — a second active credential of the same type is refused with 409                                                                                       |
 
 ---
 
@@ -67,7 +67,7 @@ explicitly decided. Until then, do not:
 - automatically convert them,
 - silently replace them,
 - impose the new prefix on them,
-- impose the 90-day expiry on them,
+- impose an expiry on them — the 90-day expiry this originally referred to no longer exists (superseded 2026-09-14), and the approved legacy extension explicitly skips credentials whose `expiresAt` is `NULL`,
 - or invalidate merchant-chosen credentials.
 
 And the dead `OUTGOING_API_KEY` credentials must **not** be treated as working POS credentials
@@ -192,5 +192,7 @@ their original 90-day expiry. Whether those are left to lapse, extended, or hand
 conditionally is a **separate decision**, and extending them would be a production write against
 live credentials. PR #406 deliberately changes no existing row.
 
-CRIT-005 (`DPX-MKT-INT-001-RISK-MITIGATION-REGISTER.md:343`, `:843`) still states a 90-day
-rotation control. It needs **restating rather than silently contradicting** — not yet done.
+CRIT-005 (`DPX-MKT-INT-001-RISK-MITIGATION-REGISTER.md`) has since been **restated** rather than
+silently contradicted: the 90-day rotation control is struck and annotated instead of deleted,
+because it was the stated basis for P3. The same pass corrected a second stale claim found in that
+entry — its preventive control said "per-API-key rate limits", where R7 ruled **IP-keyed**.
