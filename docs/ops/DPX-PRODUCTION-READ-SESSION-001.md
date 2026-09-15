@@ -27,28 +27,35 @@ c4_no_expiry                = 0
 c5_legacy_short_lifetime    = 0    as of 2026-09-15T13:23:26.969Z
 ```
 
-### B · legacy-credential dry run — operator-reported
+### B · legacy-credential dry run — screenshot-verified
 
 ```
 legacy lifetime (what c5 counts) = 0
   WILL EXTEND (still valid)      = 0
   LEFT ALONE  (already expired)  = 0
+
+Nothing to extend.
 ```
 
-### C · 8D-C stranded orders — operator-reported
+The script's own `Nothing to extend.` line is worth keeping: it is the early-return branch, which
+confirms the script ran to completion and took the zero path rather than failing before it counted.
+
+### C · 8D-C stranded orders — screenshot-verified
 
 ```
 s1_potentially_stranded_confirmed = 1    as of 2026-09-15T13:28:38.627Z
 threshold in force                = 30 minutes
 ```
 
-### Provenance, stated honestly
+### Provenance
 
-**A was read from the console output directly. B and C were reported by the operator; their
-console output did not reach the engineering session.** They are recorded at that evidence level
-deliberately. It is a real distinction and it is not hidden: recording an unseen figure as
-verified would be the same failure class as inferring the blast radius from `c5`, which this
-programme spent considerable effort refusing to do.
+**All three steps are screenshot-verified.** Console output was captured for A, B and C and read
+off those screenshots — not recalled, not retyped from memory, not inferred. The figures above are
+transcriptions of what the production container printed.
+
+Every value carries its own execution timestamp, and the two `as-of` readings (`c5`, `s1`) are
+recorded with theirs rather than with the session date, so neither can later be read as a standing
+description of production.
 
 ### Reconciliation
 
@@ -73,7 +80,8 @@ integration credentials in production at all** — `c2a = 0` says there is no li
 
 C's non-zero result is a useful control on the above: a live `CONFIRMED` `DELIVERY` order means the
 database holds real production data, which rules out reading A's zeros as "correct schema, empty
-database". That control rests on B/C's evidence level, not on A's.
+database" — the session queried a populated production database and found the credential tables
+genuinely empty.
 
 ### What C does NOT say
 

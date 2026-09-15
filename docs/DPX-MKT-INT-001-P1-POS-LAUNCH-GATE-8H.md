@@ -132,10 +132,19 @@ a tick: it is satisfied by an **empty population**, not by a population examined
 `E2E-017` still pins the compatibility guarantee in executable form for whenever credentials do
 exist; this measurement says only that today there are none.
 
-**A caveat worth carrying forward.** A merchant-facing integration with zero provisioned
-credentials means no merchant is currently authenticated against the POS surface. Whether that is
-expected at this stage is a product question, not a gate question, and it is deliberately not
-answered here.
+**The caveat, stated as precisely as it deserves (founder, 2026-09-15):**
+
+> The security inventory is clean **because there is currently no active incoming POS credential
+> population to inventory.** That is very different from proving that an actively provisioned
+> merchant/POS ecosystem is ready for launch.
+
+`c2a = 0` does **not** mean the POS integration is broken. It means no merchant is currently
+authenticated against it, so the compatibility surface this criterion measures is empty. Whether
+that is expected at this stage is a product question, not a gate question, and is deliberately
+not answered here.
+
+The practical consequence: **this criterion will need re-reading once credentials are
+provisioned.** A clean inventory of an empty set does not transfer to a populated one.
 
 ### The original blocker, kept for the record
 

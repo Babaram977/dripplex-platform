@@ -7,9 +7,8 @@
 
 ## 0 · Production result — 2026-09-15
 
-Run by the founder as authorized operator in the production backend container. Operator-reported;
-the console output did not reach the engineering session, so it is recorded at that evidence level
-rather than as screenshot-verified.
+Run by the founder as authorized operator in the production backend container.
+Screenshot-verified from the console output.
 
 ```
 s1_potentially_stranded_confirmed = 1     as of 2026-09-15T13:28:38.627Z

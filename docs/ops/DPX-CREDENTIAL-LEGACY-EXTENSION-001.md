@@ -8,14 +8,18 @@
 ## 0 · Dry-run result — 2026-09-15
 
 Run by the founder as authorized operator in the production backend container, **without
-`--apply`**. Operator-reported; the console output did not reach the engineering session, so it is
-recorded at that evidence level rather than as screenshot-verified.
+`--apply`**. Screenshot-verified from the console output.
 
 ```
 legacy lifetime (what c5 counts) = 0
   WILL EXTEND (still valid)      = 0
   LEFT ALONE  (already expired)  = 0
+
+Nothing to extend.
 ```
+
+`Nothing to extend.` is the script's early-return branch — confirmation that it ran to completion
+and took the zero path, rather than failing before it counted anything.
 
 Reconciles with P4's `c5 = 0`: `0 = 0 + 0`. The identity holds, though it **passes trivially** —
 an all-zero reconciliation exercises none of the arithmetic the check exists to catch.
