@@ -1,7 +1,57 @@
 # DPX-ORDER-8D-C · potentially stranded CONFIRMED orders — measurement runbook
 
 **Threshold ruled 2026-09-15: 30 minutes.** Statement schema-verified and fixture-tested.
-**Not executed against production.**
+**Executed against production 2026-09-15 — `s1 = 1`. See §0.**
+
+---
+
+## 0 · Production result — 2026-09-15
+
+Run by the founder as authorized operator in the production backend container. Operator-reported;
+the console output did not reach the engineering session, so it is recorded at that evidence level
+rather than as screenshot-verified.
+
+```
+s1_potentially_stranded_confirmed = 1     as of 2026-09-15T13:28:38.627Z
+threshold in force                = 30 minutes
+```
+
+### Read this carefully
+
+**One order, and the word that matters is _potentially_.** Per §4, the database cannot distinguish
+an order the POS failed to advance from one the merchant simply never accepted — both present
+identically as `CONFIRMED` + `DELIVERY` + no `DeliveryJob` past the threshold.
+
+**This is not evidence of a POS or integration defect,** and it must not be reported as the impact
+of one. That reading is specifically ruled out, and the P4 result taken in the same session makes
+it less likely rather than more: with **no integration credentials in production at all**, no POS
+was authenticated to advance this order in the first place. Merchant inaction is the more
+economical explanation, but the measurement does not establish that either.
+
+### It does not bear on P4
+
+8D-C is a separate measurement with its own ruling. `s1 = 1` neither advances nor blocks the P4
+credential/integration inventory gate, which is answered by step A alone.
+
+### What it does mean
+
+Per §5, a stranded `CONFIRMED` order holds its inventory reservation **indefinitely** — the
+cleanup sweep only releases `PENDING` orders. So this one order is holding stock, not merely
+customer patience. At n=1 that is a small cost; the finding is recorded because the mechanism
+scales with the number, not because one order is an incident.
+
+### Nothing was done to it
+
+No cancellation, no inventory release, no status mutation, no remediation. **Remediation remains
+an undecided separate ruling** (§7), and a measured population does not authorize acting on it.
+
+### It is an as-of value that moves both ways
+
+Unlike `c5`, `s1` can rise as well as fall — orders enter and leave this population continuously
+as merchants act on them. `s1 = 1` describes 2026-09-15T13:28:38Z and nothing else. Do not carry
+it forward as a standing figure.
+
+---
 
 ---
 

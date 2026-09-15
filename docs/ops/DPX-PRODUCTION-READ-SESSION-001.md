@@ -1,9 +1,87 @@
 # DPX-PRODUCTION-READ-SESSION-001 · the three production reads, in one operator session
 
-**Status:** execution-ready · **candidate execution channel identified** (`railway ssh`, §2b) · not yet run
+**Status:** ✅ **EXECUTED 2026-09-15** · results in §0 · no production write performed
 **Scope:** an operator convenience that sequences three _separate_ reads. It does not merge them.
 **Audience:** an authorized DrippleX operator with an authorized production database **execution channel**
 **Nothing in this document writes anything.** Every step is a `SELECT` or a dry run.
+
+---
+
+## 0 · Result — executed 2026-09-15
+
+Run by the founder, acting as authorized operator, through the **Railway dashboard Console** on
+`@dripplex/backend` in `production`. Container hostname `1c1befbcfed9`, which matches the hostname
+logged by the R7 deployment (`bf2ca901`) at 10:10:50Z — so this was the live post-R7 container,
+confirmed rather than assumed.
+
+**No production write was performed. `--apply` was not run.**
+
+### A · P4 six-value inventory — screenshot-verified
+
+```
+c1_http_webhooks            = 0
+c2a_active_incoming_api_key = 0
+c2b_active_outgoing_api_key = 0
+c3_out_of_vocabulary_scopes = 0
+c4_no_expiry                = 0
+c5_legacy_short_lifetime    = 0    as of 2026-09-15T13:23:26.969Z
+```
+
+### B · legacy-credential dry run — operator-reported
+
+```
+legacy lifetime (what c5 counts) = 0
+  WILL EXTEND (still valid)      = 0
+  LEFT ALONE  (already expired)  = 0
+```
+
+### C · 8D-C stranded orders — operator-reported
+
+```
+s1_potentially_stranded_confirmed = 1    as of 2026-09-15T13:28:38.627Z
+threshold in force                = 30 minutes
+```
+
+### Provenance, stated honestly
+
+**A was read from the console output directly. B and C were reported by the operator; their
+console output did not reach the engineering session.** They are recorded at that evidence level
+deliberately. It is a real distinction and it is not hidden: recording an unseen figure as
+verified would be the same failure class as inferring the blast radius from `c5`, which this
+programme spent considerable effort refusing to do.
+
+### Reconciliation
+
+`c5 = WILL EXTEND + LEFT ALONE` → `0 = 0 + 0`. ✅
+
+The check **passes trivially**, and that is worth saying plainly rather than reporting as a clean
+pass: an identity of zeros exercises none of the arithmetic the check exists to catch. It confirms
+no contradiction; it does not demonstrate the two statements agree on a non-empty population.
+
+### What A actually says
+
+All six zero does not mean "the credential population is compliant". It means **there are no
+integration credentials in production at all** — `c2a = 0` says there is no live
+`INCOMING_API_KEY` anywhere.
+
+| Consequence                                                             |                                                                                                                                                                              |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The credential migration has nothing to act on.**                     | `--apply` is not merely unauthorized, it is **vacuous**. There is no population to extend.                                                                                   |
+| **R5's dead `OUTGOING_API_KEY` population is empty** (`c2b = 0`).       | The question of whether recovery-and-rehash was worth attempting is closed on size: there is nothing to recover.                                                             |
+| **P4's purpose is satisfied, but not in the anticipated way.**          | P4 exists to avoid invalidating credentials that currently work. None exist. The gate is answered by **emptiness**, not by a safe population.                                |
+| **No merchant is currently authenticated against the POS integration.** | Whether that is expected at this stage or indicates integrations were never provisioned is a **product question**, recorded here and deliberately not answered by inference. |
+
+C's non-zero result is a useful control on the above: a live `CONFIRMED` `DELIVERY` order means the
+database holds real production data, which rules out reading A's zeros as "correct schema, empty
+database". That control rests on B/C's evidence level, not on A's.
+
+### What C does NOT say
+
+`s1 = 1` is **potentially** stranded. The measurement cannot distinguish an order the POS failed to
+advance from one the merchant simply never accepted — both look identical. **It is not evidence of
+a POS defect**, and it does not bear on P4, which is a separate gate.
+
+Remediation remains undecided. Nothing was cancelled, advanced, or released.
 
 ---
 

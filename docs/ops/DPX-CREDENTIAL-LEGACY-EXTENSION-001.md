@@ -1,6 +1,47 @@
 # DPX-CREDENTIAL-LEGACY-EXTENSION-001 · the legacy 90-day credential population
 
-**Ruled 2026-09-15.** Mechanism implemented and verified. **Not executed in production.**
+**Ruled 2026-09-15.** Mechanism implemented and verified. **Dry run executed 2026-09-15 —
+`WILL EXTEND = 0`. There is nothing to migrate. `--apply` was NOT run and is now moot.**
+
+---
+
+## 0 · Dry-run result — 2026-09-15
+
+Run by the founder as authorized operator in the production backend container, **without
+`--apply`**. Operator-reported; the console output did not reach the engineering session, so it is
+recorded at that evidence level rather than as screenshot-verified.
+
+```
+legacy lifetime (what c5 counts) = 0
+  WILL EXTEND (still valid)      = 0
+  LEFT ALONE  (already expired)  = 0
+```
+
+Reconciles with P4's `c5 = 0`: `0 = 0 + 0`. The identity holds, though it **passes trivially** —
+an all-zero reconciliation exercises none of the arithmetic the check exists to catch.
+
+### What this closes
+
+**The blast radius is zero.** `--apply` is not merely unauthorized — it is **vacuous**. There is
+no live legacy credential to extend, because P4 established there are no integration credentials
+in production at all.
+
+So the ruling in §1 stands as written and correctly anticipated the cases, but **has no subject to
+act on**. §2's argument for why "leave them to lapse" was rejected remains sound reasoning about a
+population that turns out to be empty; nothing lapses because nothing exists.
+
+### What this does NOT close
+
+- **The script stays.** If credentials are provisioned later under a policy that stamps a short
+  lifetime, the mechanism is built, verified against fixtures, and idempotent. This result retires
+  the _urgency_, not the tool.
+- **The expiry-warning gap is untouched** (§7). It was never solved by the migration, and an empty
+  population does not solve it either — it defers it. The first credential issued makes it live
+  again.
+- **`--apply` remains gated.** A future non-zero dry run would need its own authorization against
+  that figure, exactly as §6 requires. This result grants nothing forward.
+
+---
 
 ---
 
