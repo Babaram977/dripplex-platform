@@ -39,6 +39,19 @@ can execute SQL against the production database, and the routes that would creat
 what the mechanism above rules out. That is a deliberate constraint, not a missing capability
 to be worked around.
 
+> **Re-verified 2026-09-15** against the actual tooling rather than carried forward as a claim,
+> because a statement that something is impossible ages badly and this one gates the launch:
+>
+> | Mechanism                                             | Result                                                                                                                                                                     |
+> | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | Railway MCP agent (`railway-agent`)                   | **No SQL execution capability** — no `executeSQL`/`runQuery` tool, file tools read but do not execute, and DB credentials are deliberately not exposed to the agent layer. |
+> | `list-variables`                                      | Would render `DATABASE_URL` in plaintext — excluded.                                                                                                                       |
+> | `create-tcp-proxy`                                    | Would expose Postgres publicly — excluded.                                                                                                                                 |
+> | Deploying a temporary function reading `DATABASE_URL` | Excluded by the §4 mechanism above: new production code **and** a deployment.                                                                                              |
+>
+> The operator hand-off, sequencing this run with the two other outstanding production reads,
+> is `DPX-PRODUCTION-READ-SESSION-001.md`.
+
 ---
 
 ## 2 · Safety properties
