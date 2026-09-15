@@ -41,7 +41,23 @@ export const envSchema = z.object({
   OTP_DAILY_LIMIT: z.coerce.number().int().positive().default(10),
   BCRYPT_SALT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
   THROTTLE_TTL_MS: z.coerce.number().int().positive().default(60_000),
-  THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
+  /**
+   * R7 — the global request limit, ruled 2026-09-15 at **500 per 60 s, keyed
+   * by client IP**. A product/security decision, not an engineering default.
+   *
+   * Keyed by client IP via `ProxyAwareThrottlerGuard`, which means merchants
+   * and tills behind one public IP or CGNAT SHARE this bucket. It is therefore
+   * 500 per client IP — **not** per merchant, and **not** per credential.
+   * Describing it either of those ways would overstate what a caller gets.
+   *
+   * The shared-bucket behaviour is an accepted Phase-1 trade-off. Rate limiting
+   * is an abuse/availability control and is not part of the authentication
+   * boundary; the credential remains that.
+   *
+   * 500 rather than the previous 100 because the threshold is set for the
+   * intended merchant scale rather than today's population.
+   */
+  THROTTLE_LIMIT: z.coerce.number().int().positive().default(500),
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604_800),
   LOGIN_MAX_ATTEMPTS_PER_EMAIL: z.coerce.number().int().positive().default(10),
   LOGIN_MAX_ATTEMPTS_PER_IP: z.coerce.number().int().positive().default(30),
