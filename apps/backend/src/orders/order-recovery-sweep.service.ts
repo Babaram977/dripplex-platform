@@ -117,19 +117,36 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
    */
   public announceActivationState(): void {
     const activationAt = this.activationBoundary();
-    if (activationAt === null) {
-      this.logger.log(
-        'Automatic recovery is NOT activated (RECOVERY_ACTIVATION_AT is unset or unparseable). ' +
-          'The 24-hour backstop will perform no recovery actions: no order will be cancelled and ' +
-          'no money will move automatically.',
+    // TOTAL BY CONSTRUCTION: this must not be able to throw.
+    //
+    // It is called from bootstrap and, since the periodic re-announcement, from
+    // every accepted sweep tick — where it sits OUTSIDE runSweep's try/catch,
+    // because the fail-closed return has to be able to precede the work. A
+    // logger transport failure (a broken pino stream, EPIPE on stdout) would
+    // therefore reject runSweep(), and the interval invokes it as
+    // `void this.runSweep()`: an unhandled rejection, which terminates the
+    // process on this Node version. Announcing the safety state must never be
+    // able to take down the platform it is describing.
+    //
+    // The catch is silent because there is nothing safe to do in it: logging is
+    // the thing that just failed.
+    try {
+      if (activationAt === null) {
+        this.logger.log(
+          'Automatic recovery is NOT activated (RECOVERY_ACTIVATION_AT is unset or unparseable). ' +
+            'The 24-hour backstop will perform no recovery actions: no order will be cancelled and ' +
+            'no money will move automatically.',
+        );
+        return;
+      }
+      this.logger.warn(
+        `Automatic recovery IS ACTIVATED. Stalled-order exceptions detected at or after ${activationAt.toISOString()} ` +
+          'are eligible for the 24-hour backstop, which can cancel an order and reverse a DX Wallet ' +
+          'payment without a person asking. Exceptions detected before that instant remain ineligible.',
       );
-      return;
+    } catch {
+      // Deliberately swallowed. See above.
     }
-    this.logger.warn(
-      `Automatic recovery IS ACTIVATED. Stalled-order exceptions detected at or after ${activationAt.toISOString()} ` +
-        'are eligible for the 24-hour backstop, which can cancel an order and reverse a DX Wallet ' +
-        'payment without a person asking. Exceptions detected before that instant remain ineligible.',
-    );
   }
 
   /**
