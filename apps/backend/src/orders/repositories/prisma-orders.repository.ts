@@ -294,6 +294,31 @@ export class PrismaOrdersRepository implements OrdersRepository {
     }
   }
 
+  public async findUnnotifiedOpenExceptions(): Promise<
+    { id: string; waitedMinutes: number; order: OrderWithItems }[]
+  > {
+    const rows = await this.prisma.orderException.findMany({
+      where: {
+        status: OrderExceptionStatus.OPEN,
+        notifiedAt: null,
+      },
+      include: { order: { include: ORDER_INCLUDE } },
+      orderBy: { detectedAt: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      waitedMinutes: row.waitedMinutes,
+      order: row.order,
+    }));
+  }
+
+  public async markExceptionNotified(exceptionId: string): Promise<void> {
+    await this.prisma.orderException.update({
+      where: { id: exceptionId },
+      data: { notifiedAt: new Date() },
+    });
+  }
+
   public async resolveOpenExceptions(
     orderId: string,
     resolvedStatus: OrderStatus,

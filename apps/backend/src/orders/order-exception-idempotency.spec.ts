@@ -254,6 +254,43 @@ suite('OrderException — the database guarantees', () => {
     expect(await prisma.orderException.count({ where: { orderId } })).toBe(1);
   });
 
+  it('OEI-013 · a new exception starts unnotified and is found by the pending query', async () => {
+    const orderId = await makeOrder(45);
+    await repository.raiseStalledException({ orderId, waitedMinutes: 45, detectedAt: new Date() });
+
+    const pending = await repository.findUnnotifiedOpenExceptions();
+
+    // The row is committed before any notification is sent, so a fresh one must
+    // be visible to the retry query — otherwise a failed emit would leave a
+    // stalled order permanently unannounced.
+    expect(pending.map((p) => p.order.id)).toContain(orderId);
+  });
+
+  it('OEI-014 · once announced it drops out of the pending query', async () => {
+    const orderId = await makeOrder(45);
+    await repository.raiseStalledException({ orderId, waitedMinutes: 45, detectedAt: new Date() });
+    const pending = await repository.findUnnotifiedOpenExceptions();
+    const mine = pending.find((p) => p.order.id === orderId);
+
+    await repository.markExceptionNotified(mine?.id ?? '');
+
+    const after = await repository.findUnnotifiedOpenExceptions();
+    // Announced once, not every fifteen minutes for as long as it sits there.
+    expect(after.map((p) => p.order.id)).not.toContain(orderId);
+  });
+
+  it('OEI-015 · a resolved exception is never announced, even if it was never notified', async () => {
+    const orderId = await makeOrder(45);
+    await repository.raiseStalledException({ orderId, waitedMinutes: 45, detectedAt: new Date() });
+    // The merchant acts before the warning ever goes out — a real race at the
+    // 30-minute boundary. Warning them now would be worse than useless.
+    await repository.transition(orderId, { status: OrderStatus.PREPARING });
+
+    const pending = await repository.findUnnotifiedOpenExceptions();
+
+    expect(pending.map((p) => p.order.id)).not.toContain(orderId);
+  });
+
   it('OEI-011 · the exception type is the stalled one, and status starts OPEN', async () => {
     const orderId = await makeOrder(45);
     await repository.raiseStalledException({ orderId, waitedMinutes: 45, detectedAt: new Date() });

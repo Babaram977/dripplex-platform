@@ -74,9 +74,9 @@ export class OrderExceptionSweepService implements OnModuleInit, OnModuleDestroy
    * and we have already said so" — two very different operational pictures that
    * a single number would collapse.
    */
-  public async runSweep(): Promise<{ raised: number; alreadyOpen: number }> {
+  public async runSweep(): Promise<{ raised: number; alreadyOpen: number; notified: number }> {
     if (this.running) {
-      return { raised: 0, alreadyOpen: 0 };
+      return { raised: 0, alreadyOpen: 0, notified: 0 };
     }
 
     this.running = true;
@@ -100,17 +100,59 @@ export class OrderExceptionSweepService implements OnModuleInit, OnModuleDestroy
 
         if (!result.raised) {
           // The unique constraint refused it: already raised, by a concurrent
-          // sweep or an earlier one whose row is still around. Not an error.
+          // sweep or an earlier one. Not an error.
           alreadyOpen += 1;
           continue;
         }
 
         raised += 1;
+        this.logger.warn(
+          `Order ${order.orderNumber} has been CONFIRMED and unadvanced for ${String(waitedMinutes)} minutes`,
+        );
+      }
 
-        // Emitted only on a genuinely new exception, so the merchant is told
-        // once rather than every fifteen minutes for as long as the order sits
-        // there. The repeat protection is the database constraint above, not
-        // anything the notification side has to remember.
+      // Notification is a SEPARATE pass over what has not been announced yet,
+      // rather than something done inline as each row is created.
+      //
+      // The row is committed before any notification can be sent, so the two can
+      // come apart. Inline, a failed emit would leave an exception that exists,
+      // was never announced, and — because the unique constraint stops it being
+      // raised again — never would be. A stalled-order detector that silently
+      // fails to report a stalled order is the exact failure this ruling exists
+      // to end, so it must not be possible here.
+      //
+      // Driving off `notifiedAt IS NULL` makes the next sweep retry instead.
+      // That is at-least-once, not exactly-once: an emit that succeeds and then
+      // fails to record itself is announced twice. Told twice beats never told
+      // for an operational warning, and the window is one database write wide.
+      const notified = await this.notifyPending();
+
+      return { raised, alreadyOpen, notified };
+    } catch (error) {
+      // A failing sweep must not kill the interval — it runs again in fifteen
+      // minutes, and the orders it missed are still there to find.
+      this.logger.error(
+        `Order exception sweep failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return { raised: 0, alreadyOpen: 0, notified: 0 };
+    } finally {
+      this.running = false;
+    }
+  }
+
+  /**
+   * Announces every open exception that has not been announced yet.
+   *
+   * Each one is isolated: a merchant whose notification fails must not stop the
+   * next merchant from being warned, and the failure must leave the row
+   * retryable rather than consumed.
+   */
+  private async notifyPending(): Promise<number> {
+    const pending = await this.ordersRepository.findUnnotifiedOpenExceptions();
+    let notified = 0;
+
+    for (const { id, waitedMinutes, order } of pending) {
+      try {
         await this.eventBus?.emit(
           DOMAIN_EVENTS.ORDER_EXCEPTION_RAISED,
           {
@@ -126,22 +168,16 @@ export class OrderExceptionSweepService implements OnModuleInit, OnModuleDestroy
           },
           { actorUserId: null },
         );
-
-        this.logger.warn(
-          `Order ${order.orderNumber} has been CONFIRMED and unadvanced for ${String(waitedMinutes)} minutes`,
+        await this.ordersRepository.markExceptionNotified(id);
+        notified += 1;
+      } catch (error) {
+        // Left unmarked on purpose, so the next sweep tries again.
+        this.logger.error(
+          `Failed to announce order exception ${id}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-
-      return { raised, alreadyOpen };
-    } catch (error) {
-      // A failing sweep must not kill the interval — it runs again in fifteen
-      // minutes, and the orders it missed are still there to find.
-      this.logger.error(
-        `Order exception sweep failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return { raised: 0, alreadyOpen: 0 };
-    } finally {
-      this.running = false;
     }
+
+    return notified;
   }
 }

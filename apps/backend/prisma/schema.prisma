@@ -1576,6 +1576,16 @@ model OrderException {
   /// recomputed: the age at detection is the fact worth keeping, and it stops
   /// being derivable the moment the order progresses.
   waitedMinutes  Int                  @map("waited_minutes")
+  /// When the merchant was actually told. Null means the exception exists but
+  /// the warning has not gone out yet.
+  ///
+  /// Separate from `detectedAt` because the row is committed BEFORE the
+  /// notification is emitted, and those can come apart: if the emit fails, the
+  /// row is already there, the unique constraint stops it ever being raised
+  /// again, and without this column the merchant would never be told — a
+  /// stalled-order detector that silently fails to report a stalled order.
+  /// Nulling this out is what makes the next sweep retry the notification.
+  notifiedAt DateTime?           @map("notified_at")
   /// Set when the order leaves CONFIRMED. Resolution is observed, not decided:
   /// nothing here resolves an exception by acting on the order.
   resolvedAt     DateTime?            @map("resolved_at")

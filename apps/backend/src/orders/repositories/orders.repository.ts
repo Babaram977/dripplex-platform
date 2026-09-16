@@ -128,6 +128,20 @@ export interface OrdersRepository {
     detectedAt: Date;
   }): Promise<{ raised: boolean }>;
 
+  /**
+   * OPEN exceptions whose warning has not gone out yet.
+   *
+   * The row is committed before the notification is emitted, so the two can come
+   * apart. Without this the unique constraint that stops a duplicate row would
+   * also stop the merchant ever being told.
+   */
+  findUnnotifiedOpenExceptions(): Promise<
+    { id: string; waitedMinutes: number; order: OrderWithItems }[]
+  >;
+
+  /** Record that the merchant has been warned about this exception. */
+  markExceptionNotified(exceptionId: string): Promise<void>;
+
   /** Close any OPEN exception on an order that has since moved on. */
   resolveOpenExceptions(orderId: string, resolvedStatus: OrderStatus): Promise<number>;
   createDispute(input: CreateDisputeInput): Promise<OrderDispute>;

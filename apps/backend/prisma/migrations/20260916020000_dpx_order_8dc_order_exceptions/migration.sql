@@ -15,6 +15,7 @@ CREATE TABLE "order_exceptions" (
     "status" "OrderExceptionStatus" NOT NULL DEFAULT 'OPEN',
     "detected_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "waited_minutes" INTEGER NOT NULL,
+    "notified_at" TIMESTAMP(3),
     "resolved_at" TIMESTAMP(3),
     "resolved_status" "OrderStatus",
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -37,3 +38,4 @@ CREATE UNIQUE INDEX "order_exceptions_order_id_type_key" ON "order_exceptions"("
 
 -- AddForeignKey
 ALTER TABLE "order_exceptions" ADD CONSTRAINT "order_exceptions_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "orders"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+

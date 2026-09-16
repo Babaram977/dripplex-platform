@@ -148,6 +148,8 @@ describe('PaymentService', () => {
     findStalledConfirmedOrders: jest.fn(),
     raiseStalledException: jest.fn(),
     resolveOpenExceptions: jest.fn(),
+    findUnnotifiedOpenExceptions: jest.fn(),
+    markExceptionNotified: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {

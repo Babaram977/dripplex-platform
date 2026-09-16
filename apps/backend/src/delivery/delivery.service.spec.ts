@@ -238,6 +238,8 @@ describe('DeliveryService', () => {
     findStalledConfirmedOrders: jest.fn(),
     raiseStalledException: jest.fn(),
     resolveOpenExceptions: jest.fn(),
+    findUnnotifiedOpenExceptions: jest.fn(),
+    markExceptionNotified: jest.fn(),
   };
 
   const addressRepository: jest.Mocked<AddressRepository> = {

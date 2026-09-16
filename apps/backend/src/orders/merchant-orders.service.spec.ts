@@ -74,6 +74,8 @@ describe('MerchantOrdersService', () => {
     findStalledConfirmedOrders: jest.fn(),
     raiseStalledException: jest.fn(),
     resolveOpenExceptions: jest.fn(),
+    findUnnotifiedOpenExceptions: jest.fn(),
+    markExceptionNotified: jest.fn(),
   };
 
   const auditService = {
