@@ -30,6 +30,7 @@ import { MerchantSettlementService } from './merchant-settlement.service';
 import { OrderCompletionSweepService } from './order-completion-sweep.service';
 import { OrderExceptionSweepService } from './order-exception-sweep.service';
 import { OrderPaymentProofService } from './order-payment-proof.service';
+import { OrderRecoverySweepService } from './order-recovery-sweep.service';
 import { OrderRecoveryService } from './order-recovery.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
@@ -80,6 +81,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     OrderRecoveryService,
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     { provide: CHECKOUT_INVENTORY_VALIDATOR, useClass: CatalogCheckoutInventoryValidator },
+    OrderRecoverySweepService,
   ],
   // MerchantOrdersService is exported so the POS order-sync route drives the
   // order lifecycle through the merchant's own service rather than through a

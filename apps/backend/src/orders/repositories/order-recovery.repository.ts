@@ -152,6 +152,31 @@ export interface OrderRecoveryRepository {
    * ledger has confirmed the credit.
    */
   markOrderRefunded(orderId: string): Promise<void>;
+
+  /**
+   * Orders the 24-hour automatic backstop may act on. Increment 4.
+   *
+   * EVERY CONDITION HERE IS A SAFETY CONDITION, and each is falsification-tested
+   * individually. In one statement, so no two facts can be read at different
+   * instants:
+   *   • status is still CONFIRMED — the merchant never advanced it
+   *   • a STALLED_CONFIRMED exception is still OPEN
+   *   • that exception was detected AT OR AFTER the activation boundary — this
+   *     is what keeps pre-activation orders, DPX-20260911-F7GK1S among them,
+   *     structurally out of automatic recovery even when they carry no case
+   *   • the order has been in CONFIRMED at least `backstopBefore`
+   *   • no recovery case exists yet, or the one that exists is not historical
+   *
+   * Returning a row is not permission to act on it. The caller re-reads and
+   * revalidates immediately before mutating, because this query and the
+   * mutation are separated by everything the sweep does in between — the
+   * select-then-mutate gap that OrderCompletionSweepService leaves open.
+   */
+  findBackstopEligibleOrders(input: {
+    activationAt: Date;
+    backstopBefore: Date;
+    limit: number;
+  }): Promise<{ id: string; orderNumber: string; exceptionId: string }[]>;
 }
 
 export const ORDER_RECOVERY_REPOSITORY = Symbol('ORDER_RECOVERY_REPOSITORY');

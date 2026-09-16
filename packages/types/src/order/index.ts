@@ -175,7 +175,7 @@ export interface AdminListOrdersQuery extends ListOrdersQuery {
 export type OrderRecoveryStatus =
   'PENDING' | 'IN_PROGRESS' | 'AWAITING_FINANCIAL_RETRY' | 'AWAITING_INVESTIGATION' | 'CLOSED';
 
-export type OrderRecoveryTrigger = 'OPERATOR' | 'AUTOMATIC';
+export type OrderRecoveryTrigger = 'OPERATOR' | 'AUTOMATIC' | 'HISTORICAL';
 
 export type OrderRecoveryFinancialOutcome =
   'UNDETERMINED' | 'NONE_DUE' | 'REVERSAL_CONFIRMED' | 'REVERSAL_FAILED' | 'MANUAL_REQUIRED';

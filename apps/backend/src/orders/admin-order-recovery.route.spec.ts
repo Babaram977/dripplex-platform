@@ -439,4 +439,44 @@ suite('DPX-ORDER-8D-RECOVERY · admin/order-recoveries over HTTP', () => {
     expect(JSON.stringify(result.body)).toMatch(/must be cancelled through recovery/i);
     expect(JSON.stringify(result.body)).not.toMatch(/uuid/i);
   }, 60_000);
+
+  it('AOR-013 · a historical case does NOT appear in the operator queue', async () => {
+    const { orderId } = await aStalledOrder();
+    await prisma.orderRecovery.create({
+      data: {
+        orderId,
+        trigger: 'HISTORICAL',
+        paymentMethodAtOpen: OrderPaymentMethod.CASH,
+        paymentStatusAtOpen: PaymentStatus.PENDING,
+        predatesRecoveryImplementation: true,
+      },
+    });
+
+    // THE REGRESSION FOR THE INCREMENT 1 DEFECT, driven over the real filter
+    // path rather than asserted against the enum. Historical recognition was
+    // recorded as trigger = OPERATOR while leaving openedById null — one row
+    // making two contradictory claims about who started the case — and this
+    // filter is where it leaked into view. An operator reviewing their own
+    // queue must not be shown migration bookkeeping.
+    const operatorQueue = await call(
+      'GET',
+      '/admin/order-recoveries?trigger=OPERATOR&pageSize=100',
+      readerToken,
+    );
+    expect(operatorQueue.status).toBe(200);
+    const operatorItems = (operatorQueue.body['data'] as { items: { orderId: string }[] }).items;
+    expect(operatorItems.some((item) => item.orderId === orderId)).toBe(false);
+
+    // And it IS reachable under its own trigger, so recognising a case files it
+    // rather than hiding it.
+    const historicalQueue = await call(
+      'GET',
+      '/admin/order-recoveries?trigger=HISTORICAL&pageSize=100',
+      readerToken,
+    );
+    expect(historicalQueue.status).toBe(200);
+    const historicalItems = (historicalQueue.body['data'] as { items: { orderId: string }[] })
+      .items;
+    expect(historicalItems.some((item) => item.orderId === orderId)).toBe(true);
+  }, 60_000);
 });
