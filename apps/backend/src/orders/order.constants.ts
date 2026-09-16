@@ -118,6 +118,86 @@ export const ORDER_WALLET_REFERENCE_TYPE = 'order_refund';
 export const ORDER_WALLET_PAYMENT_REFERENCE_TYPE = 'order_payment';
 
 /**
+ * DPX-ORDER-8D-RECOVERY Increment 4 — THE ACTIVATION BOUNDARY FOR AUTOMATIC
+ * RECOVERY. Founder ruling, 2026-09-16.
+ *
+ * An exception is eligible for the 24-hour automatic backstop only if it was
+ * detected AT OR AFTER this instant. Everything stalled before it is
+ * structurally ineligible — not merely skipped — and reaches a recovery action
+ * only through the governed historical-recognition path.
+ *
+ * WHY A CUTOFF AT ALL, GIVEN `predatesRecoveryImplementation` EXISTS.
+ * That flag is an attribute of a recovery CASE, not of an order. An order that
+ * has never been given a case cannot carry it, so excluding on the flag alone
+ * protects nothing: the sweep would simply open a fresh case with the flag
+ * defaulting to false and treat a long-stalled order as ordinary work. The
+ * cutoff is what makes the protection unconditional, and it is why
+ * DPX-20260911-F7GK1S stays protected even if it has no recovery row at the
+ * moment the backstop first runs.
+ *
+ * WHY A CODE CONSTANT RATHER THAN CONFIGURATION. This is the recovery policy
+ * itself, not an operational knob. Moving a financial safety boundary must
+ * require a reviewed deployment; an environment variable would let anyone with
+ * dashboard access move it silently.
+ *
+ * ⚠️ NULL MEANS NOT YET ACTIVATED, AND THAT IS THE SHIPPING STATE.
+ * The founder sets the real value — an explicit UTC instant — in its own
+ * reviewed change at the moment the backstop is enabled. Until then the sweep
+ * performs ZERO recovery actions, so deploying this increment causes no
+ * production action by itself. Resolution fails CLOSED: see
+ * `resolveRecoveryActivationAt`. Never substitute "now", and never compare
+ * against null.
+ */
+export const RECOVERY_ACTIVATION_AT: string | null = null;
+
+/**
+ * The activation boundary as a Date, or null if it cannot be resolved.
+ *
+ * Null covers three cases that must behave identically: not yet set, not a
+ * parseable timestamp, and set to something absurd. All three mean the
+ * automatic backstop does nothing at all. The alternative — a null flowing
+ * into `detectedAt >= cutoff` — would make every historical exception eligible,
+ * which is precisely the catastrophe the boundary exists to prevent, arriving
+ * through a configuration path instead of a logic one.
+ */
+export function resolveRecoveryActivationAt(
+  raw: string | null = RECOVERY_ACTIVATION_AT,
+): Date | null {
+  if (raw === null || raw.trim() === '') {
+    return null;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed;
+}
+
+/**
+ * How long a CONFIRMED order may sit before the automatic backstop cancels it.
+ *
+ * Founder ruling: 24 hours spent IN CONFIRMED, anchored on `confirmedAt` — not
+ * time since checkout, and not time since the exception was raised. The
+ * exception sweep already flags an order at 30 minutes; this is the far longer
+ * window after which the platform stops waiting for the merchant.
+ */
+export const ORDER_RECOVERY_BACKSTOP_AFTER_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The cancellation reason recorded for an automatic recovery.
+ *
+ * A constant because it appears on the order, in the recovery action and in the
+ * audit entry, and those three must not be able to disagree. The order records
+ * cancelledBy = ADMIN whoever acted, so this text is much of what a customer
+ * support agent has to work from.
+ */
+export const AUTOMATIC_RECOVERY_CANCELLATION_REASON =
+  'Cancelled automatically: the merchant did not advance this order within 24 hours';
+
+/** How often the automatic recovery backstop looks for eligible cases. */
+export const ORDER_RECOVERY_SWEEP_INTERVAL_MS = 15 * 60 * 1000;
+
+/**
  * How often the stalled-order sweep runs. Deliberately shorter than
  * ORDER_POTENTIALLY_STRANDED_AFTER_MS so an order is detected within half a
  * sweep of crossing the threshold, rather than up to a full interval late.

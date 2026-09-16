@@ -1,0 +1,14 @@
+-- DPX-ORDER-8D-RECOVERY Increment 4 — a third recovery trigger.
+--
+-- Increment 1 recorded historical recognition as trigger = 'OPERATOR'. That was
+-- a defect, not a naming preference: the same row left `opened_by_id` NULL,
+-- which the schema documents as "the platform acted". One row, two contradictory
+-- claims about who started the case. It also leaked into the operator queue,
+-- whose `?trigger=OPERATOR` filter would list historical recognitions alongside
+-- genuine operator work.
+--
+-- No rows migrate. Increments 1-3 are unmerged, so nothing in production carries
+-- this enum yet; the value is added before the first writer of it ships.
+-- IF NOT EXISTS follows the convention already used by
+-- FleetSettlementRequestStatus, ReferralOwnerType and CommissionScope.
+ALTER TYPE "OrderRecoveryTrigger" ADD VALUE IF NOT EXISTS 'HISTORICAL';

@@ -24,7 +24,11 @@ import {
 import { NotificationCenterService } from '../notification-center/notification-center.service';
 import { WalletService } from '../wallet/wallet.service';
 
-import { ORDER_AUDIT_ACTIONS, ORDER_WALLET_REFERENCE_TYPE } from './order.constants';
+import {
+  AUTOMATIC_RECOVERY_CANCELLATION_REASON,
+  ORDER_AUDIT_ACTIONS,
+  ORDER_WALLET_REFERENCE_TYPE,
+} from './order.constants';
 import { toOrderRecoveryDto } from './order.mapper';
 import {
   ORDER_RECOVERY_REPOSITORY,
@@ -250,9 +254,22 @@ export class OrderRecoveryService {
    */
   public async reverseWalletForRecovery(input: {
     orderId: string;
-    operatorId: string;
-    context: AuditContext;
+    /** Absent means the platform acted. Paired with `automatic` below, this is
+     * the only place the human/automatic distinction survives — the order
+     * records ADMIN either way. */
+    operatorId?: string;
+    automatic?: boolean;
+    context?: AuditContext;
   }): Promise<OrderRecoveryWithDetail> {
+    const automatic = input.automatic ?? false;
+    const context = input.context ?? {};
+    const actor = input.operatorId;
+    if (automatic === (actor !== undefined)) {
+      // Exactly one of the two must hold. A row claiming to be both automatic
+      // and performed by a named person, or neither, is not a record anybody
+      // can audit.
+      throw new Error('A recovery reversal is either automatic or performed by an operator');
+    }
     const order = await this.recoveries.findOrderStateForRecovery(input.orderId);
     if (!order) {
       throw new NotFoundDomainException('Order not found');
@@ -314,7 +331,7 @@ export class OrderRecoveryService {
             referenceType: ORDER_WALLET_REFERENCE_TYPE,
             referenceId: order.id,
             description: `Refund for order ${order.orderNumber}`,
-            context: { ...input.context, userId: input.operatorId },
+            context: { ...context, ...(actor !== undefined ? { userId: actor } : {}) },
           }),
       );
     } catch (error) {
@@ -322,8 +339,8 @@ export class OrderRecoveryService {
         recoveryId,
         type: OrderRecoveryActionType.WALLET_REVERSAL,
         outcome: OrderRecoveryActionOutcome.FAILED,
-        automatic: false,
-        actorId: input.operatorId,
+        automatic,
+        ...(actor !== undefined ? { actorId: actor } : {}),
         detail: error instanceof Error ? error.message.slice(0, 2000) : 'Wallet reversal failed',
       });
       await this.recoveries.updateCaseStatus(recoveryId, {
@@ -342,8 +359,8 @@ export class OrderRecoveryService {
       outcome: outcome.applied
         ? OrderRecoveryActionOutcome.SUCCEEDED
         : OrderRecoveryActionOutcome.NO_OP,
-      automatic: false,
-      actorId: input.operatorId,
+      automatic,
+      ...(actor !== undefined ? { actorId: actor } : {}),
       // The CHECK constraint added in Increment 3 enforces exactly this pairing
       // at the database. Citing a ledger entry on a NO_OP would claim we made a
       // credit that was already there.
@@ -355,7 +372,7 @@ export class OrderRecoveryService {
 
     await this.auditService.record(
       ORDER_AUDIT_ACTIONS.REFUNDED,
-      { ...input.context, userId: input.operatorId },
+      { ...context, ...(actor !== undefined ? { userId: actor } : {}) },
       {
         resource: 'order',
         resourceId: order.id,
@@ -364,7 +381,7 @@ export class OrderRecoveryService {
           amount,
           currency: order.currency,
           viaRecovery: true,
-          automatic: false,
+          automatic,
           // The distinction the founder asked to keep in the audit history:
           // both leave exactly one credit, but only one of them made it.
           applied: outcome.applied,
@@ -469,6 +486,145 @@ export class OrderRecoveryService {
     throw new ConflictDomainException('Wallet balance changed; retry operation');
   }
 
+  /** Candidates for the automatic backstop. Selection only — never permission. */
+  public async findBackstopEligible(input: {
+    activationAt: Date;
+    backstopBefore: Date;
+    limit: number;
+  }): Promise<{ id: string; orderNumber: string; exceptionId: string }[]> {
+    return await this.recoveries.findBackstopEligibleOrders(input);
+  }
+
+  /**
+   * Recover one stalled order on the platform's own authority.
+   *
+   * Deliberately built ON TOP of the operator paths rather than beside them:
+   * cancellation and reversal go through the same claim, the same
+   * revalidation, the same ledger key and the same notification gate an
+   * operator uses. A second implementation would be a second set of bugs, and
+   * the money-moving half would be the one that drifted.
+   *
+   * `acted: false` is the ordinary outcome, not an error — another replica
+   * claimed the case, or the merchant accepted the order between selection and
+   * here. That gap is why revalidation exists.
+   *
+   * ATTRIBUTION. Founder ruling: the order records cancelledBy = ADMIN for both
+   * operator and automatic recovery, so the distinction cannot live there. It
+   * lives on the case (trigger = AUTOMATIC, openedById null) and on each action
+   * row (automatic = true, actorId null).
+   */
+  public async recoverAutomatically(input: {
+    orderId: string;
+  }): Promise<{ acted: boolean; reason?: string }> {
+    const order = await this.recoveries.findOrderStateForRecovery(input.orderId);
+    if (!order) {
+      return { acted: false, reason: 'order_not_found' };
+    }
+
+    // Revalidate immediately before mutating. The selection query ran before
+    // everything the sweep has done since.
+    if (order.status !== OrderStatus.CONFIRMED || !order.hasOpenStalledException) {
+      return { acted: false, reason: 'no_longer_stalled' };
+    }
+
+    const claim = await this.recoveries.openCase({
+      orderId: order.id,
+      ...(order.openExceptionId !== null ? { orderExceptionId: order.openExceptionId } : {}),
+      trigger: OrderRecoveryTrigger.AUTOMATIC,
+      paymentMethodAtOpen: order.paymentMethod,
+      paymentStatusAtOpen: order.paymentStatus,
+      financialOutcome: financialOutcomeFor(order.paymentMethod, order.paymentStatus),
+      investigationStatus: investigationStatusFor(order.paymentMethod, order.paymentStatus),
+    });
+
+    if (!claim.opened) {
+      // THE CONCURRENCY CLAIM DOING ITS JOB. Another replica, or an operator,
+      // owns this case. Abandon — never proceed on a case we did not claim.
+      return { acted: false, reason: 'already_claimed' };
+    }
+
+    const recoveryId = claim.recovery.id;
+
+    await this.orders.transition(order.id, {
+      status: OrderStatus.CANCELLED,
+      cancelledAt: new Date(),
+      cancelledBy: 'ADMIN',
+      cancellationReason: AUTOMATIC_RECOVERY_CANCELLATION_REASON,
+    });
+
+    await this.recoveries.recordAction({
+      recoveryId,
+      type: OrderRecoveryActionType.CANCEL_ORDER,
+      outcome: OrderRecoveryActionOutcome.SUCCEEDED,
+      // No actorId. A person did not do this, and the pair is the only place
+      // that survives.
+      automatic: true,
+      detail: AUTOMATIC_RECOVERY_CANCELLATION_REASON,
+    });
+
+    await this.auditService.record(
+      ORDER_AUDIT_ACTIONS.CANCELLED,
+      {},
+      {
+        resource: 'order',
+        resourceId: order.id,
+        metadata: {
+          reason: AUTOMATIC_RECOVERY_CANCELLATION_REASON,
+          recoveryId,
+          viaRecovery: true,
+          automatic: true,
+        },
+      },
+    );
+
+    await this.recoveries.updateCaseStatus(recoveryId, {
+      status: statusAfterCancellation(
+        financialOutcomeFor(order.paymentMethod, order.paymentStatus),
+        investigationStatusFor(order.paymentMethod, order.paymentStatus),
+      ),
+    });
+
+    // THE PAYMENT-METHOD DECISION. Only DX Wallet money moves automatically.
+    //
+    // CASH stops here: nothing reached anyone, because cash is collected on
+    // delivery and the delivery never happened.
+    //
+    // MERCHANT_DIRECT and gateway payments stop here too, with their
+    // investigation left OPEN by statusAfterCancellation. There is no gateway
+    // refund integration in this codebase and MERCHANT_DIRECT money never
+    // reached DrippleX; inventing either would be speculative, and moving money
+    // automatically for a payment the platform never saw would be worse.
+    if (
+      order.paymentMethod === OrderPaymentMethod.WALLET &&
+      order.paymentStatus === PaymentStatus.PAID
+    ) {
+      await this.reverseWalletAutomatically(order.id, recoveryId);
+    }
+
+    return { acted: true };
+  }
+
+  /**
+   * The automatic half of the wallet reversal.
+   *
+   * A failure here must NOT undo the cancellation. Founder ruling: the order
+   * stays CANCELLED and the case stays financially retryable, because the money
+   * step is separate from the order step by design. So this swallows the error
+   * after recording it — the sweep already counted the order as recovered,
+   * which it was.
+   */
+  private async reverseWalletAutomatically(orderId: string, recoveryId: string): Promise<void> {
+    try {
+      await this.reverseWalletForRecovery({ orderId, automatic: true });
+    } catch (error) {
+      this.logger.error(
+        `Automatic wallet reversal failed for recovery ${recoveryId}; the order remains cancelled and the case is retryable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   /**
    * Record a stalled order that was already open before recovery existed.
    *
@@ -504,7 +660,12 @@ export class OrderRecoveryService {
 
     const result = await this.recoveries.openCase({
       orderId: order.id,
-      trigger: OrderRecoveryTrigger.OPERATOR,
+      // HISTORICAL, not OPERATOR. Increment 1 used OPERATOR here and that was a
+      // defect: it claimed a person initiated the case while leaving
+      // openedById null, which the schema documents as "the platform acted".
+      // It also put historical recognitions into the operator queue's
+      // ?trigger=OPERATOR filter. Founder ruling, 2026-09-16.
+      trigger: OrderRecoveryTrigger.HISTORICAL,
       paymentMethodAtOpen: order.paymentMethod,
       paymentStatusAtOpen: order.paymentStatus,
       financialOutcome: financialOutcomeFor(order.paymentMethod, order.paymentStatus),

@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { OrderExceptionStatus, OrderExceptionType, PaymentStatus, Prisma } from '@prisma/client';
+import {
+  OrderExceptionStatus,
+  OrderExceptionType,
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -16,7 +22,6 @@ import type {
   OrderRecoveryAction,
   OrderRecoveryFinancialOutcome,
   OrderRecoveryStatus,
-  OrderStatus,
 } from '@prisma/client';
 
 const PRISMA_UNIQUE_VIOLATION = 'P2002';
@@ -238,6 +243,64 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
     await this.prisma.order.update({
       where: { id: orderId },
       data: { paymentStatus: PaymentStatus.REFUNDED, refundedAt: new Date() },
+    });
+  }
+
+  public async findBackstopEligibleOrders(input: {
+    activationAt: Date;
+    backstopBefore: Date;
+    limit: number;
+  }): Promise<{ id: string; orderNumber: string; exceptionId: string }[]> {
+    // ONE predicate, used for both selecting the order and picking the
+    // exception off it.
+    //
+    // It was written out twice. Falsification caught that: deleting the
+    // activation boundary from the WHERE clause reddened nothing, because the
+    // copy in the SELECT projection was still filtering — so the single most
+    // important protection in this increment was enforced by accident, in the
+    // place nobody would think to look. Two copies can also drift apart, and a
+    // WHERE that says eligible over a SELECT that returns nothing would skip
+    // the order silently and forever. One object, one thing to break.
+    const stalledSinceActivation = {
+      type: OrderExceptionType.STALLED_CONFIRMED,
+      status: OrderExceptionStatus.OPEN,
+      // THE ACTIVATION BOUNDARY. Everything detected before it is ineligible
+      // however old it is — the protection that does not depend on a recovery
+      // case existing, and therefore the one that covers an order which has
+      // never been given one.
+      detectedAt: { gte: input.activationAt },
+    };
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.CONFIRMED,
+        // Age is time spent IN CONFIRMED, matching findStalledConfirmedOrders.
+        // The createdAt arm is defence: a null confirmedAt would otherwise
+        // silently exclude the order rather than surface it.
+        OR: [
+          { confirmedAt: { lte: input.backstopBefore } },
+          { confirmedAt: null, createdAt: { lte: input.backstopBefore } },
+        ],
+        exceptions: { some: stalledSinceActivation },
+        // A case that predates the implementation is never swept. A case that
+        // does not exist yet is fine — the sweep opens one, and the UNIQUE
+        // claim decides who wins.
+        recovery: { is: null },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        exceptions: { where: stalledSinceActivation, select: { id: true }, take: 1 },
+      },
+      take: input.limit,
+      orderBy: { confirmedAt: 'asc' },
+    });
+
+    return orders.flatMap((order) => {
+      const exception = order.exceptions[0];
+      return exception === undefined
+        ? []
+        : [{ id: order.id, orderNumber: order.orderNumber, exceptionId: exception.id }];
     });
   }
 

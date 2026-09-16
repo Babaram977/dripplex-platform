@@ -112,8 +112,14 @@ export enum OrderRecoveryStatusFilter {
 }
 
 export enum OrderRecoveryTriggerFilter {
+  /** A human operator initiated the case. */
   OPERATOR = 'OPERATOR',
+  /** The 24-hour automatic backstop initiated it. */
   AUTOMATIC = 'AUTOMATIC',
+  /** The case preserves a stalled exception predating the implementation.
+   * Increment 1 filed these under OPERATOR, which put migration bookkeeping
+   * into an operator's own queue. AOR-013 is the regression. */
+  HISTORICAL = 'HISTORICAL',
 }
 
 export class AdminOrderRecoveryListQueryDto {

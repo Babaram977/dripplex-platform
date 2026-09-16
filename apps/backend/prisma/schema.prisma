@@ -1748,8 +1748,21 @@ enum OrderRecoveryStatus {
 }
 
 enum OrderRecoveryTrigger {
+  /// A human operator initiated the recovery case.
   OPERATOR
+  /// The platform's 24-hour automatic backstop initiated it.
   AUTOMATIC
+  /// The case was created to preserve a stalled exception that predates the
+  /// recovery implementation. NOT an operator action and NOT automatic
+  /// recovery — a third thing, and it needs its own value.
+  ///
+  /// Increment 1 recorded these as OPERATOR, which was a DEFECT rather than a
+  /// naming preference: it claimed a person initiated the case while leaving
+  /// `openedById` null, whose own documentation reads "Null means the platform
+  /// acted". Two fields of the same row made contradictory claims, and the
+  /// operator queue's `?trigger=OPERATOR` filter surfaced historical
+  /// recognitions among genuine operator work. Founder ruling, 2026-09-16.
+  HISTORICAL
 }
 
 enum OrderRecoveryFinancialOutcome {
