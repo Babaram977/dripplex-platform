@@ -34,6 +34,19 @@ export const ORDER_PERMISSIONS = {
   ADMIN_MANAGE: 'admin:orders:manage',
   MERCHANT_MANAGE: 'merchant:orders:manage',
   ADMIN_SETTLEMENT_COMMISSION_MANAGE: 'admin:merchant-settlement:commission:manage',
+  /**
+   * DPX-ORDER-8D-RECOVERY — authority to act on a stalled-order recovery case.
+   *
+   * Deliberately NOT ADMIN_MANAGE. That permission already authorises dispute
+   * resolution and wallet refunds, so reusing it would hand every recovery
+   * operator the power to move money on any order as a side effect. Recovery
+   * authority is narrower than order management and is granted separately.
+   *
+   * Increment 1 defines and seeds it. NOTHING CONSUMES IT YET — no endpoint,
+   * no control. It exists so the later increments attach to a permission that
+   * was granted deliberately rather than minted alongside the first mutation.
+   */
+  ADMIN_RECOVERY_MANAGE: 'admin:orders:recovery:manage',
 } as const;
 
 /// DPX-MERCHANT-002 — the singleton MerchantCommissionSetting row's fixed
