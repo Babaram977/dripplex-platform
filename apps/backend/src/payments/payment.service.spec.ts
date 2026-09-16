@@ -150,6 +150,7 @@ describe('PaymentService', () => {
     resolveOpenExceptions: jest.fn(),
     findUnnotifiedOpenExceptions: jest.fn(),
     markExceptionNotified: jest.fn(),
+    listExceptions: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {

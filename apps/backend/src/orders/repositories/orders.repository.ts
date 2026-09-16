@@ -5,6 +5,9 @@ import type {
   OrderCancelledBy,
   OrderDispute,
   OrderDisputeStatus,
+  OrderException,
+  OrderExceptionStatus,
+  OrderExceptionType,
   OrderItem,
   OrderPaymentMethod,
   OrderStatus,
@@ -96,6 +99,23 @@ export interface ListOrdersFilter {
   take: number;
 }
 
+/**
+ * DPX-ORDER-8D-C ops visibility — filter for the exception read path.
+ *
+ * No `orderId` and no free-text search: an operations queue is worked by state,
+ * and the order-scoped lookup already exists as `GET admin/orders/:id`. Adding
+ * filters nothing renders yet would be inventing a contract.
+ */
+export interface ListOrderExceptionsFilter {
+  status?: OrderExceptionStatus;
+  type?: OrderExceptionType;
+  skip: number;
+  take: number;
+}
+
+/** An exception row with the slice of its order an operator needs to triage it. */
+export type OrderExceptionWithOrder = OrderException & { order: Order };
+
 export interface OrdersRepository {
   create(input: CreateOrderInput): Promise<OrderWithItems>;
   findById(id: string): Promise<OrderWithItems | null>;
@@ -144,6 +164,19 @@ export interface OrdersRepository {
 
   /** Close any OPEN exception on an order that has since moved on. */
   resolveOpenExceptions(orderId: string, resolvedStatus: OrderStatus): Promise<number>;
+
+  /**
+   * DPX-ORDER-8D-C ops visibility — the read side of the exception table.
+   *
+   * Strictly a read. Nothing on this path may raise, resolve, notify or
+   * otherwise move an exception: the operations console shows operators what
+   * the platform is holding, and the ruling that created these rows gives
+   * nobody authority to act on them yet.
+   */
+  listExceptions(filter: ListOrderExceptionsFilter): Promise<{
+    items: OrderExceptionWithOrder[];
+    total: number;
+  }>;
   createDispute(input: CreateDisputeInput): Promise<OrderDispute>;
   findDisputeById(id: string): Promise<OrderDispute | null>;
   findOpenDisputeForOrder(orderId: string): Promise<OrderDispute | null>;

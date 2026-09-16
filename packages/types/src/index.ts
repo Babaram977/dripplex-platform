@@ -406,6 +406,7 @@ export { CART_AUDIT_ACTIONS } from './cart/index.js';
 
 export type {
   AcceptOrderRequest,
+  AdminListOrderExceptionsQuery,
   AdminListOrdersQuery,
   CancelOrderDto,
   CheckoutDto,
@@ -426,6 +427,9 @@ export type {
   OrderDisputeDto,
   OrderDisputeStatus,
   OrderDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
+  OrderExceptionType,
   OrderItemDto,
   OrderPaymentMethod,
   OrderPaymentProofDto,

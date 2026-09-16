@@ -1,9 +1,11 @@
+import type { OrderExceptionWithOrder } from './repositories/orders.repository';
 import type {
   CheckoutResponseDto,
   InventoryReservationDto,
   MerchantCommissionSettingDto,
   OrderDisputeDto,
   OrderDto,
+  OrderExceptionDto,
   OrderItemDto,
   OrderSettlementDto,
   PaginatedResult,
@@ -180,5 +182,45 @@ export function toMerchantCommissionSettingDto(
     updatedBy: setting.updatedBy,
     updatedAt: setting.updatedAt.toISOString(),
     createdAt: setting.createdAt.toISOString(),
+  };
+}
+
+/**
+ * DPX-ORDER-8D-C ops visibility — an exception row plus the slice of its order
+ * an operator needs to triage it.
+ *
+ * `waitedMinutes` is passed straight through rather than recomputed from
+ * `confirmedAt` and now. The stored value is what the order had waited at
+ * DETECTION, and the moment the order progresses that number stops being
+ * derivable. Recalculating it on read would quietly turn a record of what
+ * happened into a live clock, and the two disagree the instant anything moves.
+ */
+export function toOrderExceptionDto(exception: OrderExceptionWithOrder): OrderExceptionDto {
+  return {
+    id: exception.id,
+    orderId: exception.orderId,
+    type: exception.type,
+    status: exception.status,
+    detectedAt: exception.detectedAt.toISOString(),
+    waitedMinutes: exception.waitedMinutes,
+    notifiedAt: exception.notifiedAt ? exception.notifiedAt.toISOString() : null,
+    resolvedAt: exception.resolvedAt ? exception.resolvedAt.toISOString() : null,
+    resolvedStatus: exception.resolvedStatus,
+    createdAt: exception.createdAt.toISOString(),
+    updatedAt: exception.updatedAt.toISOString(),
+    order: {
+      id: exception.order.id,
+      orderNumber: exception.order.orderNumber,
+      status: exception.order.status,
+      paymentStatus: exception.order.paymentStatus,
+      paymentMethod: exception.order.paymentMethod,
+      fulfillmentType: exception.order.fulfillmentType,
+      customerId: exception.order.customerId,
+      merchantId: exception.order.merchantId,
+      total: Number(exception.order.total),
+      currency: exception.order.currency,
+      confirmedAt: exception.order.confirmedAt ? exception.order.confirmedAt.toISOString() : null,
+      createdAt: exception.order.createdAt.toISOString(),
+    },
   };
 }

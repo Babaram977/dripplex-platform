@@ -171,6 +171,15 @@ export interface AdminListOrdersQuery extends ListOrdersQuery {
   createdTo?: string;
 }
 
+/// DPX-ORDER-8D-C ops visibility — filters for the operations exception queue.
+/// Mirrors `AdminOrderExceptionListQueryDto`. Read-only: nothing here changes
+/// anything, and there is deliberately no `orderId` — a single order is already
+/// reachable through `adminGetOrder`.
+export interface AdminListOrderExceptionsQuery extends ListOrdersQuery {
+  status?: OrderExceptionStatus;
+  type?: OrderExceptionType;
+}
+
 /// DPX-MERCHANT-001 Phase 1 — mirrors `MerchantOrdersController`
 /// (`apps/backend/src/orders/merchant-orders.controller.ts`) 1:1. These
 /// requests act on the same Universal Order State Machine as the customer
@@ -298,3 +307,57 @@ export const ORDER_AUDIT_ACTIONS = {
 } as const;
 
 export type OrderAuditAction = (typeof ORDER_AUDIT_ACTIONS)[keyof typeof ORDER_AUDIT_ACTIONS];
+
+/// DPX-ORDER-8D-C — an order the platform has taken ownership of because the
+/// merchant did not advance it. Written by the detection sweep (#416); this is
+/// the read side, so operators can see what the platform is holding.
+export type OrderExceptionType = 'STALLED_CONFIRMED';
+
+export type OrderExceptionStatus = 'OPEN' | 'RESOLVED';
+
+/**
+ * An order exception with enough of its order inlined to be triaged without a
+ * second request.
+ *
+ * The order fields are a deliberate subset, not a nested `OrderDto`: an
+ * operations queue needs to know which order, whose, how much and how long —
+ * not its line items, addresses or coupon. Widening this later is additive;
+ * shipping the whole order now would make every queue render pull data no
+ * screen displays.
+ */
+export interface OrderExceptionDto {
+  id: string;
+  orderId: string;
+  type: OrderExceptionType;
+  status: OrderExceptionStatus;
+  /** When the sweep first saw this order as stalled. */
+  detectedAt: string;
+  /**
+   * How long the order had waited AT DETECTION — recorded once, never
+   * recomputed. It stops being derivable the moment the order progresses, so
+   * it is stored rather than calculated on read.
+   */
+  waitedMinutes: number;
+  /** When the merchant's warning was announced, or null if it has not been
+   *  yet — the sweep retries those, so null means pending, not lost. */
+  notifiedAt: string | null;
+  resolvedAt: string | null;
+  /** The status the order had reached when the exception closed. */
+  resolvedStatus: OrderStatus | null;
+  createdAt: string;
+  updatedAt: string;
+  order: {
+    id: string;
+    orderNumber: string;
+    status: OrderStatus;
+    paymentStatus: PaymentStatus;
+    paymentMethod: OrderPaymentMethod | null;
+    fulfillmentType: FulfillmentType;
+    customerId: string;
+    merchantId: string;
+    total: number;
+    currency: string;
+    confirmedAt: string | null;
+    createdAt: string;
+  };
+}

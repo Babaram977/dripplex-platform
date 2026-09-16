@@ -1,6 +1,7 @@
 import type { HttpClient } from '../client/http-client.js';
 import type {
   AcceptOrderRequest,
+  AdminListOrderExceptionsQuery,
   AdminListOrdersQuery,
   CancelOrderDto,
   CheckoutDto,
@@ -13,6 +14,7 @@ import type {
   MerchantCancelOrderRequest,
   MerchantOrderListQuery,
   OrderDto,
+  OrderExceptionDto,
   PaginatedResult,
   PaymentStatusDto,
   PaymentVerificationDto,
@@ -133,6 +135,34 @@ export class OrderClient {
         customerId: query.customerId,
         createdFrom: query.createdFrom,
         createdTo: query.createdTo,
+      })}`,
+      {
+        method: 'GET',
+        auth: true,
+      },
+    );
+  }
+
+  /**
+   * DPX-ORDER-8D-C ops visibility — the operations queue of stalled orders.
+   *
+   * Mirrors `AdminOrdersController.listOrderExceptions`
+   * (`apps/backend/src/orders/admin-orders.controller.ts`) 1:1.
+   *
+   * READ ONLY, and there is deliberately no companion resolve/dismiss method:
+   * the 2026-09-16 ruling escalates a stalled order but authorises nobody to
+   * act on one. An SDK method for an action that does not exist would invite a
+   * console to be built against it.
+   */
+  public adminGetOrderExceptions(
+    query: AdminListOrderExceptionsQuery = {},
+  ): Promise<PaginatedResult<OrderExceptionDto>> {
+    return this.http.request<PaginatedResult<OrderExceptionDto>>(
+      `/admin/orders/exceptions${toQuery({
+        page: query.page,
+        pageSize: query.pageSize,
+        status: query.status,
+        type: query.type,
       })}`,
       {
         method: 'GET',

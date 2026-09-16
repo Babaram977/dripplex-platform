@@ -240,6 +240,7 @@ describe('DeliveryService', () => {
     resolveOpenExceptions: jest.fn(),
     findUnnotifiedOpenExceptions: jest.fn(),
     markExceptionNotified: jest.fn(),
+    listExceptions: jest.fn(),
   };
 
   const addressRepository: jest.Mocked<AddressRepository> = {

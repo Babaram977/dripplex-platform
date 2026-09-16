@@ -4,13 +4,22 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { CheckoutService } from './checkout.service';
-import { AdminOrderListQueryDto, ResolveOrderDisputeDto } from './dto/order.dto';
+import {
+  AdminOrderExceptionListQueryDto,
+  AdminOrderListQueryDto,
+  ResolveOrderDisputeDto,
+} from './dto/order.dto';
 import { OrderPaymentProofService } from './order-payment-proof.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 import type { AuthenticatedUser } from '../auth/auth.types';
 import type { ApiSuccessResponse } from '../common/dto/api-response.dto';
-import type { OrderDto, OrderPaymentProofDto, PaginatedResult } from '@dripplex/types';
+import type {
+  OrderDto,
+  OrderExceptionDto,
+  OrderPaymentProofDto,
+  PaginatedResult,
+} from '@dripplex/types';
 import type { Request } from 'express';
 
 @Controller('admin/orders')
@@ -34,6 +43,35 @@ export class AdminOrdersController {
       ...(query.customerId !== undefined ? { customerId: query.customerId } : {}),
       ...(query.createdFrom !== undefined ? { createdFrom: query.createdFrom } : {}),
       ...(query.createdTo !== undefined ? { createdTo: query.createdTo } : {}),
+    });
+    return { success: true, data };
+  }
+
+  /**
+   * DPX-ORDER-8D-C ops visibility — the operations queue of stalled orders.
+   *
+   * ⚠️ DECLARATION ORDER IS LOAD-BEARING. This must stay ABOVE `@Get(':id')`.
+   * Nest matches routes in declaration order, so if `:id` were first it would
+   * swallow `/exceptions`, the ParseUUIDPipe would reject the literal string,
+   * and this endpoint would answer 400 while Nest still logged it as `Mapped`.
+   * A route that is mapped is not thereby reachable — proven over HTTP in
+   * admin-order-exceptions.route.spec.ts by reading which handler answered,
+   * not by trusting the startup route table.
+   *
+   * Read-only, by ruling: the 30-minute threshold escalates an order, it does
+   * not authorise anyone to act on one. No resolve, dismiss, cancel or refund
+   * lives here, and none may be added without a separate founder ruling.
+   */
+  @Get('exceptions')
+  @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
+  public async listOrderExceptions(
+    @Query() query: AdminOrderExceptionListQueryDto,
+  ): Promise<ApiSuccessResponse<PaginatedResult<OrderExceptionDto>>> {
+    const data = await this.checkoutService.listAdminOrderExceptions({
+      page: query.page,
+      pageSize: query.pageSize,
+      ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.type !== undefined ? { type: query.type } : {}),
     });
     return { success: true, data };
   }
