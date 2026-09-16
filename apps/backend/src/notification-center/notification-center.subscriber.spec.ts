@@ -405,4 +405,72 @@ describe('NotificationCenterSubscriber', () => {
       expect(notificationCenter.send).not.toHaveBeenCalled();
     });
   });
+
+  /**
+   * DPX-ORDER-REFUND-TRUTH — the declined-order refund claim.
+   *
+   * This mapping said "A refund has been issued." on EVERY rejection. Most
+   * declined orders are CASH and were never paid, so the platform routinely told
+   * customers their money was coming back when no money had ever moved; and for
+   * a wallet credit that already existed it announced somebody else's refund a
+   * second time.
+   *
+   * The claim is now gated on `refundLedgerEntryId`, which the rejection path
+   * sets only when THAT rejection created the ledger entry. Same principle as
+   * DPX-ORDER-8D-RECOVERY Increment 3: a customer-facing refund statement must
+   * be impossible without the ledger entry evidencing it.
+   */
+  describe('ORDER_REJECTED refund claim', () => {
+    async function reject(payload: Record<string, unknown>): Promise<string> {
+      await subscriber.handle({
+        name: DOMAIN_EVENTS.ORDER_REJECTED,
+        payload: { customerId: 'user-1', ...payload },
+        occurredAt: new Date().toISOString(),
+      });
+      const call = notificationCenter.send.mock.calls.at(-1)?.[0] as { body: string } | undefined;
+      return call?.body ?? '';
+    }
+
+    it('ORJ-001 · claims a refund ONLY with a ledger entry behind it', async () => {
+      const body = await reject({ reason: 'out of stock', refundLedgerEntryId: 'ledger-1' });
+
+      expect(body).toContain('A refund has been issued.');
+      expect(body).toContain('out of stock');
+    });
+
+    it('ORJ-002 · an unpaid order is NOT told a refund was issued', async () => {
+      // THE DEFECT. A CASH order declined before delivery: nothing reached
+      // DrippleX, nothing was returned, and the customer must not be told
+      // otherwise. This is the common case, not an edge case.
+      const body = await reject({ reason: 'closed', refundLedgerEntryId: null });
+
+      expect(body).not.toMatch(/refund/i);
+      expect(body).toBe('Your order was declined by the merchant: closed.');
+    });
+
+    it("ORJ-003 · a replayed credit is not announced as this rejection's refund", async () => {
+      // `applied: false` at the wallet means the ledger already held this exact
+      // credit. The money is back, but this rejection did not put it there and
+      // some other flow has already spoken for it. Announcing again would be a
+      // second refund message for one refund.
+      const body = await reject({ reason: 'duplicate', refundLedgerEntryId: null });
+
+      expect(body).not.toMatch(/refund/i);
+    });
+
+    it('ORJ-004 · a missing evidence field is treated as no refund, not as one', async () => {
+      // Fail closed on shape. An older producer, a dropped field or a payload
+      // from a path that has not been updated must not be able to manufacture a
+      // refund claim by omission.
+      const body = await reject({ reason: 'unavailable' });
+
+      expect(body).not.toMatch(/refund/i);
+    });
+
+    it('ORJ-005 · reads naturally with no reason given', async () => {
+      const body = await reject({ refundLedgerEntryId: 'ledger-9' });
+
+      expect(body).toBe('Your order was declined by the merchant. A refund has been issued.');
+    });
+  });
 });

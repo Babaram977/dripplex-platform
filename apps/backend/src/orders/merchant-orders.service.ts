@@ -110,14 +110,14 @@ export class MerchantOrdersService {
       throw new ValidationDomainException('Only confirmed orders can be rejected');
     }
 
-    const refunded = await this.refundIfPaid(order, context, merchantId);
+    const refund = await this.refundIfPaid(order, context, merchantId);
 
     await this.ordersRepository.transition(order.id, {
       status: OrderStatus.CANCELLED,
       cancelledAt: new Date(),
       cancelledBy: 'MERCHANT',
       cancellationReason: reason,
-      ...(refunded ? { paymentStatus: PaymentStatus.REFUNDED } : {}),
+      ...(refund.paymentRefunded ? { paymentStatus: PaymentStatus.REFUNDED } : {}),
     });
 
     await this.auditService.record(
@@ -128,7 +128,16 @@ export class MerchantOrdersService {
 
     await this.eventBus?.emit(
       DOMAIN_EVENTS.ORDER_REJECTED,
-      { orderId: order.id, customerId: order.customerId, merchantId, reason },
+      {
+        orderId: order.id,
+        customerId: order.customerId,
+        merchantId,
+        reason,
+        // THE EVIDENCE. Subscribers may only tell the customer a refund was
+        // issued when this is present; it is null for an order that was never
+        // paid, and for a credit this rejection did not make.
+        refundLedgerEntryId: refund.refundLedgerEntryId,
+      },
       { actorUserId: merchantId },
     );
 
@@ -330,14 +339,17 @@ export class MerchantOrdersService {
       throw new ValidationDomainException('Order cannot be cancelled in its current status');
     }
 
-    const refunded = await this.refundIfPaid(order, context, merchantId);
+    const refund = await this.refundIfPaid(order, context, merchantId);
 
     await this.ordersRepository.transition(order.id, {
       status: OrderStatus.CANCELLED,
       cancelledAt: new Date(),
       cancelledBy: 'MERCHANT',
       ...(reason !== undefined ? { cancellationReason: reason } : {}),
-      ...(refunded ? { paymentStatus: PaymentStatus.REFUNDED } : {}),
+      // `refund.paymentRefunded`, NOT `refund` — the helper returns an object
+      // now, and an object is always truthy. Reading it directly would mark an
+      // order REFUNDED that was never paid.
+      ...(refund.paymentRefunded ? { paymentStatus: PaymentStatus.REFUNDED } : {}),
     });
 
     await this.auditService.record(
@@ -357,15 +369,29 @@ export class MerchantOrdersService {
     return await this.refreshed(order.id);
   }
 
+  /**
+   * Return a rejected order's money, and report what actually happened.
+   *
+   * It used to return `true` for any PAID order, which conflated three
+   * different things: the payment state afterwards, whether THIS call moved
+   * money, and whether the customer may be told a refund was issued. The two
+   * fields below keep them apart.
+   *
+   * DPX-ORDER-8D-RECOVERY established the principle this follows: a
+   * customer-facing refund statement must be impossible without the wallet
+   * ledger entry that evidences it.
+   */
   private async refundIfPaid(
     order: OrderWithItems,
     context: AuditContext,
     merchantId: string,
-  ): Promise<boolean> {
+  ): Promise<{ paymentRefunded: boolean; refundLedgerEntryId: string | null }> {
     if (order.paymentStatus !== PaymentStatus.PAID) {
-      return false;
+      // Nothing ever reached DrippleX — a CASH order declined before delivery,
+      // most often. There is no refund, and nothing may say there was one.
+      return { paymentRefunded: false, refundLedgerEntryId: null };
     }
-    await this.walletService.refund({
+    const outcome = await this.walletService.refund({
       ownerType: WalletOwnerType.CUSTOMER,
       ownerId: order.customerId,
       amount: Number(order.total),
@@ -374,7 +400,16 @@ export class MerchantOrdersService {
       description: `Refund for order ${order.orderNumber}`,
       context: { ...context, userId: merchantId },
     });
-    return true;
+    return {
+      // The money is back either way: `applied: false` means the ledger already
+      // held this exact credit, not that the refund failed. The order's payment
+      // state is REFUNDED in both cases.
+      paymentRefunded: true,
+      // But only a credit THIS call created may be claimed to the customer. On a
+      // replay somebody else made it, and announcing it again would be a second
+      // refund message for one refund.
+      refundLedgerEntryId: outcome.applied ? outcome.ledgerId : null,
+    };
   }
 
   private async requireOrder(merchantId: string, orderId: string): Promise<OrderWithItems> {

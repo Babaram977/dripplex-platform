@@ -81,8 +81,26 @@ export class NotificationCenterSubscriber implements OnModuleInit {
       category: NotificationCategory.MARKETPLACE,
       type: NotificationType.ORDER_REJECTED,
       title: 'Order declined',
-      body: (payload) =>
-        `Your order was declined by the merchant${this.text(payload, ['reason'], '') ? `: ${this.text(payload, ['reason'], '')}` : ''}. A refund has been issued.`,
+      // THE REFUND SENTENCE IS EARNED, NOT AUTOMATIC.
+      //
+      // This read "A refund has been issued." on every rejection. Most declined
+      // orders are CASH and were never paid, so the platform was telling those
+      // customers their money was coming back when no money had ever moved. It
+      // said the same thing for a wallet credit that already existed, which
+      // meant announcing somebody else's refund a second time.
+      //
+      // `refundLedgerEntryId` is present only when THAT rejection created the
+      // ledger entry. Same principle as DPX-ORDER-8D-RECOVERY Increment 3: a
+      // customer-facing refund statement must be impossible without the ledger
+      // entry that evidences it.
+      body: (payload) => {
+        const reason = this.text(payload, ['reason'], '');
+        const refunded = this.text(payload, ['refundLedgerEntryId'], '') !== '';
+        return (
+          `Your order was declined by the merchant${reason ? `: ${reason}` : ''}.` +
+          (refunded ? ' A refund has been issued.' : '')
+        );
+      },
       priority: NotificationPriority.HIGH,
       userKeys: ['customerId', 'userId'],
     },

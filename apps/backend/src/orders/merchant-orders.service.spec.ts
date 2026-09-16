@@ -89,7 +89,10 @@ describe('MerchantOrdersService', () => {
   } as unknown as jest.Mocked<NotificationService>;
 
   const walletService = {
-    refund: jest.fn().mockResolvedValue(undefined),
+    // WalletService.refund returns a WalletMutationOutcome — `applied` says
+    // whether THIS call made the credit, and `ledgerId` is the evidence. The
+    // default here is the ordinary case: a fresh credit.
+    refund: jest.fn().mockResolvedValue({ wallet: {}, ledgerId: 'ledger-default', applied: true }),
   } as unknown as jest.Mocked<WalletService>;
 
   const prisma = {
@@ -201,6 +204,83 @@ describe('MerchantOrdersService', () => {
       );
     });
 
+    /**
+     * DPX-ORDER-REFUND-TRUTH — the evidence the customer message is gated on.
+     *
+     * The in-app notification used to say "A refund has been issued." on every
+     * rejection. These fix what the event is allowed to claim: the ledger entry
+     * id is present only when THIS rejection created the credit.
+     */
+    it('ORJ-006 · emits the ledger entry id when this rejection made the credit', async () => {
+      walletService.refund.mockResolvedValueOnce({
+        wallet: {} as never,
+        ledgerId: 'ledger-abc',
+        applied: true,
+      });
+
+      await service.rejectOrder(merchantId, orderId, 'Out of stock', context);
+
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_REJECTED,
+        expect.objectContaining({ refundLedgerEntryId: 'ledger-abc' }),
+        expect.anything(),
+      );
+    });
+
+    it('ORJ-007 · emits NO ledger entry id for an order that was never paid', async () => {
+      // THE DEFECT, at its source. A CASH order declined before delivery: no
+      // money ever reached DrippleX, so nothing downstream may say a refund
+      // was issued.
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        makeOrder({ paymentStatus: PaymentStatus.PENDING }),
+      );
+
+      await service.rejectOrder(merchantId, orderId, 'Closed', context);
+
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_REJECTED,
+        expect.objectContaining({ refundLedgerEntryId: null }),
+        expect.anything(),
+      );
+    });
+
+    it('ORJ-008 · emits NO ledger entry id when the credit was already there', async () => {
+      // `applied: false` is a replay: the ledger already held this exact credit.
+      // The money is back, but this rejection did not put it there, so claiming
+      // it would announce somebody else's refund a second time.
+      walletService.refund.mockResolvedValueOnce({
+        wallet: {} as never,
+        ledgerId: 'ledger-existing',
+        applied: false,
+      });
+
+      await service.rejectOrder(merchantId, orderId, 'Duplicate', context);
+
+      expect(eventBus.emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_REJECTED,
+        expect.objectContaining({ refundLedgerEntryId: null }),
+        expect.anything(),
+      );
+    });
+
+    it('ORJ-009 · a replay still leaves the order REFUNDED — the money IS back', async () => {
+      // The distinction that matters: payment STATE and what may be CLAIMED are
+      // two different questions. A replay means the credit exists, so REFUNDED
+      // is correct; it is only the customer-facing claim that is withheld.
+      walletService.refund.mockResolvedValueOnce({
+        wallet: {} as never,
+        ledgerId: 'ledger-existing',
+        applied: false,
+      });
+
+      await service.rejectOrder(merchantId, orderId, 'Duplicate', context);
+
+      expect(ordersRepository.transition).toHaveBeenCalledWith(
+        orderId,
+        expect.objectContaining({ paymentStatus: PaymentStatus.REFUNDED }),
+      );
+    });
+
     it('skips the wallet refund when the order was never paid', async () => {
       ordersRepository.findByIdForMerchant.mockResolvedValue(
         makeOrder({ paymentStatus: PaymentStatus.PENDING }),
@@ -292,6 +372,30 @@ describe('MerchantOrdersService', () => {
         cancelledBy: 'MERCHANT',
         cancellationReason: 'Rider unavailable',
         paymentStatus: PaymentStatus.REFUNDED,
+      });
+    });
+
+    it('ORJ-010 · does NOT mark an unpaid cancelled order as refunded', async () => {
+      // Found by mutation testing, not by review: `refundIfPaid` returns an
+      // OBJECT now, and an object is always truthy. Reading it directly instead
+      // of `.paymentRefunded` compiles cleanly, passes every other test here,
+      // and marks a CASH order REFUNDED that nobody ever paid — a false
+      // financial state on the authoritative order record.
+      //
+      // No test covered cancelling an unpaid order at all, so the mutation
+      // reddened nothing. This is that test.
+      ordersRepository.findByIdForMerchant.mockResolvedValue(
+        makeOrder({ status: OrderStatus.READY, paymentStatus: PaymentStatus.PENDING }),
+      );
+
+      await service.cancelOrder(merchantId, orderId, 'Rider unavailable', context);
+
+      expect(walletService.refund).not.toHaveBeenCalled();
+      expect(ordersRepository.transition).toHaveBeenCalledWith(orderId, {
+        status: OrderStatus.CANCELLED,
+        cancelledAt: expect.any(Date),
+        cancelledBy: 'MERCHANT',
+        cancellationReason: 'Rider unavailable',
       });
     });
 
