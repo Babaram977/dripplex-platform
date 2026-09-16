@@ -1,3 +1,4 @@
+import type { OrderRecoveryWithDetail } from './repositories/order-recovery.repository';
 import type { OrderExceptionWithOrder } from './repositories/orders.repository';
 import type {
   CheckoutResponseDto,
@@ -6,6 +7,8 @@ import type {
   OrderDisputeDto,
   OrderDto,
   OrderExceptionDto,
+  OrderRecoveryActionDto,
+  OrderRecoveryDto,
   OrderItemDto,
   OrderSettlementDto,
   PaginatedResult,
@@ -16,6 +19,7 @@ import type {
   Order,
   OrderDispute,
   OrderItem,
+  OrderRecoveryAction,
   OrderSettlement,
 } from '@prisma/client';
 
@@ -221,6 +225,66 @@ export function toOrderExceptionDto(exception: OrderExceptionWithOrder): OrderEx
       currency: exception.order.currency,
       confirmedAt: exception.order.confirmedAt ? exception.order.confirmedAt.toISOString() : null,
       createdAt: exception.order.createdAt.toISOString(),
+    },
+  };
+}
+
+/** DPX-ORDER-8D-RECOVERY — one step in a recovery case. */
+export function toOrderRecoveryActionDto(action: OrderRecoveryAction): OrderRecoveryActionDto {
+  return {
+    id: action.id,
+    type: action.type,
+    outcome: action.outcome,
+    // The pair that survives the founder ruling that BOTH operator and
+    // automatic recovery record cancelledBy = ADMIN on the order.
+    automatic: action.automatic,
+    actorId: action.actorId,
+    // Null unless a reversal actually created a ledger entry. Later increments
+    // gate the customer's refund message on exactly this being non-null.
+    walletLedgerEntryId: action.walletLedgerEntryId,
+    paymentTransactionId: action.paymentTransactionId,
+    supportTicketId: action.supportTicketId,
+    orderPaymentProofId: action.orderPaymentProofId,
+    notificationId: action.notificationId,
+    detail: action.detail,
+    createdAt: action.createdAt.toISOString(),
+  };
+}
+
+/** DPX-ORDER-8D-RECOVERY — the case file with its timeline and order summary. */
+export function toOrderRecoveryDto(recovery: OrderRecoveryWithDetail): OrderRecoveryDto {
+  return {
+    id: recovery.id,
+    orderId: recovery.orderId,
+    orderExceptionId: recovery.orderExceptionId,
+    status: recovery.status,
+    trigger: recovery.trigger,
+    openedById: recovery.openedById,
+    openedAt: recovery.openedAt.toISOString(),
+    paymentMethodAtOpen: recovery.paymentMethodAtOpen,
+    paymentStatusAtOpen: recovery.paymentStatusAtOpen,
+    financialOutcome: recovery.financialOutcome,
+    investigationStatus: recovery.investigationStatus,
+    predatesRecoveryImplementation: recovery.predatesRecoveryImplementation,
+    closedAt: recovery.closedAt ? recovery.closedAt.toISOString() : null,
+    closedById: recovery.closedById,
+    closingNote: recovery.closingNote,
+    createdAt: recovery.createdAt.toISOString(),
+    updatedAt: recovery.updatedAt.toISOString(),
+    actions: recovery.actions.map(toOrderRecoveryActionDto),
+    order: {
+      id: recovery.order.id,
+      orderNumber: recovery.order.orderNumber,
+      status: recovery.order.status,
+      paymentStatus: recovery.order.paymentStatus,
+      paymentMethod: recovery.order.paymentMethod,
+      fulfillmentType: recovery.order.fulfillmentType,
+      customerId: recovery.order.customerId,
+      merchantId: recovery.order.merchantId,
+      total: Number(recovery.order.total),
+      currency: recovery.order.currency,
+      confirmedAt: recovery.order.confirmedAt ? recovery.order.confirmedAt.toISOString() : null,
+      createdAt: recovery.order.createdAt.toISOString(),
     },
   };
 }

@@ -171,6 +171,106 @@ export interface AdminListOrdersQuery extends ListOrdersQuery {
   createdTo?: string;
 }
 
+/// DPX-ORDER-8D-RECOVERY — the recovery case file for a stalled order.
+export type OrderRecoveryStatus =
+  'PENDING' | 'IN_PROGRESS' | 'AWAITING_FINANCIAL_RETRY' | 'AWAITING_INVESTIGATION' | 'CLOSED';
+
+export type OrderRecoveryTrigger = 'OPERATOR' | 'AUTOMATIC';
+
+export type OrderRecoveryFinancialOutcome =
+  'UNDETERMINED' | 'NONE_DUE' | 'REVERSAL_CONFIRMED' | 'REVERSAL_FAILED' | 'MANUAL_REQUIRED';
+
+export type OrderInvestigationStatus =
+  | 'NOT_REQUIRED'
+  | 'OPEN'
+  | 'EVIDENCE_GATHERED'
+  | 'CONCLUDED_PAID'
+  | 'CONCLUDED_UNPAID'
+  | 'CONCLUDED_UNVERIFIABLE';
+
+export type OrderRecoveryActionType =
+  | 'CANCEL_ORDER'
+  | 'WALLET_REVERSAL'
+  | 'GATEWAY_VERIFICATION'
+  | 'MERCHANT_CONTACT'
+  | 'CUSTOMER_CONTACT'
+  | 'EVIDENCE_ADDED'
+  | 'NOTIFICATION_SENT'
+  | 'FINDING_RECORDED'
+  | 'RECOVERY_CLOSED';
+
+export type OrderRecoveryActionOutcome = 'SUCCEEDED' | 'FAILED' | 'NO_OP';
+
+/**
+ * One step in a recovery case.
+ *
+ * `automatic` paired with `actorId` is where the human-versus-platform
+ * distinction survives: the order records `cancelledBy: ADMIN` for both, by
+ * founder ruling, so the two cannot be told apart there.
+ */
+export interface OrderRecoveryActionDto {
+  id: string;
+  type: OrderRecoveryActionType;
+  outcome: OrderRecoveryActionOutcome;
+  automatic: boolean;
+  actorId: string | null;
+  /** Null unless a wallet reversal actually created a ledger entry. */
+  walletLedgerEntryId: string | null;
+  paymentTransactionId: string | null;
+  supportTicketId: string | null;
+  orderPaymentProofId: string | null;
+  notificationId: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
+export interface OrderRecoveryDto {
+  id: string;
+  orderId: string;
+  orderExceptionId: string | null;
+  status: OrderRecoveryStatus;
+  trigger: OrderRecoveryTrigger;
+  openedById: string | null;
+  openedAt: string;
+  paymentMethodAtOpen: OrderPaymentMethod | null;
+  paymentStatusAtOpen: PaymentStatus;
+  financialOutcome: OrderRecoveryFinancialOutcome;
+  investigationStatus: OrderInvestigationStatus;
+  /** A case that existed before the recovery implementation shipped. Never
+   *  eligible for the automatic backstop. */
+  predatesRecoveryImplementation: boolean;
+  closedAt: string | null;
+  closedById: string | null;
+  closingNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  actions: OrderRecoveryActionDto[];
+  order: {
+    id: string;
+    orderNumber: string;
+    status: OrderStatus;
+    paymentStatus: PaymentStatus;
+    paymentMethod: OrderPaymentMethod | null;
+    fulfillmentType: FulfillmentType;
+    customerId: string;
+    merchantId: string;
+    total: number;
+    currency: string;
+    confirmedAt: string | null;
+    createdAt: string;
+  };
+}
+
+export interface AdminListOrderRecoveriesQuery extends ListOrdersQuery {
+  status?: OrderRecoveryStatus;
+  trigger?: OrderRecoveryTrigger;
+}
+
+/** What an operator must supply to cancel a stalled order under recovery. */
+export interface OperatorRecoveryCancelRequest {
+  reason: string;
+}
+
 /// DPX-ORDER-8D-C ops visibility — filters for the operations exception queue.
 /// Mirrors `AdminOrderExceptionListQueryDto`. Read-only: nothing here changes
 /// anything, and there is deliberately no `orderId` — a single order is already

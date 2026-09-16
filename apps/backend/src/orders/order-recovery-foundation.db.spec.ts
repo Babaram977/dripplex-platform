@@ -50,7 +50,14 @@ suite('DPX-ORDER-8D-RECOVERY · recovery case foundation', () => {
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     await prisma.$connect();
     repository = new PrismaOrderRecoveryRepository(prisma as unknown as PrismaService);
-    service = new OrderRecoveryService(repository);
+    // Increment 1's tests only exercise recognition, which touches neither the
+    // orders repository nor audit — passing stubs keeps this spec focused on
+    // the case file rather than re-testing increment 2's cancellation.
+    service = new OrderRecoveryService(
+      repository,
+      { transition: jest.fn() } as never,
+      { record: jest.fn() } as never,
+    );
   }, 60_000);
 
   afterAll(async () => {

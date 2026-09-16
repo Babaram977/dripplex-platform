@@ -11,6 +11,7 @@ import { ProductsModule } from '../products/products.module';
 import { UploadsModule } from '../uploads/uploads.module';
 import { WalletModule } from '../wallet/wallet.module';
 
+import { AdminOrderRecoveryController } from './admin-order-recovery.controller';
 import { AdminOrdersController } from './admin-orders.controller';
 import { CheckoutService } from './checkout.service';
 import { AdminMerchantCommissionSettingsController } from './controllers/admin-merchant-commission-settings.controller';
@@ -51,6 +52,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     UploadsModule,
   ],
   controllers: [
+    AdminOrderRecoveryController,
     CustomerOrdersController,
     AdminOrdersController,
     MerchantOrdersController,
