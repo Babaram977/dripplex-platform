@@ -35,6 +35,26 @@ const PAYLOAD_VERSION = 1;
  * acted on" — and because that one hangs off ORDER_ACTIONABLE, which fires at
  * confirmation. Folding them together would couple a warning to an arrival.
  *
+ * ⚠️ THIS HANDLER MUST STAY SIDE-EFFECT-FREE with respect to orders, payments,
+ * wallets, refunds and settlements. Founder constraint, 2026-09-16.
+ *
+ * Delivery is AT-LEAST-ONCE by design. The exception row is committed before
+ * the notification is emitted, and the sweep retries anything still carrying a
+ * null `notifiedAt` — so an emit that succeeds and then fails to record itself
+ * is announced twice. That was chosen deliberately: told twice beats never told
+ * for an operational warning.
+ *
+ * It is only safe while this handler does nothing but write a notification.
+ * Today a duplicate costs one extra notification row, one audit entry and one
+ * IN_APP delivery attempt, and nothing else — there is exactly one listener on
+ * ORDER_EXCEPTION_RAISED and no catch-all subscriber anywhere.
+ *
+ * Adding a business mutation here — auto-declining, refunding, releasing
+ * inventory, crediting anything — would turn a duplicate warning into a
+ * duplicate financial action. That needs an explicit idempotency design first,
+ * and almost certainly a separate ruling, because the 30-minute threshold is an
+ * escalation threshold and not an authority to act.
+ *
  * ORDER_STALLED is its own NotificationType rather than GENERIC or
  * ORDER_DELAYED. ORDER_DELAYED is the merchant telling the CUSTOMER they need
  * longer, which is close to the opposite situation. And NotificationPreference
