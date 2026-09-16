@@ -168,4 +168,113 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     expect(announceAt).toBeGreaterThan(listenAt);
     expect(announceAt).toBeGreaterThan(listeningLogAt);
   });
+
+  it('SWL-007 · every sweep tick re-announces, so a dropped startup line self-heals', async () => {
+    // THE POINT OF THE PERIODIC EMISSION. Production discarded the startup line
+    // on two of three deploys. If the announcement only ever happened at boot,
+    // a single drop left that replica silent for its entire uptime. A tick
+    // fires alone, fifteen minutes later, so the cost of a drop is one interval
+    // rather than forever.
+    const recovery = { findBackstopEligible: jest.fn(), recoverAutomatically: jest.fn() };
+    const service = new OrderRecoverySweepService(recovery as never);
+    const { log } = capture(service);
+
+    await service.runSweep();
+    await service.runSweep();
+    await service.runSweep();
+
+    expect(log).toHaveBeenCalledTimes(3);
+    for (const call of log.mock.calls) {
+      expect(String(call[0])).toMatch(/NOT activated/);
+    }
+
+    // And it still did nothing: the announcement is additive, the fail-closed
+    // early return is untouched.
+    expect(recovery.findBackstopEligible).not.toHaveBeenCalled();
+    expect(recovery.recoverAutomatically).not.toHaveBeenCalled();
+  });
+
+  it('SWL-008 · a tick announces the armed state through the same seam', async () => {
+    // Same message, same resolver, whichever state holds — so the periodic line
+    // cannot disagree with the startup line or with what the sweep will do.
+    const service = new ActivatedSweep(new Date('2026-10-01T09:30:00.000Z'));
+    const { warn } = capture(service);
+
+    // Reaches the repository and fails there because this instance was built
+    // with a stub — which is itself proof it did not take the inert path.
+    await service.runSweep();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('2026-10-01T09:30:00.000Z');
+  });
+
+  it('SWL-009 · a re-entrant tick does not announce twice', async () => {
+    // The `running` flag short-circuits before the announcement, so overlapping
+    // passes in one process do not double-log.
+    const service = new OrderRecoverySweepService({} as never);
+    const { log } = capture(service);
+    (service as unknown as { running: boolean }).running = true;
+
+    const result = await service.runSweep();
+
+    expect(log).not.toHaveBeenCalled();
+    expect(result.recovered).toBe(0);
+  });
+
+  it('SWL-010 · a failing logger cannot reject the sweep, or kill the process', async () => {
+    // THE REGRESSION THE PERIODIC ANNOUNCEMENT NEARLY INTRODUCED.
+    //
+    // The announcement sits OUTSIDE runSweep's try/catch — it has to, because
+    // the fail-closed return must be able to precede the work. Before the
+    // periodic emission nothing outside that try could throw: the inert
+    // literal, the `running` check and activationBoundary() are all total. A
+    // logger call is not. The interval invokes the sweep as
+    // `void this.runSweep()`, so a rejection there is an unhandled rejection,
+    // which terminates the process on Node >= 15.
+    //
+    // Announcing the safety state must never be able to take down the platform
+    // it describes.
+    const service = new OrderRecoverySweepService({} as never);
+    const logger = (service as unknown as { logger: Logger }).logger;
+    jest.spyOn(logger, 'log').mockImplementation(() => {
+      throw new Error('EPIPE: log transport gone');
+    });
+
+    await expect(service.runSweep()).resolves.toEqual({
+      inactive: true,
+      considered: 0,
+      recovered: 0,
+      skipped: 0,
+      failed: 0,
+    });
+
+    // And the announcement itself is total, wherever it is called from —
+    // bootstrap included.
+    expect(() => {
+      service.announceActivationState();
+    }).not.toThrow();
+  });
+
+  it("SWL-011 · one order failing does not suppress that tick's announcement", async () => {
+    // A per-order failure is caught inside the loop and must not cost the tick
+    // its safety line. Structurally it cannot, because the announcement
+    // precedes the try entirely — this pins that rather than reasoning it.
+    const recovery = {
+      findBackstopEligible: jest
+        .fn()
+        .mockResolvedValue([{ id: 'order-1', orderNumber: 'DPX-1', exceptionId: 'exc-1' }]),
+      recoverAutomatically: jest.fn().mockRejectedValue(new Error('reversal blew up')),
+    };
+    const service = new ActivatedSweep(new Date('2026-10-01T09:30:00.000Z'));
+    (service as unknown as { recovery: unknown }).recovery = recovery;
+    const { warn } = capture(service);
+
+    const result = await service.runSweep();
+
+    expect(result.failed).toBe(1);
+    expect(result.inactive).toBe(false);
+    // The armed announcement still went out, alongside the per-order error and
+    // the batch summary.
+    expect(warn.mock.calls.some((call) => String(call[0]).includes('IS ACTIVATED'))).toBe(true);
+  });
 });
