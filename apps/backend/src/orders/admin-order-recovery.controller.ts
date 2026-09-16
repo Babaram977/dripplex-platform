@@ -4,8 +4,8 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { AdminOrderRecoveryListQueryDto, OperatorRecoveryCancelDto } from './dto/order.dto';
-import { OrderRecoveryService } from './order-recovery.service';
 import { OrderRecoverySweepService } from './order-recovery-sweep.service';
+import { OrderRecoveryService } from './order-recovery.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 import { toOrderRecoveryDto } from './order.mapper';
 
@@ -58,10 +58,12 @@ export class AdminOrderRecoveryController {
    */
   @Get('activation-state')
   @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
-  public getActivationState(): Promise<ApiSuccessResponse<{
-    activated: boolean;
-    activationAt: string | null;
-  }>> {
+  public getActivationState(): Promise<
+    ApiSuccessResponse<{
+      activated: boolean;
+      activationAt: string | null;
+    }>
+  > {
     return Promise.resolve({ success: true, data: this.recoverySweep.getActivationState() });
   }
 

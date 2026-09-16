@@ -16,6 +16,8 @@ import {
 
 import { AppConfigService } from '../config/app-config.service';
 
+import { OrderRecoverySweepService } from './order-recovery-sweep.service';
+
 import type { INestApplication } from '@nestjs/common';
 
 const databaseUrl = process.env['DATABASE_URL'] ?? '';
@@ -478,5 +480,66 @@ suite('DPX-ORDER-8D-RECOVERY · admin/order-recoveries over HTTP', () => {
     const historicalItems = (historicalQueue.body['data'] as { items: { orderId: string }[] })
       .items;
     expect(historicalItems.some((item) => item.orderId === orderId)).toBe(true);
+  }, 60_000);
+
+  /**
+   * DPX-ORDER-8D-RECOVERY — the activation-state read, over real HTTP.
+   *
+   * WHY THIS EXISTS AS AN HTTP TEST AND NOT A DECORATOR ASSERTION. The whole
+   * point of this endpoint is that an operator can ASK whether automatic
+   * recovery is armed, rather than hoping a startup log line survived — and
+   * production has now twice discarded that line under Railway's per-replica
+   * rate limit. Replacing an unreliable instrument with one whose reachability
+   * is unproven would repeat the mistake a level up. Mapped is not reachable:
+   * these drive the running application and read the response BODY.
+   */
+  it('AOR-014 · the activation-state route is reachable and reports OFF', async () => {
+    const result = await call('GET', '/admin/order-recoveries/activation-state', readerToken);
+
+    expect(result.status).toBe(200);
+    // Not a 400 from the ParseUUIDPipe on `@Get(':orderId')`: that is what a
+    // literal segment declared BELOW the parameterised route answers, and it is
+    // the failure this ordering exists to avoid.
+    expect(JSON.stringify(result.body)).not.toMatch(/uuid/i);
+    expect(result.body['data']).toEqual({ activated: false, activationAt: null });
+  }, 60_000);
+
+  it('AOR-015 · reports ON, with the exact boundary, when one is resolved', async () => {
+    // TEST-ONLY ACTIVATION. This stubs the sweep's own boundary seam on the
+    // running instance; it does not touch RECOVERY_ACTIVATION_AT, production
+    // configuration, or anything persistent. The car's dashboard is tested,
+    // the engine is never started — nothing here can cancel an order or move
+    // money, because the endpoint has no path that does either.
+    const boundary = new Date('2026-10-01T09:30:00.000Z');
+    const sweep = app.get(OrderRecoverySweepService);
+    const spy = jest
+      .spyOn(sweep as unknown as { activationBoundary: () => Date | null }, 'activationBoundary')
+      .mockReturnValue(boundary);
+
+    try {
+      const result = await call('GET', '/admin/order-recoveries/activation-state', readerToken);
+
+      expect(result.status).toBe(200);
+      expect(result.body['data']).toEqual({
+        activated: true,
+        // To the instant. This is what makes "verify the exact activation
+        // boundary" answerable by asking, rather than by reading logs.
+        activationAt: '2026-10-01T09:30:00.000Z',
+      });
+    } finally {
+      spy.mockRestore();
+    }
+
+    // And the stub is gone: the endpoint reports OFF again, so this test cannot
+    // leave the instance believing recovery is armed.
+    const after = await call('GET', '/admin/order-recoveries/activation-state', readerToken);
+    expect(after.body['data']).toEqual({ activated: false, activationAt: null });
+  }, 60_000);
+
+  it('AOR-016 · the activation-state read needs authentication', async () => {
+    const response = await fetch(`${baseUrl}/admin/order-recoveries/activation-state`);
+
+    // It reports a financial safety posture. Reading it is not public.
+    expect(response.status).toBe(401);
   }, 60_000);
 });

@@ -193,6 +193,9 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
             skipped += 1;
           }
         } catch (error) {
+          // One order's failure must not abandon the rest of the batch, and a
+          // failed reversal has already left the order cancelled and its case
+          // retryable by design.
           failed += 1;
           this.logger.error(
             `Automatic recovery failed for ${order.orderNumber}: ${
@@ -212,6 +215,8 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
 
       return { inactive: false, considered: eligible.length, recovered, skipped, failed };
     } catch (error) {
+      // A failing sweep must not kill the interval — it runs again in fifteen
+      // minutes and the orders it missed are still there.
       this.logger.error(
         `Automatic recovery sweep failed: ${error instanceof Error ? error.message : String(error)}`,
       );
