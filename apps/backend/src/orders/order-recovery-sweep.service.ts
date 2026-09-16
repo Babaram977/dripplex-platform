@@ -57,12 +57,62 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
   constructor(private readonly recovery: OrderRecoveryService) {}
 
   public onModuleInit(): void {
+    this.announceActivationState();
     this.timer = setInterval(() => {
       void this.runSweep();
     }, ORDER_RECOVERY_SWEEP_INTERVAL_MS);
     if (typeof this.timer.unref === 'function') {
       this.timer.unref();
     }
+  }
+
+  /**
+   * Say, once at startup, whether automatic recovery is armed.
+   *
+   * WHY THIS EXISTS. Until now the safe state produced NO evidence of itself:
+   * an unactivated sweep returned early in silence, so "the backstop is off"
+   * could only be inferred from the absence of messages — which is equally
+   * consistent with a sweep that ran and found nothing. An operator asked to
+   * verify a deployment is inert had nothing to verify against. Making the
+   * quiet state legible is the whole point of this method.
+   *
+   * It resolves the boundary through the SAME path `runSweep` uses, so the log
+   * cannot describe a state the sweep does not have. A line that resolved the
+   * constant independently could tell you the backstop is off while the sweep
+   * considered it on.
+   *
+   * Levels are chosen to match which state deserves attention: not-activated is
+   * ordinary and expected, so it is `log`; armed means the platform can now
+   * cancel orders and move money without a person asking, so it is `warn` — the
+   * one an operator should notice scrolling past.
+   */
+  private announceActivationState(): void {
+    const activationAt = this.activationBoundary();
+    if (activationAt === null) {
+      this.logger.log(
+        'Automatic recovery is NOT activated (RECOVERY_ACTIVATION_AT is unset or unparseable). ' +
+          'The 24-hour backstop will perform no recovery actions: no order will be cancelled and ' +
+          'no money will move automatically.',
+      );
+      return;
+    }
+    this.logger.warn(
+      `Automatic recovery IS ACTIVATED. Stalled-order exceptions detected at or after ${activationAt.toISOString()} ` +
+        'are eligible for the 24-hour backstop, which can cancel an order and reverse a DX Wallet ' +
+        'payment without a person asking. Exceptions detected before that instant remain ineligible.',
+    );
+  }
+
+  /**
+   * The activation boundary, resolved fail-closed.
+   *
+   * A single seam so the startup announcement and the sweep itself can never
+   * disagree, and so a test can drive both states without reaching for the
+   * production constant. Production behaviour is unchanged: it reads
+   * RECOVERY_ACTIVATION_AT exactly as before.
+   */
+  protected activationBoundary(): Date | null {
+    return resolveRecoveryActivationAt();
   }
 
   public onModuleDestroy(): void {
@@ -87,7 +137,7 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
 
     // FAIL CLOSED. Unset, unparseable or absurd all land here and all mean the
     // same thing: do nothing. Never "now", never a null comparison.
-    const activationAt = resolveRecoveryActivationAt();
+    const activationAt = this.activationBoundary();
     if (activationAt === null) {
       return inert;
     }
