@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { type Logger } from '@nestjs/common';
 
 import { OrderRecoverySweepService } from './order-recovery-sweep.service';
@@ -13,6 +16,13 @@ import { OrderRecoverySweepService } from './order-recovery-sweep.service';
  *
  * No database here on purpose. These tests are about what an operator reads in
  * the logs, and nothing in that path touches Postgres.
+ *
+ * These drive `announceActivationState()` directly because the call MOVED out
+ * of onModuleInit. The first version announced at init and was never observed
+ * in production — startup emits several hundred route-mapping lines in ~60ms,
+ * Railway's per-replica ceiling is 500 logs/sec, and that deployment reported
+ * "Messages dropped: 310". SWL-005 and SWL-006 below are what stop it moving
+ * back.
  */
 describe('OrderRecoverySweepService · activation announcement', () => {
   /** Activated, without setting the production constant. */
@@ -46,8 +56,7 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     const service = new OrderRecoverySweepService({} as never);
     const { log, warn } = capture(service);
 
-    service.onModuleInit();
-    service.onModuleDestroy();
+    service.announceActivationState();
 
     expect(log).toHaveBeenCalledTimes(1);
     const line = String(log.mock.calls[0]?.[0]);
@@ -67,8 +76,7 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     const service = new ActivatedSweep(boundary);
     const { log, warn } = capture(service);
 
-    service.onModuleInit();
-    service.onModuleDestroy();
+    service.announceActivationState();
 
     expect(warn).toHaveBeenCalledTimes(1);
     const line = String(warn.mock.calls[0]?.[0]);
@@ -92,8 +100,7 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     const service = new ActivatedSweep(new Date('2026-10-01T09:30:00.000Z'));
     const { warn } = capture(service);
 
-    service.onModuleInit();
-    service.onModuleDestroy();
+    service.announceActivationState();
     expect(warn).toHaveBeenCalledTimes(1);
 
     // The sweep agrees it is active. It reaches the repository and fails there
@@ -122,5 +129,43 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     // It returned before touching anything at all.
     expect(recovery.findBackstopEligible).not.toHaveBeenCalled();
     expect(recovery.recoverAutomatically).not.toHaveBeenCalled();
+  });
+
+  it('SWL-005 · onModuleInit does NOT announce — it would land inside the log burst', () => {
+    // The relocation, asserted rather than assumed. If the announcement is ever
+    // put back into onModuleInit it returns to a window where Railway drops
+    // messages, and the signal silently stops arriving in production while
+    // every other test here still passes.
+    const service = new OrderRecoverySweepService({} as never);
+    const { log, warn } = capture(service);
+
+    service.onModuleInit();
+    service.onModuleDestroy();
+
+    expect(log).not.toHaveBeenCalled();
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('SWL-006 · bootstrap announces AFTER the listening log', () => {
+    // A source assertion, in the style this repo already uses for the RBAC
+    // catalogue: the behaviour lives in main.ts's bootstrap, which cannot be
+    // unit-tested without standing up the whole application, but the ORDERING
+    // is the property that matters and it is checkable.
+    //
+    // Ordering is the whole fix. Announcing before app.listen() puts the line
+    // back inside the route-mapping flood; announcing after it is the quiet
+    // window. A refactor that hoists the call would otherwise be invisible.
+    const main = readFileSync(join(__dirname, '../main.ts'), 'utf8');
+
+    const listenAt = main.indexOf('await app.listen(');
+    const listeningLogAt = main.indexOf('Dripplex API listening');
+    const announceAt = main.indexOf('announceActivationState()');
+
+    expect(listenAt).toBeGreaterThan(-1);
+    expect(listeningLogAt).toBeGreaterThan(-1);
+    expect(announceAt).toBeGreaterThan(-1);
+
+    expect(announceAt).toBeGreaterThan(listenAt);
+    expect(announceAt).toBeGreaterThan(listeningLogAt);
   });
 });

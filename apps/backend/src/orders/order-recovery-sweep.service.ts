@@ -57,7 +57,13 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
   constructor(private readonly recovery: OrderRecoveryService) {}
 
   public onModuleInit(): void {
-    this.announceActivationState();
+    // DELIBERATELY DOES NOT ANNOUNCE. The announcement used to live here and
+    // was never seen in production: Nest's RouterExplorer emits several hundred
+    // "Mapped ... route" lines in ~60ms of startup, Railway's per-replica limit
+    // is 500 logs/sec, and the deploy that shipped it reported
+    // "Messages dropped: 310". A safety signal that is emitted into a burst
+    // that drops messages is not a safety signal. It is now called from
+    // bootstrap after app.listen() resolves, where the flood is over.
     this.timer = setInterval(() => {
       void this.runSweep();
     }, ORDER_RECOVERY_SWEEP_INTERVAL_MS);
@@ -85,8 +91,13 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
    * ordinary and expected, so it is `log`; armed means the platform can now
    * cancel orders and move money without a person asking, so it is `warn` — the
    * one an operator should notice scrolling past.
+   *
+   * CALLED FROM BOOTSTRAP, AFTER app.listen() RESOLVES — not from onModuleInit.
+   * See the note there: the init-time version was emitted into a log burst that
+   * Railway rate-limits, and was never observed in production. Immediately after
+   * the "Dripplex API listening" line is both quiet and where an operator looks.
    */
-  private announceActivationState(): void {
+  public announceActivationState(): void {
     const activationAt = this.activationBoundary();
     if (activationAt === null) {
       this.logger.log(
