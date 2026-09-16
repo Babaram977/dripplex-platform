@@ -28,9 +28,12 @@ import { MerchantSettlementService } from './merchant-settlement.service';
 import { OrderCompletionSweepService } from './order-completion-sweep.service';
 import { OrderExceptionSweepService } from './order-exception-sweep.service';
 import { OrderPaymentProofService } from './order-payment-proof.service';
+import { OrderRecoveryService } from './order-recovery.service';
 import { CatalogCheckoutProductValidator } from './pricing/catalog-checkout-product.validator';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
+import { ORDER_RECOVERY_REPOSITORY } from './repositories/order-recovery.repository';
 import { ORDERS_REPOSITORY } from './repositories/orders.repository';
+import { PrismaOrderRecoveryRepository } from './repositories/prisma-order-recovery.repository';
 import { PrismaOrdersRepository } from './repositories/prisma-orders.repository';
 import { ReservationCleanupService } from './reservation-cleanup.service';
 
@@ -67,6 +70,10 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     MerchantBankSettlementService,
     OrderPaymentProofService,
     { provide: ORDERS_REPOSITORY, useClass: PrismaOrdersRepository },
+    // DPX-ORDER-8D-RECOVERY Increment 1 — case file only. No sweep is
+    // registered and no caller invokes recognition, so this ships inert.
+    { provide: ORDER_RECOVERY_REPOSITORY, useClass: PrismaOrderRecoveryRepository },
+    OrderRecoveryService,
     { provide: CHECKOUT_PRODUCT_VALIDATOR, useClass: CatalogCheckoutProductValidator },
     { provide: CHECKOUT_INVENTORY_VALIDATOR, useClass: CatalogCheckoutInventoryValidator },
   ],
@@ -78,6 +85,8 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     CheckoutService,
     InventoryReservationService,
     ORDERS_REPOSITORY,
+    ORDER_RECOVERY_REPOSITORY,
+    OrderRecoveryService,
     MerchantCommissionSettingsService,
     MerchantOrdersService,
   ],

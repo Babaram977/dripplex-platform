@@ -161,7 +161,14 @@ describe('Prisma schema foundation (S1-C1)', () => {
     // a campaign's numbers and issuing a private token that earns real money
     // are different acts, and one permission covering both would let anybody
     // who can see the performance enrol themselves on the campaign.
-    expect(PERMISSION_SEEDS).toHaveLength(155);
+    // 155 -> 156: `admin:orders:recovery:manage` (DPX-ORDER-8D-RECOVERY
+    // Increment 1). Separate from `admin:orders:manage` because that one
+    // already authorises dispute resolution and wallet refunds, so reusing it
+    // would hand every recovery operator the power to move money on any order
+    // as a side effect. Seeded and consumed by nothing yet — see
+    // orders/order-recovery.permissions.spec.ts, which asserts that stays true
+    // until the increments that act on a recovery case are ruled and reviewed.
+    expect(PERMISSION_SEEDS).toHaveLength(156);
     expect(PERMISSION_SEEDS.map((permission) => permission.code)).toEqual(
       expect.arrayContaining([
         'admin:rides:pricing:manage',

@@ -17,6 +17,10 @@ export const PERMISSION_SEEDS: PermissionSeed[] = [
   { code: 'customer:checkout', description: 'Create orders from shopping cart' },
   { code: 'customer:orders', description: 'View and cancel own orders' },
   { code: 'admin:orders:read', description: 'Read orders (admin)' },
+  {
+    code: 'admin:orders:recovery:manage',
+    description: 'Act on a stalled-order recovery case (admin)',
+  },
   { code: 'admin:orders:manage', description: 'Manage and refund orders (admin)' },
   { code: 'merchant:orders:manage', description: 'Accept, prepare, and fulfill own orders' },
   { code: 'customer:delivery:read', description: 'Read own delivery jobs and tracking' },

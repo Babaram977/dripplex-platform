@@ -606,8 +606,11 @@ model User {
 
   /// DPX-FLEET — the fleet this person owns, and the fleet they ride for.
   /// Separate relations: an owner is not a member of his own fleet.
-  ownedFleet       Fleet?        @relation("FleetOwner")
-  fleetMemberships FleetMember[] @relation("FleetMembership")
+  ownedFleet            Fleet?                @relation("FleetOwner")
+  fleetMemberships      FleetMember[]         @relation("FleetMembership")
+  orderRecoveriesOpened OrderRecovery[]       @relation("OrderRecoveryOpenedBy")
+  orderRecoveriesClosed OrderRecovery[]       @relation("OrderRecoveryClosedBy")
+  orderRecoveryActions  OrderRecoveryAction[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1527,6 +1530,7 @@ model Order {
   settlement          OrderSettlement?
 
   exceptions OrderException[]
+  recovery   OrderRecovery?
 
   @@index([customerId])
   @@index([merchantId])
@@ -1585,7 +1589,7 @@ model OrderException {
   /// again, and without this column the merchant would never be told — a
   /// stalled-order detector that silently fails to report a stalled order.
   /// Nulling this out is what makes the next sweep retry the notification.
-  notifiedAt DateTime?           @map("notified_at")
+  notifiedAt     DateTime?            @map("notified_at")
   /// Set when the order leaves CONFIRMED. Resolution is observed, not decided:
   /// nothing here resolves an exception by acting on the order.
   resolvedAt     DateTime?            @map("resolved_at")
@@ -1596,6 +1600,7 @@ model OrderException {
   createdAt      DateTime             @default(now()) @map("created_at")
   updatedAt      DateTime             @updatedAt @map("updated_at")
   order          Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recoveries     OrderRecovery[]
 
   @@unique([orderId, type])
   @@index([status])
@@ -1612,6 +1617,173 @@ enum OrderExceptionType {
 enum OrderExceptionStatus {
   OPEN
   RESOLVED
+}
+
+/// DPX-ORDER-8D-RECOVERY Increment 1 — the case file for a stalled order the
+/// platform has taken ownership of.
+///
+/// Founder rulings, 2026-09-16. The 30-minute threshold escalates an order; the
+/// 24-hour threshold is the automatic recovery backstop. This model is the
+/// central reference point for everything concerning one order's recovery.
+///
+/// IT ORCHESTRATES, IT DOES NOT DUPLICATE. Financial truth stays in the wallet
+/// ledger and PaymentTransaction; order truth stays in Order. Nothing here
+/// copies an amount, a balance or a payment state — the actions reference the
+/// authoritative rows by typed foreign key instead.
+model OrderRecovery {
+  id               String  @id @default(uuid()) @db.Uuid
+  /// UNIQUE, and that is the concurrency control: creating this row IS the
+  /// claim on the case. A second sweep worker, or an operator racing the
+  /// backstop, gets a unique violation and abandons. The same mechanism #416
+  /// proved for (orderId, type) on order_exceptions — a database invariant
+  /// rather than an in-process boolean, which does not survive two replicas.
+  orderId          String  @unique @map("order_id") @db.Uuid
+  orderExceptionId String? @map("order_exception_id") @db.Uuid
+
+  status     OrderRecoveryStatus  @default(PENDING)
+  trigger    OrderRecoveryTrigger
+  /// Null means the platform acted. Founder ruling: cancelledBy is ADMIN for
+  /// BOTH operator and automatic recovery, so the human/automatic distinction
+  /// cannot live on the Order — it lives here and on each action row.
+  openedById String?              @map("opened_by_id") @db.Uuid
+  openedAt   DateTime             @default(now()) @map("opened_at")
+
+  /// The payment shape AT THE MOMENT the case opened, recorded because the
+  /// recovery rule is chosen from it. Not a substitute for the order's own
+  /// fields — a snapshot of what the decision was based on.
+  paymentMethodAtOpen OrderPaymentMethod? @map("payment_method_at_open")
+  paymentStatusAtOpen PaymentStatus       @map("payment_status_at_open")
+
+  financialOutcome    OrderRecoveryFinancialOutcome @default(UNDETERMINED) @map("financial_outcome")
+  investigationStatus OrderInvestigationStatus      @default(NOT_REQUIRED) @map("investigation_status")
+
+  /// TRUE for a case that existed before the recovery implementation shipped.
+  /// Founder ruling: preserve historical truth rather than rewrite it, and such
+  /// a case is NEVER eligible for the automatic 24-hour sweep — it reaches a
+  /// recovery action only through the governed, explicitly authorised path.
+  predatesRecoveryImplementation Boolean @default(false) @map("predates_recovery_implementation")
+
+  closedAt    DateTime? @map("closed_at")
+  closedById  String?   @map("closed_by_id") @db.Uuid
+  closingNote String?   @map("closing_note") @db.VarChar(1000)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  order     Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  exception OrderException?       @relation(fields: [orderExceptionId], references: [id], onDelete: SetNull)
+  openedBy  User?                 @relation("OrderRecoveryOpenedBy", fields: [openedById], references: [id], onDelete: SetNull)
+  closedBy  User?                 @relation("OrderRecoveryClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  actions   OrderRecoveryAction[]
+
+  @@index([status])
+  @@index([investigationStatus])
+  @@index([openedAt])
+  @@index([predatesRecoveryImplementation])
+  @@map("order_recoveries")
+}
+
+/// One step in a recovery case, append-only.
+///
+/// TYPED FOREIGN KEYS, NOT A POLYMORPHIC PAIR. Founder requirement: this is a
+/// case file, not a dumping ground for arbitrary references. Each reference is
+/// a real FK, so the database enforces that a cited record exists.
+///
+/// The load-bearing one is `walletLedgerEntryId`. The rule "never tell a
+/// customer money was returned unless the ledger confirms it" becomes a
+/// structural property rather than a discipline: the refund sentence is
+/// emitted if and only if a SUCCEEDED WALLET_REVERSAL action carries a ledger
+/// entry. A replay that moved no money records NO_OP with a null FK, and the
+/// claim is then unreachable — it cannot be satisfied by a boolean a function
+/// returned, which is exactly how refundIfPaid currently misreports.
+model OrderRecoveryAction {
+  id         String                     @id @default(uuid()) @db.Uuid
+  recoveryId String                     @map("recovery_id") @db.Uuid
+  type       OrderRecoveryActionType
+  outcome    OrderRecoveryActionOutcome
+  /// Paired with actorId: TRUE + null actor means the platform did it, FALSE +
+  /// an actor means a person did. Both land as cancelledBy=ADMIN on the order,
+  /// so this pair is the only place the distinction survives.
+  automatic  Boolean
+  actorId    String?                    @map("actor_id") @db.Uuid
+
+  paymentTransactionId String? @map("payment_transaction_id") @db.Uuid
+  walletLedgerEntryId  String? @map("wallet_ledger_entry_id") @db.Uuid
+  supportTicketId      String? @map("support_ticket_id") @db.Uuid
+  orderPaymentProofId  String? @map("order_payment_proof_id") @db.Uuid
+  notificationId       String? @map("notification_id") @db.Uuid
+
+  /// Operator note or investigation finding. Never financial state.
+  detail    String?  @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  recovery           OrderRecovery       @relation(fields: [recoveryId], references: [id], onDelete: Cascade)
+  actor              User?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
+  walletLedgerEntry  WalletLedgerEntry?  @relation(fields: [walletLedgerEntryId], references: [id], onDelete: SetNull)
+  supportTicket      SupportTicket?      @relation(fields: [supportTicketId], references: [id], onDelete: SetNull)
+  orderPaymentProof  OrderPaymentProof?  @relation(fields: [orderPaymentProofId], references: [id], onDelete: SetNull)
+  notification       Notification?       @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+
+  @@index([recoveryId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("order_recovery_actions")
+}
+
+enum OrderRecoveryStatus {
+  PENDING
+  IN_PROGRESS
+  /// Cancelled, but the financial step has not completed. The order stays
+  /// cancelled and only the money step retries.
+  AWAITING_FINANCIAL_RETRY
+  AWAITING_INVESTIGATION
+  CLOSED
+}
+
+enum OrderRecoveryTrigger {
+  OPERATOR
+  AUTOMATIC
+}
+
+enum OrderRecoveryFinancialOutcome {
+  UNDETERMINED
+  /// No money ever reached DrippleX, so there is nothing to reverse.
+  NONE_DUE
+  REVERSAL_CONFIRMED
+  REVERSAL_FAILED
+  /// Money may have moved outside DrippleX. A human decides; the platform does
+  /// not move money automatically for these channels.
+  MANUAL_REQUIRED
+}
+
+enum OrderInvestigationStatus {
+  NOT_REQUIRED
+  OPEN
+  EVIDENCE_GATHERED
+  CONCLUDED_PAID
+  CONCLUDED_UNPAID
+  CONCLUDED_UNVERIFIABLE
+}
+
+enum OrderRecoveryActionType {
+  CANCEL_ORDER
+  WALLET_REVERSAL
+  GATEWAY_VERIFICATION
+  MERCHANT_CONTACT
+  CUSTOMER_CONTACT
+  EVIDENCE_ADDED
+  NOTIFICATION_SENT
+  FINDING_RECORDED
+  RECOVERY_CLOSED
+}
+
+enum OrderRecoveryActionOutcome {
+  SUCCEEDED
+  FAILED
+  /// Attempted, but nothing changed — e.g. a wallet reversal the ledger
+  /// refused as a replay. Distinct from SUCCEEDED because no money moved.
+  NO_OP
 }
 
 model OrderDispute {
@@ -1653,22 +1825,23 @@ model OrderDispute {
 /// (see PUBLIC_UPLOAD_FOLDERS — `payment-proofs` is deliberately absent) and is
 /// only ever read through a short-lived signed GET.
 model OrderPaymentProof {
-  id          String   @id @default(uuid()) @db.Uuid
-  orderId     String   @map("order_id") @db.Uuid
+  id              String                @id @default(uuid()) @db.Uuid
+  orderId         String                @map("order_id") @db.Uuid
   /// The customer who submitted it. Kept even though it is derivable from the
   /// order, so the audit trail survives any later change to order ownership.
-  submittedBy String   @map("submitted_by") @db.Uuid
-  receiptUrl  String   @map("receipt_url") @db.VarChar(2048)
+  submittedBy     String                @map("submitted_by") @db.Uuid
+  receiptUrl      String                @map("receipt_url") @db.VarChar(2048)
   /// The bank's transfer reference, as the customer typed it. Optional: a
   /// screenshot alone is still evidence, and blocking on a field the customer
   /// cannot find would simply stop them submitting anything.
-  reference   String?  @db.VarChar(100)
+  reference       String?               @db.VarChar(100)
   /// What the customer says they sent. Not assumed equal to order.total — a
   /// mismatch is exactly the kind of thing a dispute needs to be able to see.
-  amount      Decimal? @db.Decimal(12, 2)
-  note        String?  @db.VarChar(500)
-  createdAt   DateTime @default(now()) @map("created_at")
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  amount          Decimal?              @db.Decimal(12, 2)
+  note            String?               @db.VarChar(500)
+  createdAt       DateTime              @default(now()) @map("created_at")
+  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  recoveryActions OrderRecoveryAction[]
 
   @@index([orderId])
   @@index([submittedBy])
@@ -1716,26 +1889,27 @@ model InventoryReservation {
 }
 
 model PaymentTransaction {
-  id                    String            @id @default(uuid()) @db.Uuid
-  orderId               String            @map("order_id") @db.Uuid
-  customerId            String            @map("customer_id") @db.Uuid
-  merchantId            String            @map("merchant_id") @db.Uuid
+  id                    String                @id @default(uuid()) @db.Uuid
+  orderId               String                @map("order_id") @db.Uuid
+  customerId            String                @map("customer_id") @db.Uuid
+  merchantId            String                @map("merchant_id") @db.Uuid
   provider              PaymentProvider
-  providerReference     String            @unique @map("provider_reference") @db.VarChar(100)
-  providerTransactionId String?           @map("provider_transaction_id") @db.VarChar(100)
-  status                TransactionStatus @default(PENDING)
-  amount                Decimal           @db.Decimal(12, 2)
-  currency              String            @default("NGN") @db.VarChar(3)
-  authorizationUrl      String?           @map("authorization_url") @db.VarChar(2048)
-  accessCode            String?           @map("access_code") @db.VarChar(100)
-  gatewayResponse       Json?             @map("gateway_response")
-  paidAt                DateTime?         @map("paid_at")
-  verifiedAt            DateTime?         @map("verified_at")
-  metadata              Json              @default("{}")
-  createdAt             DateTime          @default(now()) @map("created_at")
-  updatedAt             DateTime          @updatedAt @map("updated_at")
-  order                 Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  customer              User              @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  providerReference     String                @unique @map("provider_reference") @db.VarChar(100)
+  providerTransactionId String?               @map("provider_transaction_id") @db.VarChar(100)
+  status                TransactionStatus     @default(PENDING)
+  amount                Decimal               @db.Decimal(12, 2)
+  currency              String                @default("NGN") @db.VarChar(3)
+  authorizationUrl      String?               @map("authorization_url") @db.VarChar(2048)
+  accessCode            String?               @map("access_code") @db.VarChar(100)
+  gatewayResponse       Json?                 @map("gateway_response")
+  paidAt                DateTime?             @map("paid_at")
+  verifiedAt            DateTime?             @map("verified_at")
+  metadata              Json                  @default("{}")
+  createdAt             DateTime              @default(now()) @map("created_at")
+  updatedAt             DateTime              @updatedAt @map("updated_at")
+  order                 Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customer              User                  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  recoveryActions       OrderRecoveryAction[]
 
   @@index([orderId])
   @@index([providerReference])
@@ -3028,9 +3202,10 @@ model SupportTicket {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  user         User                 @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
-  resolver     User?                @relation("SupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
-  conversation SupportConversation?
+  user            User                  @relation("SupportTicketUser", fields: [userId], references: [id], onDelete: Cascade)
+  resolver        User?                 @relation("SupportTicketResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  conversation    SupportConversation?
+  recoveryActions OrderRecoveryAction[]
 
   @@index([userId])
   @@index([status])
@@ -3804,30 +3979,31 @@ model NotificationTemplate {
 }
 
 model Notification {
-  id             String                        @id @default(uuid()) @db.Uuid
-  userId         String                        @map("user_id") @db.Uuid
-  category       NotificationCategory          @default(SYSTEM)
-  channel        NotificationChannel
-  type           NotificationType
-  priority       NotificationPriority          @default(NORMAL)
-  status         NotificationStatus            @default(PENDING)
-  title          String                        @db.VarChar(255)
-  body           String                        @db.Text
-  templateCode   String?                       @map("template_code") @db.VarChar(100)
-  payload        Json?
-  scheduledAt    DateTime?                     @map("scheduled_at")
-  expiresAt      DateTime?                     @map("expires_at")
-  sentAt         DateTime?                     @map("sent_at")
-  readAt         DateTime?                     @map("read_at")
-  failureReason  String?                       @map("failure_reason") @db.Text
-  retryCount     Int                           @default(0) @map("retry_count")
-  maxRetries     Int                           @default(3) @map("max_retries")
-  deadLetteredAt DateTime?                     @map("dead_lettered_at")
-  createdAt      DateTime                      @default(now()) @map("created_at")
-  updatedAt      DateTime                      @updatedAt @map("updated_at")
-  deletedAt      DateTime?                     @map("deleted_at")
-  user           User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  attempts       NotificationDeliveryAttempt[]
+  id              String                        @id @default(uuid()) @db.Uuid
+  userId          String                        @map("user_id") @db.Uuid
+  category        NotificationCategory          @default(SYSTEM)
+  channel         NotificationChannel
+  type            NotificationType
+  priority        NotificationPriority          @default(NORMAL)
+  status          NotificationStatus            @default(PENDING)
+  title           String                        @db.VarChar(255)
+  body            String                        @db.Text
+  templateCode    String?                       @map("template_code") @db.VarChar(100)
+  payload         Json?
+  scheduledAt     DateTime?                     @map("scheduled_at")
+  expiresAt       DateTime?                     @map("expires_at")
+  sentAt          DateTime?                     @map("sent_at")
+  readAt          DateTime?                     @map("read_at")
+  failureReason   String?                       @map("failure_reason") @db.Text
+  retryCount      Int                           @default(0) @map("retry_count")
+  maxRetries      Int                           @default(3) @map("max_retries")
+  deadLetteredAt  DateTime?                     @map("dead_lettered_at")
+  createdAt       DateTime                      @default(now()) @map("created_at")
+  updatedAt       DateTime                      @updatedAt @map("updated_at")
+  deletedAt       DateTime?                     @map("deleted_at")
+  user            User                          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attempts        NotificationDeliveryAttempt[]
+  recoveryActions OrderRecoveryAction[]
 
   @@index([userId])
   @@index([status])
@@ -4668,18 +4844,19 @@ model Wallet {
 }
 
 model WalletLedgerEntry {
-  id            String                @id @default(uuid()) @db.Uuid
-  walletId      String                @map("wallet_id") @db.Uuid
-  type          WalletTransactionType
-  amount        Decimal               @db.Decimal(14, 2)
-  direction     WalletDirection
-  balanceAfter  Decimal               @map("balance_after") @db.Decimal(14, 2)
-  referenceType String?               @map("reference_type") @db.VarChar(100)
-  referenceId   String?               @map("reference_id") @db.Uuid
-  description   String?               @db.VarChar(500)
-  metadata      Json?
-  createdAt     DateTime              @default(now()) @map("created_at")
-  wallet        Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  id              String                @id @default(uuid()) @db.Uuid
+  walletId        String                @map("wallet_id") @db.Uuid
+  type            WalletTransactionType
+  amount          Decimal               @db.Decimal(14, 2)
+  direction       WalletDirection
+  balanceAfter    Decimal               @map("balance_after") @db.Decimal(14, 2)
+  referenceType   String?               @map("reference_type") @db.VarChar(100)
+  referenceId     String?               @map("reference_id") @db.Uuid
+  description     String?               @db.VarChar(500)
+  metadata        Json?
+  createdAt       DateTime              @default(now()) @map("created_at")
+  wallet          Wallet                @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  recoveryActions OrderRecoveryAction[]
 
   @@unique([walletId, referenceType, referenceId], map: "wallet_ledger_entries_wallet_id_reference_type_reference_id_key")
   @@index([walletId])
