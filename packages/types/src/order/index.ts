@@ -177,6 +177,18 @@ export type OrderRecoveryStatus =
 
 export type OrderRecoveryTrigger = 'OPERATOR' | 'AUTOMATIC' | 'HISTORICAL';
 
+/**
+ * Whether the 24-hour automatic recovery backstop is armed, and from when.
+ *
+ * `activated` is false whenever the boundary cannot be resolved — unset,
+ * unparseable, or absurd all mean the same thing and the sweep performs no
+ * recovery actions. `activationAt` is the exact instant in force when it is.
+ */
+export interface OrderRecoveryActivationStateDto {
+  activated: boolean;
+  activationAt: string | null;
+}
+
 export type OrderRecoveryFinancialOutcome =
   'UNDETERMINED' | 'NONE_DUE' | 'REVERSAL_CONFIRMED' | 'REVERSAL_FAILED' | 'MANUAL_REQUIRED';
 

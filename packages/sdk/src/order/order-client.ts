@@ -15,6 +15,7 @@ import type {
   MerchantOrderListQuery,
   OrderDto,
   OrderExceptionDto,
+  OrderRecoveryActivationStateDto,
   PaginatedResult,
   PaymentStatusDto,
   PaymentVerificationDto,
@@ -164,6 +165,29 @@ export class OrderClient {
         status: query.status,
         type: query.type,
       })}`,
+      {
+        method: 'GET',
+        auth: true,
+      },
+    );
+  }
+
+  /**
+   * DPX-ORDER-8D-RECOVERY — is the automatic backstop armed, and from when?
+   *
+   * Mirrors `AdminOrderRecoveryController.getActivationState` 1:1. READ ONLY,
+   * and deliberately has no companion activate/deactivate method: the boundary
+   * is a code constant changed by reviewed deployment, precisely so that no
+   * runtime surface can move a financial safety boundary. An SDK method for an
+   * action that does not exist would invite a console to be built against it.
+   *
+   * The state is returned exactly as the backend resolved it. Callers must not
+   * cache it or infer OFF from a failed request — a request that failed tells
+   * you nothing about whether recovery is armed.
+   */
+  public adminGetOrderRecoveryActivationState(): Promise<OrderRecoveryActivationStateDto> {
+    return this.http.request<OrderRecoveryActivationStateDto>(
+      '/admin/order-recoveries/activation-state',
       {
         method: 'GET',
         auth: true,
