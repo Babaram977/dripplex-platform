@@ -1,4 +1,5 @@
 import type {
+  FulfillmentType,
   OrderInvestigationStatus,
   OrderPaymentMethod,
   OrderRecovery,
@@ -8,6 +9,7 @@ import type {
   OrderRecoveryFinancialOutcome,
   OrderRecoveryStatus,
   OrderRecoveryTrigger,
+  OrderStatus,
   PaymentStatus,
 } from '@prisma/client';
 
@@ -26,10 +28,10 @@ export type OrderRecoveryWithDetail = OrderRecovery & {
   order: {
     id: string;
     orderNumber: string;
-    status: string;
+    status: OrderStatus;
     paymentStatus: PaymentStatus;
     paymentMethod: OrderPaymentMethod | null;
-    fulfillmentType: string;
+    fulfillmentType: FulfillmentType;
     customerId: string;
     merchantId: string;
     total: unknown;
@@ -106,6 +108,28 @@ export interface OrderRecoveryRepository {
     paymentMethod: OrderPaymentMethod | null;
     paymentStatus: PaymentStatus;
   } | null>;
+
+  /**
+   * The order's CURRENT state, read immediately before a recovery mutation.
+   *
+   * Exists so the decision is never made from a row the caller fetched earlier:
+   * a merchant can accept an order between an operator opening the queue and
+   * pressing cancel. Returns whether a stalled exception is still open in the
+   * same read, so the two facts cannot disagree.
+   */
+  findOrderStateForRecovery(orderId: string): Promise<{
+    id: string;
+    status: OrderStatus;
+    paymentMethod: OrderPaymentMethod | null;
+    paymentStatus: PaymentStatus;
+    hasOpenStalledException: boolean;
+    openExceptionId: string | null;
+  } | null>;
+
+  updateCaseStatus(
+    recoveryId: string,
+    input: { status: OrderRecoveryStatus; closedAt?: Date; closedById?: string },
+  ): Promise<void>;
 }
 
 export const ORDER_RECOVERY_REPOSITORY = Symbol('ORDER_RECOVERY_REPOSITORY');

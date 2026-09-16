@@ -8,6 +8,7 @@ import {
   IsUUID,
   Max,
   MaxLength,
+  MinLength,
   Min,
 } from 'class-validator';
 
@@ -101,6 +102,61 @@ export enum OrderExceptionStatusFilter {
  * that changes anything, and deliberately no `orderId` — a single order is
  * already reachable through `GET admin/orders/:id`.
  */
+/// DPX-ORDER-8D-RECOVERY Increment 2 — validation enums for the recovery queue.
+export enum OrderRecoveryStatusFilter {
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  AWAITING_FINANCIAL_RETRY = 'AWAITING_FINANCIAL_RETRY',
+  AWAITING_INVESTIGATION = 'AWAITING_INVESTIGATION',
+  CLOSED = 'CLOSED',
+}
+
+export enum OrderRecoveryTriggerFilter {
+  OPERATOR = 'OPERATOR',
+  AUTOMATIC = 'AUTOMATIC',
+}
+
+export class AdminOrderRecoveryListQueryDto {
+  @IsOptional()
+  @IsEnum(OrderRecoveryStatusFilter)
+  public status?: OrderRecoveryStatusFilter;
+
+  @IsOptional()
+  @IsEnum(OrderRecoveryTriggerFilter)
+  public trigger?: OrderRecoveryTriggerFilter;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsInt()
+  @Min(1)
+  public page = 1;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  public pageSize = 20;
+}
+
+/**
+ * A recovery cancellation must carry a reason.
+ *
+ * Required, not optional: this cancellation is attributed to ADMIN on the
+ * order, so without a stated reason neither the customer nor a later reviewer
+ * can tell why the platform cancelled someone's order.
+ */
+export class OperatorRecoveryCancelDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  public reason!: string;
+}
+
 export class AdminOrderExceptionListQueryDto {
   @IsOptional()
   @IsEnum(OrderExceptionStatusFilter)

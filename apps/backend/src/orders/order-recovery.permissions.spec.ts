@@ -2,6 +2,9 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { PERMISSIONS_KEY } from '../common/decorators/permissions.decorator';
+
+import { AdminOrderRecoveryController } from './admin-order-recovery.controller';
 import { ORDER_PERMISSIONS } from './order.constants';
 
 /**
@@ -45,11 +48,14 @@ describe('ORDER_PERMISSIONS · recovery', () => {
     expect(countGrants('admin:orders:recovery:manage')).toBe(countGrants('admin:orders:read'));
   });
 
-  it('RECP-005 · nothing consumes it yet — Increment 1 exposes no recovery mutation', () => {
-    // THE CONSTRAINT FOR THIS INCREMENT. The permission exists so later
-    // increments attach to a right that was granted deliberately. If a
-    // controller starts requiring it before those increments are ruled and
-    // reviewed, this fails and sends it back.
+  it('RECP-005 · only the recovery controller consumes it', () => {
+    // Increment 1 asserted that NOTHING consumed this permission. Increment 2
+    // is its authorised first consumer, so the assertion tightens rather than
+    // relaxes: exactly one controller may require it.
+    //
+    // This still fails the moment any other controller starts demanding it —
+    // which is the point. Recovery authority must not spread to order
+    // management, payments or disputes without its own ruling.
     const src = join(__dirname, '..');
     const hits = execSync(
       `grep -rl "ADMIN_RECOVERY_MANAGE" ${src} --include=*.ts || true`,
@@ -59,6 +65,35 @@ describe('ORDER_PERMISSIONS · recovery', () => {
       .filter(Boolean)
       .map((file) => file.split('/').pop());
 
-    expect(files.sort()).toEqual(['order-recovery.permissions.spec.ts', 'order.constants.ts']);
+    expect(files.sort()).toEqual([
+      'admin-order-recovery.controller.ts',
+      'order-recovery.permissions.spec.ts',
+      'order.constants.ts',
+    ]);
+  });
+
+  it('RECP-006 · the cancel handler requires the recovery permission, not order read', () => {
+    // Asserting the decorator is not enough on its own — the HTTP spec drives
+    // the real guard — but this catches a silent downgrade in review.
+    const required = Reflect.getMetadata(
+      PERMISSIONS_KEY,
+      AdminOrderRecoveryController.prototype.cancel,
+    ) as string[];
+
+    expect(required).toEqual([ORDER_PERMISSIONS.ADMIN_RECOVERY_MANAGE]);
+    expect(required).not.toContain(ORDER_PERMISSIONS.ADMIN_READ);
+    expect(required).not.toContain(ORDER_PERMISSIONS.ADMIN_MANAGE);
+  });
+
+  it('RECP-007 · the read handlers do NOT require the recovery permission', () => {
+    // Reading the queue must stay available to anyone who can read orders;
+    // requiring recovery authority to look would hide the queue from the
+    // people meant to notice it.
+    for (const handler of [
+      AdminOrderRecoveryController.prototype.list,
+      AdminOrderRecoveryController.prototype.getByOrder,
+    ]) {
+      expect(Reflect.getMetadata(PERMISSIONS_KEY, handler)).toEqual([ORDER_PERMISSIONS.ADMIN_READ]);
+    }
   });
 });

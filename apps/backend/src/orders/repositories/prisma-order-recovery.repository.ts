@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { OrderExceptionStatus, OrderExceptionType, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -14,6 +14,8 @@ import type {
   OrderPaymentMethod,
   OrderRecovery,
   OrderRecoveryAction,
+  OrderRecoveryStatus,
+  OrderStatus,
   PaymentStatus,
 } from '@prisma/client';
 
@@ -148,6 +150,61 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
     return await this.prisma.order.findUnique({
       where: { orderNumber },
       select: { id: true, paymentMethod: true, paymentStatus: true },
+    });
+  }
+
+  public async findOrderStateForRecovery(orderId: string): Promise<{
+    id: string;
+    status: OrderStatus;
+    paymentMethod: OrderPaymentMethod | null;
+    paymentStatus: PaymentStatus;
+    hasOpenStalledException: boolean;
+    openExceptionId: string | null;
+  } | null> {
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        status: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        // Read in the same statement as the status, so the two cannot be
+        // fetched at different instants and disagree.
+        exceptions: {
+          where: {
+            type: OrderExceptionType.STALLED_CONFIRMED,
+            status: OrderExceptionStatus.OPEN,
+          },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    if (!order) {
+      return null;
+    }
+    const open = order.exceptions[0];
+    return {
+      id: order.id,
+      status: order.status,
+      paymentMethod: order.paymentMethod,
+      paymentStatus: order.paymentStatus,
+      hasOpenStalledException: open !== undefined,
+      openExceptionId: open?.id ?? null,
+    };
+  }
+
+  public async updateCaseStatus(
+    recoveryId: string,
+    input: { status: OrderRecoveryStatus; closedAt?: Date; closedById?: string },
+  ): Promise<void> {
+    await this.prisma.orderRecovery.update({
+      where: { id: recoveryId },
+      data: {
+        status: input.status,
+        ...(input.closedAt !== undefined ? { closedAt: input.closedAt } : {}),
+        ...(input.closedById !== undefined ? { closedById: input.closedById } : {}),
+      },
     });
   }
 
