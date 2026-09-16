@@ -28,21 +28,24 @@ function makeSubscriber(merchantUserId: string | null): {
   return { subscriber, send, findUnique, eventBus };
 }
 
-function orderPaidEvent(payload: Record<string, unknown>): DomainEvent {
-  return { name: DOMAIN_EVENTS.ORDER_PAID, payload } as DomainEvent;
+function actionableEvent(payload: Record<string, unknown>): DomainEvent {
+  return { name: DOMAIN_EVENTS.ORDER_ACTIONABLE, payload } as DomainEvent;
 }
 
 describe('MerchantOrderNotificationSubscriber', () => {
-  it('subscribes to ORDER_PAID on init', () => {
+  it('subscribes to ORDER_ACTIONABLE on init — NOT ORDER_PAID', () => {
     const { subscriber, eventBus } = makeSubscriber('merchant-user-1');
     subscriber.onModuleInit();
-    expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.ORDER_PAID, expect.any(Function));
+    expect(eventBus.on).toHaveBeenCalledWith(DOMAIN_EVENTS.ORDER_ACTIONABLE, expect.any(Function));
+    // The move must not leave ORDER_PAID attached, or every gateway/wallet
+    // order would notify the merchant twice.
+    expect(eventBus.on).not.toHaveBeenCalledWith(DOMAIN_EVENTS.ORDER_PAID, expect.any(Function));
   });
 
-  it('notifies the merchant user (resolved from MerchantProfile.id) on a new paid order', async () => {
+  it('notifies the merchant user (resolved from MerchantProfile.id) on an actionable order', async () => {
     const { subscriber, send, findUnique } = makeSubscriber('merchant-user-1');
     await subscriber.handle(
-      orderPaidEvent({
+      actionableEvent({
         orderId: 'order-1',
         merchantId: 'merchant-profile-1',
         customerId: 'cust-1',
@@ -69,14 +72,14 @@ describe('MerchantOrderNotificationSubscriber', () => {
 
   it('is a no-op when the payload has no merchantId', async () => {
     const { subscriber, send, findUnique } = makeSubscriber('merchant-user-1');
-    await subscriber.handle(orderPaidEvent({ orderId: 'order-1', customerId: 'cust-1' }));
+    await subscriber.handle(actionableEvent({ orderId: 'order-1', customerId: 'cust-1' }));
     expect(findUnique).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
   });
 
   it('is a no-op when the merchant profile cannot be resolved', async () => {
     const { subscriber, send } = makeSubscriber(null);
-    await subscriber.handle(orderPaidEvent({ orderId: 'order-1', merchantId: 'missing-profile' }));
+    await subscriber.handle(actionableEvent({ orderId: 'order-1', merchantId: 'missing-profile' }));
     expect(send).not.toHaveBeenCalled();
   });
 });

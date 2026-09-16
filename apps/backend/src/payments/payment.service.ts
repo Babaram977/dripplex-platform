@@ -730,6 +730,31 @@ export class PaymentService {
       }
     }
 
+    // The merchant now has to act on this order. Emitted HERE, from the one
+    // chokepoint every confirmation passes through, precisely so that no
+    // payment method can be added later that confirms an order without
+    // telling the merchant — which is exactly how CASH went unnoticed for the
+    // whole pilot (founder ruling 2026-09-15; see DOMAIN_EVENTS.ORDER_ACTIONABLE).
+    //
+    // NOT ORDER_PAID: CASH and MERCHANT_DIRECT reach this line with
+    // paymentStatus PENDING, and ORDER_PAID drives loyalty points, paid-revenue
+    // analytics and the customer's "payment received" message.
+    await this.eventBus?.emit(
+      DOMAIN_EVENTS.ORDER_ACTIONABLE,
+      {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        customerId: order.customerId,
+        merchantId: order.merchantId,
+        fulfillmentType: order.fulfillmentType,
+        paymentMethod: updated.paymentMethod ?? input.paymentMethod ?? null,
+        paymentStatus: input.paymentStatus,
+        amount: Number(order.total),
+        currency: order.currency,
+      },
+      { actorUserId: order.customerId },
+    );
+
     return updated;
   }
 
