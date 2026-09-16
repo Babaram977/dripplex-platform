@@ -4,6 +4,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
 
 import { AdminOrderRecoveryListQueryDto, OperatorRecoveryCancelDto } from './dto/order.dto';
+import { OrderRecoverySweepService } from './order-recovery-sweep.service';
 import { OrderRecoveryService } from './order-recovery.service';
 import { ORDER_PERMISSIONS } from './order.constants';
 import { toOrderRecoveryDto } from './order.mapper';
@@ -31,7 +32,10 @@ import type { Request } from 'express';
  */
 @Controller('admin/order-recoveries')
 export class AdminOrderRecoveryController {
-  constructor(private readonly recovery: OrderRecoveryService) {}
+  constructor(
+    private readonly recovery: OrderRecoveryService,
+    private readonly recoverySweep: OrderRecoverySweepService,
+  ) {}
 
   @Get()
   @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
@@ -45,6 +49,22 @@ export class AdminOrderRecoveryController {
       ...(query.trigger !== undefined ? { trigger: query.trigger } : {}),
     });
     return { success: true, data };
+  }
+
+  /**
+   * Read the resolved automatic-recovery boundary without relying on startup
+   * logs. This is intentionally GET-only and uses the existing read permission;
+   * it cannot arm, disarm, cancel, reverse, or otherwise mutate recovery state.
+   */
+  @Get('activation-state')
+  @RequirePermissions(ORDER_PERMISSIONS.ADMIN_READ)
+  public getActivationState(): Promise<
+    ApiSuccessResponse<{
+      activated: boolean;
+      activationAt: string | null;
+    }>
+  > {
+    return Promise.resolve({ success: true, data: this.recoverySweep.getActivationState() });
   }
 
   @Get(':orderId')

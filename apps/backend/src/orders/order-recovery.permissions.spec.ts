@@ -85,12 +85,15 @@ describe('ORDER_PERMISSIONS · recovery', () => {
     expect(required).not.toContain(ORDER_PERMISSIONS.ADMIN_MANAGE);
   });
 
-  it('RECP-007 · the read handlers do NOT require the recovery permission', () => {
+  it('RECP-007 · every recovery read handler requires only order-read permission', () => {
     // Reading the queue must stay available to anyone who can read orders;
     // requiring recovery authority to look would hide the queue from the
-    // people meant to notice it.
+    // people meant to notice it. The activation-state read is the same: an
+    // operator checking whether the backstop is armed is not exercising
+    // recovery authority, and must not need it.
     for (const handler of [
       AdminOrderRecoveryController.prototype.list,
+      AdminOrderRecoveryController.prototype.getActivationState,
       AdminOrderRecoveryController.prototype.getByOrder,
     ]) {
       expect(Reflect.getMetadata(PERMISSIONS_KEY, handler)).toEqual([ORDER_PERMISSIONS.ADMIN_READ]);

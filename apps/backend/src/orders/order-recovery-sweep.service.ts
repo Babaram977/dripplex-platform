@@ -17,6 +17,11 @@ export interface RecoverySweepResult {
   failed: number;
 }
 
+export interface RecoveryActivationState {
+  activated: boolean;
+  activationAt: string | null;
+}
+
 /**
  * DPX-ORDER-8D-RECOVERY Increment 4 — the 24-hour automatic backstop.
  *
@@ -73,6 +78,19 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
   }
 
   /**
+   * Return the resolved activation state without logging or mutating anything.
+   * This is the authoritative read path for operator verification; it uses the
+   * same boundary resolver as `runSweep()` and `announceActivationState()`.
+   */
+  public getActivationState(): RecoveryActivationState {
+    const activationAt = this.activationBoundary();
+    return {
+      activated: activationAt !== null,
+      activationAt: activationAt === null ? null : activationAt.toISOString(),
+    };
+  }
+
+  /**
    * Say, once at startup, whether automatic recovery is armed.
    *
    * WHY THIS EXISTS. Until now the safe state produced NO evidence of itself:
@@ -85,7 +103,7 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
    * It resolves the boundary through the SAME path `runSweep` uses, so the log
    * cannot describe a state the sweep does not have. A line that resolved the
    * constant independently could tell you the backstop is off while the sweep
-   * considered it on.
+   * considered itself on.
    *
    * Levels are chosen to match which state deserves attention: not-activated is
    * ordinary and expected, so it is `log`; armed means the platform can now
