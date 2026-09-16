@@ -453,6 +453,149 @@ describe('PaymentService', () => {
     });
   });
 
+  /**
+   * The half of the boundary that actually broke.
+   *
+   * order-actionable.boundary.spec.ts proves event → subscriber → merchant
+   * inbox. These prove confirmation → event, for every payment method, by
+   * driving the real `initializePayment` entry point. Neither half is
+   * sufficient alone: the old code had a correct subscriber and no emitter,
+   * and the isolated subscriber test passed throughout.
+   *
+   * Founder ruling 2026-09-15: ORDER_ACTIONABLE on every confirmation;
+   * ORDER_PAID only when money actually arrived.
+   */
+  describe('ORDER_ACTIONABLE is emitted at every confirmation', () => {
+    const deliveryOrder = { ...sampleOrder, fulfillmentType: FulfillmentType.DELIVERY };
+
+    beforeEach(() => {
+      // jest.clearAllMocks() clears CALLS, not implementations, so a
+      // mockRejectedValue set by an earlier test survives into this one — the
+      // "wallet debit fails" case above would otherwise make OAE-004 throw.
+      walletService.debit.mockResolvedValue({} as never);
+    });
+
+    const withEventBus = (): { svc: PaymentService; emit: jest.Mock } => {
+      const emit = jest.fn().mockResolvedValue(undefined);
+      const svc = new PaymentService(
+        paymentRepository,
+        ordersRepository,
+        cartRepository,
+        [provider],
+        inventoryDeduction,
+        auditService,
+        notifications,
+        prisma,
+        config,
+        walletService,
+        { emit } as unknown as DomainEventBus,
+      );
+      return { svc, emit };
+    };
+
+    const emittedNames = (emit: jest.Mock): string[] =>
+      emit.mock.calls.map((call) => String(call[0]));
+
+    it('OAE-001 · CASH selection emits ORDER_ACTIONABLE', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(deliveryOrder);
+      ordersRepository.transition.mockResolvedValue({
+        ...deliveryOrder,
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PENDING,
+        paymentMethod: OrderPaymentMethod.CASH,
+      });
+      const { svc, emit } = withEventBus();
+
+      await svc.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.CASH },
+        context,
+      );
+
+      expect(emittedNames(emit)).toContain(DOMAIN_EVENTS.ORDER_ACTIONABLE);
+      expect(emit).toHaveBeenCalledWith(
+        DOMAIN_EVENTS.ORDER_ACTIONABLE,
+        expect.objectContaining({
+          orderId,
+          merchantId: deliveryOrder.merchantId,
+          paymentStatus: PaymentStatus.PENDING,
+        }),
+        expect.anything(),
+      );
+    });
+
+    it('OAE-002 · CASH selection does NOT emit ORDER_PAID — no money has moved', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(deliveryOrder);
+      ordersRepository.transition.mockResolvedValue({
+        ...deliveryOrder,
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PENDING,
+        paymentMethod: OrderPaymentMethod.CASH,
+      });
+      const { svc, emit } = withEventBus();
+
+      await svc.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.CASH },
+        context,
+      );
+
+      // Emitting it here would award 50 DX Points for an unpaid order, inflate
+      // paid-revenue analytics, and tell the customer their payment arrived
+      // while they still owe cash at the door.
+      expect(emittedNames(emit)).not.toContain(DOMAIN_EVENTS.ORDER_PAID);
+    });
+
+    it('OAE-003 · MERCHANT_DIRECT selection emits ORDER_ACTIONABLE and not ORDER_PAID', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(deliveryOrder);
+      ordersRepository.transition.mockResolvedValue({
+        ...deliveryOrder,
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PENDING,
+        paymentMethod: OrderPaymentMethod.MERCHANT_DIRECT,
+      });
+      const { svc, emit } = withEventBus();
+
+      await svc.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.MERCHANT_DIRECT },
+        context,
+      );
+
+      expect(emittedNames(emit)).toContain(DOMAIN_EVENTS.ORDER_ACTIONABLE);
+      expect(emittedNames(emit)).not.toContain(DOMAIN_EVENTS.ORDER_PAID);
+    });
+
+    it('OAE-004 · WALLET payment emits ORDER_ACTIONABLE as well as ORDER_PAID', async () => {
+      ordersRepository.findByIdForCustomer.mockResolvedValue(deliveryOrder);
+      ordersRepository.transition.mockResolvedValue({
+        ...deliveryOrder,
+        status: OrderStatus.CONFIRMED,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: OrderPaymentMethod.WALLET,
+      });
+      const { svc, emit } = withEventBus();
+
+      await svc.initializePayment(
+        customerId,
+        orderId,
+        { provider: OrderPaymentMethodDtoEnum.WALLET },
+        context,
+      );
+
+      // Both, and for different reasons: the merchant must act, AND the money
+      // genuinely arrived. The merchant is still notified exactly once,
+      // because only ORDER_ACTIONABLE reaches that subscriber.
+      const names = emittedNames(emit);
+      expect(names).toContain(DOMAIN_EVENTS.ORDER_ACTIONABLE);
+      expect(names).toContain(DOMAIN_EVENTS.ORDER_PAID);
+      expect(names.filter((n) => n === DOMAIN_EVENTS.ORDER_ACTIONABLE)).toHaveLength(1);
+    });
+  });
+
   describe('markCashPaymentReceived', () => {
     it('settles a pending cash order', async () => {
       ordersRepository.findById.mockResolvedValue({

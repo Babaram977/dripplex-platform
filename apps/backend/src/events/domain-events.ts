@@ -21,6 +21,33 @@ export const DOMAIN_EVENTS = {
    */
   PAYMENT_WEBHOOK_UNMATCHED: 'PaymentWebhookUnmatched',
   ORDER_CREATED: 'OrderCreated',
+  /**
+   * The merchant now has to act on this order.
+   *
+   * Emitted at EVERY confirmation regardless of payment method — gateway,
+   * wallet, cash-on-delivery and merchant-direct alike — from the single
+   * chokepoint every one of them passes through.
+   *
+   * Deliberately NOT ORDER_PAID. Founder ruling 2026-09-15, after a live
+   * CASH order sat CONFIRMED for four days because the merchant was never
+   * told it existed: merchant notification hung off ORDER_PAID, and
+   * `selectCashOnDelivery` emits no event at all, so the one notification
+   * that starts the whole fulfilment loop never fired. CASH and
+   * MERCHANT_DIRECT confirm with paymentStatus PENDING, so making them emit
+   * ORDER_PAID would have awarded loyalty points for unpaid orders, inflated
+   * paid-revenue analytics, and told the customer their payment had been
+   * received when they still owed cash at the door.
+   *
+   * The two events therefore mean strictly different things and must stay
+   * that way:
+   *
+   *   ORDER_ACTIONABLE — the merchant needs to act on this order
+   *   ORDER_PAID       — money has actually been received
+   *
+   * Merchant notification must not have to know how an order was paid. That
+   * coupling is exactly what let the defect survive the entire pilot.
+   */
+  ORDER_ACTIONABLE: 'OrderActionable',
   ORDER_PAID: 'OrderPaid',
   ORDER_CANCELLED: 'OrderCancelled',
   ORDER_ACCEPTED: 'OrderAccepted',
