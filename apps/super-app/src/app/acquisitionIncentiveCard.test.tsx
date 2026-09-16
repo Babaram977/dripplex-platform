@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -89,6 +89,31 @@ const INCENTIVE = {
   customersBenefiting: 4,
   totalDiscountNgn: 5400,
 };
+
+/**
+ * The console's first mount is what costs, and it costs inside the assertion's
+ * own clock.
+ *
+ * The `beforeAll` below already warms the ~13,000-line adminConsoleScreen
+ * import, and that was not enough: measured locally, the FIRST test in this
+ * file takes ~158ms against ~30ms for every test after it. The import is
+ * cached by then, so the residual ~5x is React's first execution of a very
+ * large tree — and `waitFor` is already counting when it happens.
+ *
+ * Vitest's default `waitFor` budget is 1000ms. On this machine 158ms clears it
+ * easily; on a contended two-core CI runner sharing workers it does not always,
+ * which is why the first `it` of a console describe block — and only ever the
+ * first — has failed intermittently across several unrelated PRs, including
+ * ones whose diffs contained no super-app files at all. The same commit has
+ * failed two different console tests on two runs.
+ *
+ * So this widens a timing budget; it does not weaken an assertion. These tests
+ * claim "the server's data reaches the screen", never "it arrives within one
+ * second" — 1000ms was a framework default, not a chosen bound, and nothing in
+ * production waits on a jsdom mount. A genuinely broken screen still fails,
+ * just five seconds later.
+ */
+configure({ asyncUtilTimeout: 5_000 });
 
 beforeAll(async () => {
   await import('./adminConsoleScreen');
