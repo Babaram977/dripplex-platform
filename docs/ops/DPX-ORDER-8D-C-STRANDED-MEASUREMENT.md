@@ -44,6 +44,63 @@ scales with the number, not because one order is an incident.
 No cancellation, no inventory release, no status mutation, no remediation. **Remediation remains
 an undecided separate ruling** (§7), and a measured population does not authorize acting on it.
 
+### Backlog sweep — the pre-fix baseline, 2026-09-16
+
+Run in the production backend container after #414 deployed at **2026-09-16T00:23:59Z**, so that
+this is a clean measurement of the population that existed _before_ the fix.
+Screenshot-verified.
+
+```
+groups: 1
+  fulfillment_type=DELIVERY  payment_method=CASH  payment_status=PENDING
+  orders=1  ge_30_min=1  ge_24_hours=1  before_fix=1  after_fix=0
+  oldest = newest = 2026-09-11T16:26:16Z
+as of 2026-09-16T01:37:18.504Z | #414 deploy boundary 2026-09-16T00:23:59Z
+```
+
+**`groups: 1` is the whole story, and it is broader than one stranded order.** The sweep filtered
+on `status = 'CONFIRMED'` and nothing else — every fulfilment type, every payment method. One row
+came back. So this is not one stranded order among many: it is the **entire `CONFIRMED`
+population in production**. There were no `PICKUP` rows to exclude and no gateway or wallet rows
+to distinguish.
+
+|                                               |                                            |
+| --------------------------------------------- | ------------------------------------------ |
+| **8D-C population**                           | **1** — `DELIVERY` + `CONFIRMED` + ≥30 min |
+| Also beyond the 24 h order-completion horizon | yes                                        |
+| Predates #414                                 | yes — `before_fix = 1`, `after_fix = 0`    |
+| Age at measurement                            | ~4 d 9 h 11 m                              |
+
+It is the same order the single-order diagnostic returned (`DPX-20260911-F7GK1S`), and the same
+one 8D-C counted at 2026-09-15T13:28:38Z. **It has not moved in the ~12 hours between the two
+measurements** — the merchant still has not acted on it. It remains recoverable: `acceptOrder`
+guards only on `status === CONFIRMED` and has no age limit.
+
+#### `after_fix = 0` is a baseline, not evidence the fix works
+
+It means no order was confirmed in the ~73 minutes between the deploy and the measurement. It
+cannot distinguish _"the fix works"_ from _"nothing has exercised it"_. **`ORDER_ACTIONABLE`
+remains behaviourally unproven in production** until a genuine CASH order arrives — the code path
+is deployed and verified, the behaviour is not.
+
+#### What this sweep cannot answer
+
+It filtered `CONFIRMED` only, so it says **nothing about overall order volume**. A `CONFIRMED`
+population of one is equally consistent with low traffic and with orders moving promptly through
+to later statuses. That matters for how much weight `after_fix = 0` can carry, and a status
+histogram would settle it. Not inferred here.
+
+#### Cause is still not attributed
+
+`CASH` + `PENDING` is **consistent with** the notification defect #414 fixed. It is not proof of
+it: a merchant who saw the order and did not act produces an identical row. Per §4 that
+distinction is not available from the data, and this measurement does not close it.
+
+**No remediation is authorised by this count.** Nothing was cancelled, advanced, refunded or
+released.
+
+---
+
 ### Next step — inspect the one order (read-only, NOT yet run)
 
 Founder sequence, 2026-09-15: understand the single order **before** any remediation ruling. This
