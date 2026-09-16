@@ -168,4 +168,56 @@ describe('OrderRecoverySweepService · activation announcement', () => {
     expect(announceAt).toBeGreaterThan(listenAt);
     expect(announceAt).toBeGreaterThan(listeningLogAt);
   });
+
+  it('SWL-007 · every sweep tick re-announces, so a dropped startup line self-heals', async () => {
+    // THE POINT OF THE PERIODIC EMISSION. Production discarded the startup line
+    // on two of three deploys. If the announcement only ever happened at boot,
+    // a single drop left that replica silent for its entire uptime. A tick
+    // fires alone, fifteen minutes later, so the cost of a drop is one interval
+    // rather than forever.
+    const recovery = { findBackstopEligible: jest.fn(), recoverAutomatically: jest.fn() };
+    const service = new OrderRecoverySweepService(recovery as never);
+    const { log } = capture(service);
+
+    await service.runSweep();
+    await service.runSweep();
+    await service.runSweep();
+
+    expect(log).toHaveBeenCalledTimes(3);
+    for (const call of log.mock.calls) {
+      expect(String(call[0])).toMatch(/NOT activated/);
+    }
+
+    // And it still did nothing: the announcement is additive, the fail-closed
+    // early return is untouched.
+    expect(recovery.findBackstopEligible).not.toHaveBeenCalled();
+    expect(recovery.recoverAutomatically).not.toHaveBeenCalled();
+  });
+
+  it('SWL-008 · a tick announces the armed state through the same seam', async () => {
+    // Same message, same resolver, whichever state holds — so the periodic line
+    // cannot disagree with the startup line or with what the sweep will do.
+    const service = new ActivatedSweep(new Date('2026-10-01T09:30:00.000Z'));
+    const { warn } = capture(service);
+
+    // Reaches the repository and fails there because this instance was built
+    // with a stub — which is itself proof it did not take the inert path.
+    await service.runSweep();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('2026-10-01T09:30:00.000Z');
+  });
+
+  it('SWL-009 · a re-entrant tick does not announce twice', async () => {
+    // The `running` flag short-circuits before the announcement, so overlapping
+    // passes in one process do not double-log.
+    const service = new OrderRecoverySweepService({} as never);
+    const { log } = capture(service);
+    (service as unknown as { running: boolean }).running = true;
+
+    const result = await service.runSweep();
+
+    expect(log).not.toHaveBeenCalled();
+    expect(result.recovered).toBe(0);
+  });
 });

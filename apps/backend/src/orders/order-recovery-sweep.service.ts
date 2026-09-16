@@ -164,6 +164,24 @@ export class OrderRecoverySweepService implements OnModuleInit, OnModuleDestroy 
       return { ...inert, inactive: false };
     }
 
+    // RE-ANNOUNCE ON EVERY TICK, because one emission is not a guarantee.
+    //
+    // The startup announcement has now been discarded twice by Railway's
+    // per-replica log limit: a deploy emits several hundred route-mapping lines
+    // in a few milliseconds, the ceiling is 500/sec, and two deploys reported
+    // "Messages dropped" of 310 and 411 — taking "Dripplex API listening" and
+    // "Nest application successfully started" with them. Moving the
+    // announcement after listen() helped and was not sufficient; there is no
+    // reliably quiet window at startup, only one that happened to be quiet.
+    //
+    // A tick is quiet by construction: it fires fifteen minutes after boot,
+    // alone. So a dropped startup line now costs at most one interval of not
+    // knowing, instead of costing the whole uptime of that replica. This is the
+    // same announcement through the same seam — one message, one resolver, so
+    // the periodic line cannot disagree with the startup line or with the
+    // sweep's own behaviour.
+    this.announceActivationState();
+
     // FAIL CLOSED. Unset, unparseable or absurd all land here and all mean the
     // same thing: do nothing. Never "now", never a null comparison.
     const activationAt = this.activationBoundary();
