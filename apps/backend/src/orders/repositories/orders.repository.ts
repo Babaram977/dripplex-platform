@@ -109,6 +109,27 @@ export interface OrdersRepository {
   findExpiredActiveReservations(now: Date): Promise<InventoryReservation[]>;
   findUnpaidOrdersWithExpiredReservations(now: Date): Promise<OrderWithItems[]>;
   findAutoCompletableOrders(before: Date): Promise<OrderWithItems[]>;
+
+  /**
+   * DPX-ORDER-8D-C — DELIVERY orders sitting in CONFIRMED since before the
+   * cutoff, with no OPEN exception of this type already raised.
+   *
+   * The `none` filter is belt to the unique constraint's braces: it keeps the
+   * sweep from re-reading orders it has already raised, so a long-lived
+   * exception does not cost work every fifteen minutes. Correctness still rests
+   * on the constraint, not on this.
+   */
+  findStalledConfirmedOrders(before: Date): Promise<OrderWithItems[]>;
+
+  /** Raise the exception, or do nothing if it is already raised. */
+  raiseStalledException(input: {
+    orderId: string;
+    waitedMinutes: number;
+    detectedAt: Date;
+  }): Promise<{ raised: boolean }>;
+
+  /** Close any OPEN exception on an order that has since moved on. */
+  resolveOpenExceptions(orderId: string, resolvedStatus: OrderStatus): Promise<number>;
   createDispute(input: CreateDisputeInput): Promise<OrderDispute>;
   findDisputeById(id: string): Promise<OrderDispute | null>;
   findOpenDisputeForOrder(orderId: string): Promise<OrderDispute | null>;

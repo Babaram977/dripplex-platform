@@ -1526,6 +1526,8 @@ model Order {
   paymentProofs       OrderPaymentProof[]
   settlement          OrderSettlement?
 
+  exceptions OrderException[]
+
   @@index([customerId])
   @@index([merchantId])
   @@index([status])
@@ -1542,6 +1544,66 @@ model Order {
 /// existing dispute/problem-report pattern) rather than inventing a new
 /// one. Deliberately minimal: no photo evidence or moderation queue this
 /// pass, see docs/MARKETPLACE-FOUNDATION.md's honest-limitations section.
+/// DPX-ORDER-8D-C — a CONFIRMED delivery order the merchant has not advanced.
+///
+/// Founder remediation ruling, 2026-09-16: after 30 minutes in DELIVERY +
+/// CONFIRMED without progression, the order becomes a DrippleX-managed
+/// operational exception. Merchant action is still required, but the platform
+/// owns making sure the order reaches a meaningful resolution rather than
+/// waiting silently forever.
+///
+/// DETECTION ONLY. Raising a row here cancels, declines, refunds or advances
+/// nothing. The 30-minute threshold is an escalation threshold, not an
+/// automatic cancellation rule — turning it into one would need the refund,
+/// payment, inventory and merchant consequences defined first, which is a
+/// separate ruling.
+///
+/// `@@unique([orderId, type])` is what makes the sweep idempotent. It runs
+/// every 15 minutes against a 30-minute threshold, so it sees the same order
+/// repeatedly; the constraint means a second pass updates nothing rather than
+/// raising a duplicate, and the merchant is notified once rather than every
+/// quarter hour. That protection is a database invariant, not sweep bookkeeping
+/// that a future caller could forget.
+model OrderException {
+  id             String               @id @default(uuid()) @db.Uuid
+  orderId        String               @map("order_id") @db.Uuid
+  type           OrderExceptionType
+  status         OrderExceptionStatus @default(OPEN)
+  /// What the order looked like when it was detected, so the record still reads
+  /// correctly after the order moves on.
+  detectedAt     DateTime             @default(now()) @map("detected_at")
+  /// Minutes the order had been waiting when detected. Stored rather than
+  /// recomputed: the age at detection is the fact worth keeping, and it stops
+  /// being derivable the moment the order progresses.
+  waitedMinutes  Int                  @map("waited_minutes")
+  /// Set when the order leaves CONFIRMED. Resolution is observed, not decided:
+  /// nothing here resolves an exception by acting on the order.
+  resolvedAt     DateTime?            @map("resolved_at")
+  /// The order status that resolved it — the merchant accepted, or it was
+  /// cancelled. Distinguishes a recovered order from an abandoned one in
+  /// metrics.
+  resolvedStatus OrderStatus?         @map("resolved_status")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  order          Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, type])
+  @@index([status])
+  @@index([type])
+  @@index([detectedAt])
+  @@map("order_exceptions")
+}
+
+enum OrderExceptionType {
+  /// DELIVERY + CONFIRMED + >= 30 minutes without the merchant advancing it.
+  STALLED_CONFIRMED
+}
+
+enum OrderExceptionStatus {
+  OPEN
+  RESOLVED
+}
+
 model OrderDispute {
   id         String             @id @default(uuid()) @db.Uuid
   orderId    String             @map("order_id") @db.Uuid
@@ -3375,6 +3437,13 @@ enum NotificationType {
   ORDER_READY
   ORDER_DELAYED
   ORDER_COMPLETED
+  /// DPX-ORDER-8D-C — the merchant has not advanced a confirmed delivery order
+  /// for 30 minutes. Its own type, not GENERIC or ORDER_DELAYED: ORDER_DELAYED
+  /// is the merchant telling the customer they need longer, which is the
+  /// opposite situation, and NotificationPreference is keyed on (channel, type)
+  /// so a merchant muting GENERIC would have muted the one alert that says an
+  /// order is slipping away from them.
+  ORDER_STALLED
   DRIVER_SUPPORT_TICKET_UPDATED
   /// DPX-SUPPORT-001 — the persona-neutral successor to
   /// DRIVER_SUPPORT_TICKET_UPDATED. The old value is kept because rows in

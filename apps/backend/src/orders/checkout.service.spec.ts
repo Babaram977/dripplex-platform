@@ -140,6 +140,9 @@ describe('CheckoutService', () => {
     findDisputeById: jest.fn(),
     findOpenDisputeForOrder: jest.fn(),
     resolveDispute: jest.fn(),
+    findStalledConfirmedOrders: jest.fn(),
+    raiseStalledException: jest.fn(),
+    resolveOpenExceptions: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {
@@ -876,6 +879,9 @@ describe('ReservationCleanupService', () => {
     findDisputeById: jest.fn(),
     findOpenDisputeForOrder: jest.fn(),
     resolveDispute: jest.fn(),
+    findStalledConfirmedOrders: jest.fn(),
+    raiseStalledException: jest.fn(),
+    resolveOpenExceptions: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {

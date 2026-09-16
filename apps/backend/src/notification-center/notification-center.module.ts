@@ -16,6 +16,7 @@ import { NotificationCenterService } from './notification-center.service';
 import { NotificationCenterSubscriber } from './notification-center.subscriber';
 import { NotificationPreferencesService } from './notification-preferences.service';
 import { NotificationTemplateService } from './notification-template.service';
+import { OrderExceptionNotificationSubscriber } from './order-exception-notification.subscriber';
 import { getFirebaseMessaging } from './providers/firebase-admin.factory';
 import { FirebasePushProvider } from './providers/firebase-push.provider';
 import { NotConfiguredProvider } from './providers/not-configured.provider';
@@ -38,6 +39,7 @@ import type { NotificationProvider } from './providers/notification-provider';
     NotificationTemplateService,
     NotificationCenterSubscriber,
     MerchantOrderNotificationSubscriber,
+    OrderExceptionNotificationSubscriber,
     DeviceRegistryService,
     // Default bindings until real provider credentials exist (Phase D —
     // see docs/DPX-CORE-001-NOTIFICATION-PLATFORM.md). Swapping in a real

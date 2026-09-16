@@ -56,6 +56,19 @@ export const DOMAIN_EVENTS = {
   ORDER_DELAYED: 'OrderDelayed',
   ORDER_COMPLETED: 'OrderCompleted',
   ORDER_REFUNDED: 'OrderRefunded',
+  /**
+   * DPX-ORDER-8D-C — a confirmed delivery order has been sitting unadvanced
+   * past the ruled threshold and is now a DrippleX-managed exception.
+   *
+   * Emitted ONLY when an exception is newly raised, never on a re-detection:
+   * the sweep runs every 15 minutes against a 30-minute threshold, so it sees
+   * the same order repeatedly, and a unique constraint on (orderId, type) is
+   * what makes the second pass silent. Without that the merchant would be
+   * alerted about the same order four times an hour.
+   *
+   * Raising it mutates no order. Detection and state change stay separate.
+   */
+  ORDER_EXCEPTION_RAISED: 'OrderExceptionRaised',
   ORDER_DISPUTED: 'OrderDisputed',
   ORDER_DISPUTE_RESOLVED: 'OrderDisputeResolved',
   PRODUCT_LOW_STOCK: 'ProductLowStock',
