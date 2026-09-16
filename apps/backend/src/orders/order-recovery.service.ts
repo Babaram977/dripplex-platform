@@ -1,5 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  NotificationCategory,
+  NotificationChannel,
+  NotificationType,
   OrderInvestigationStatus,
   OrderPaymentMethod,
   OrderRecoveryActionOutcome,
@@ -9,15 +12,19 @@ import {
   OrderRecoveryTrigger,
   OrderStatus,
   PaymentStatus,
+  WalletOwnerType,
 } from '@prisma/client';
 
 import { AuditService, type AuditContext } from '../audit/audit.service';
 import {
   ConflictDomainException,
   NotFoundDomainException,
+  ValidationDomainException,
 } from '../common/exceptions/domain.exception';
+import { NotificationCenterService } from '../notification-center/notification-center.service';
+import { WalletService } from '../wallet/wallet.service';
 
-import { ORDER_AUDIT_ACTIONS } from './order.constants';
+import { ORDER_AUDIT_ACTIONS, ORDER_WALLET_REFERENCE_TYPE } from './order.constants';
 import { toOrderRecoveryDto } from './order.mapper';
 import {
   ORDER_RECOVERY_REPOSITORY,
@@ -53,6 +60,8 @@ export class OrderRecoveryService {
     @Inject(ORDERS_REPOSITORY)
     private readonly orders: OrdersRepository,
     private readonly auditService: AuditService,
+    private readonly wallet: WalletService,
+    private readonly notifications: NotificationCenterService,
   ) {}
 
   public async list(input: {
@@ -208,6 +217,256 @@ export class OrderRecoveryService {
       throw new Error('Recovery case vanished after cancellation');
     }
     return detail;
+  }
+
+  /**
+   * Return a cancelled order's money to the customer's DX Wallet.
+   *
+   * ⚠️ THE FIRST CODE IN THIS PROGRAMME THAT MOVES MONEY.
+   *
+   * CANCEL-FIRST IS MANDATORY (founder ruling, 2026-09-16). This refuses an
+   * order that is not already CANCELLED. Cancellation and reversal are two
+   * separate operations on purpose: a reversal that fails must leave the order
+   * cancelled and the case retryable, not roll a cancellation back.
+   *
+   * IDEMPOTENCY IS THE LEDGER'S, NOT THIS METHOD'S. The credit goes through the
+   * existing ORDER_WALLET_REFERENCE_TYPE + order.id key — the same key the
+   * merchant cancellation and admin refund paths already use — so those flows
+   * and this one cannot together produce two credits, in either order. The
+   * uniqueness lives on (walletId, referenceType, referenceId) in the database;
+   * nothing here is trusted to remember.
+   *
+   * THE THREE OUTCOMES ARE NOT INTERCHANGEABLE:
+   *   applied  → SUCCEEDED, ledger cited, customer told their money is back
+   *   !applied → NO_OP, no ledger cited, customer told NOTHING (the credit was
+   *              already there; we did not make it, and claiming otherwise
+   *              would be a second refund message for one refund)
+   *   throws   → FAILED, no ledger cited, case parked AWAITING_FINANCIAL_RETRY
+   *
+   * A CONFLICT IS NOT A FAILURE. Two operators reversing at once collide on the
+   * wallet's optimistic version guard, and the loser retries into the replay
+   * path and correctly reports NO_OP. Without the retry the loser would record
+   * FAILED for a reversal that did in fact happen.
+   */
+  public async reverseWalletForRecovery(input: {
+    orderId: string;
+    operatorId: string;
+    context: AuditContext;
+  }): Promise<OrderRecoveryWithDetail> {
+    const order = await this.recoveries.findOrderStateForRecovery(input.orderId);
+    if (!order) {
+      throw new NotFoundDomainException('Order not found');
+    }
+
+    const existing = await this.recoveries.findByOrderId(order.id);
+    if (!existing) {
+      throw new ConflictDomainException(
+        'Order has no recovery case; cancel it through recovery before reversing payment',
+      );
+    }
+    if (existing.predatesRecoveryImplementation) {
+      // Same ruling as cancellation: a historical case reaches a recovery
+      // action only through an explicitly authorised path.
+      throw new ConflictDomainException(
+        'This recovery case predates the recovery implementation and needs explicit authorisation',
+      );
+    }
+
+    // Cancel-first. Re-read immediately before the write, never trusted from
+    // the caller's earlier fetch.
+    if (order.status !== OrderStatus.CANCELLED) {
+      throw new ConflictDomainException(
+        'Order must be cancelled through recovery before its payment is reversed',
+        { status: order.status },
+      );
+    }
+
+    // DX WALLET ONLY. Gateway refunds have no integration in this codebase and
+    // MERCHANT_DIRECT money never reached DrippleX — both are a human's
+    // decision under their own increment, and neither is guessed at here.
+    if (order.paymentMethod !== OrderPaymentMethod.WALLET) {
+      throw new ValidationDomainException('Only DX Wallet payments can be reversed automatically', {
+        paymentMethod: order.paymentMethod,
+      });
+    }
+    if (
+      order.paymentStatus !== PaymentStatus.PAID &&
+      order.paymentStatus !== PaymentStatus.REFUNDED
+    ) {
+      // REFUNDED is allowed through so a retry after a partial failure can
+      // still reach the ledger and settle the case truthfully as a replay.
+      throw new ValidationDomainException('Order was never paid, so there is nothing to reverse', {
+        paymentStatus: order.paymentStatus,
+      });
+    }
+
+    const recoveryId = existing.id;
+    const amount = Number(order.total);
+
+    let outcome: { applied: boolean; ledgerId: string };
+    try {
+      outcome = await this.withConflictRetry(
+        async () =>
+          await this.wallet.refund({
+            ownerType: WalletOwnerType.CUSTOMER,
+            ownerId: order.customerId,
+            amount,
+            referenceType: ORDER_WALLET_REFERENCE_TYPE,
+            referenceId: order.id,
+            description: `Refund for order ${order.orderNumber}`,
+            context: { ...input.context, userId: input.operatorId },
+          }),
+      );
+    } catch (error) {
+      await this.recoveries.recordAction({
+        recoveryId,
+        type: OrderRecoveryActionType.WALLET_REVERSAL,
+        outcome: OrderRecoveryActionOutcome.FAILED,
+        automatic: false,
+        actorId: input.operatorId,
+        detail: error instanceof Error ? error.message.slice(0, 2000) : 'Wallet reversal failed',
+      });
+      await this.recoveries.updateCaseStatus(recoveryId, {
+        status: OrderRecoveryStatus.AWAITING_FINANCIAL_RETRY,
+        financialOutcome: OrderRecoveryFinancialOutcome.REVERSAL_FAILED,
+      });
+      this.logger.error(
+        `Wallet reversal FAILED for order ${order.orderNumber}; order remains cancelled and the case is retryable`,
+      );
+      throw error;
+    }
+
+    await this.recoveries.recordAction({
+      recoveryId,
+      type: OrderRecoveryActionType.WALLET_REVERSAL,
+      outcome: outcome.applied
+        ? OrderRecoveryActionOutcome.SUCCEEDED
+        : OrderRecoveryActionOutcome.NO_OP,
+      automatic: false,
+      actorId: input.operatorId,
+      // The CHECK constraint added in Increment 3 enforces exactly this pairing
+      // at the database. Citing a ledger entry on a NO_OP would claim we made a
+      // credit that was already there.
+      ...(outcome.applied ? { walletLedgerEntryId: outcome.ledgerId } : {}),
+      detail: outcome.applied
+        ? `Reversed ${order.currency} ${amount.toFixed(2)} to the customer's DX Wallet`
+        : `Ledger already held this reversal; no second credit was made`,
+    });
+
+    await this.auditService.record(
+      ORDER_AUDIT_ACTIONS.REFUNDED,
+      { ...input.context, userId: input.operatorId },
+      {
+        resource: 'order',
+        resourceId: order.id,
+        metadata: {
+          recoveryId,
+          amount,
+          currency: order.currency,
+          viaRecovery: true,
+          automatic: false,
+          // The distinction the founder asked to keep in the audit history:
+          // both leave exactly one credit, but only one of them made it.
+          applied: outcome.applied,
+        },
+      },
+    );
+
+    await this.recoveries.markOrderRefunded(order.id);
+
+    await this.recoveries.updateCaseStatus(recoveryId, {
+      status: OrderRecoveryStatus.CLOSED,
+      financialOutcome: OrderRecoveryFinancialOutcome.REVERSAL_CONFIRMED,
+    });
+
+    if (outcome.applied) {
+      await this.notifyCustomerRefunded({
+        recoveryId,
+        customerId: order.customerId,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        amount,
+        currency: order.currency,
+        ledgerId: outcome.ledgerId,
+      });
+    }
+
+    const detail = await this.recoveries.findByOrderId(order.id);
+    if (!detail) {
+      throw new Error('Recovery case vanished after wallet reversal');
+    }
+    return detail;
+  }
+
+  /**
+   * Tell the customer their money is back — and only then.
+   *
+   * `ledgerId` is a REQUIRED parameter rather than an optional one, so this
+   * cannot be called for a reversal that has no ledger entry behind it. That is
+   * the application half of the founder's invariant; the database half is the
+   * CHECK constraint on order_recovery_actions. A refund message is a financial
+   * statement to a customer, and the platform should be unable to make one it
+   * cannot evidence.
+   */
+  private async notifyCustomerRefunded(input: {
+    recoveryId: string;
+    customerId: string;
+    orderId: string;
+    orderNumber: string;
+    amount: number;
+    currency: string;
+    ledgerId: string;
+  }): Promise<void> {
+    const result = await this.notifications.send({
+      userId: input.customerId,
+      category: NotificationCategory.MARKETPLACE,
+      channel: NotificationChannel.IN_APP,
+      type: NotificationType.REFUND,
+      title: 'Refund issued',
+      body: `Your order ${input.orderNumber} was cancelled and ${input.currency} ${input.amount.toFixed(2)} has been returned to your DX Wallet.`,
+      payload: { orderId: input.orderId, orderNumber: input.orderNumber, amount: input.amount },
+    });
+
+    // A customer who has muted this channel is not a failure, and the money has
+    // already moved either way. Record what actually happened rather than
+    // asserting a message that was never sent.
+    await this.recoveries.recordAction({
+      recoveryId: input.recoveryId,
+      type: OrderRecoveryActionType.NOTIFICATION_SENT,
+      outcome:
+        result.notification === null
+          ? OrderRecoveryActionOutcome.NO_OP
+          : OrderRecoveryActionOutcome.SUCCEEDED,
+      automatic: true,
+      ...(result.notification !== null ? { notificationId: result.notification.id } : {}),
+      detail:
+        result.notification === null
+          ? `Refund notification not delivered: ${result.reason ?? 'unknown'}`
+          : 'Customer told their money was returned',
+    });
+  }
+
+  /**
+   * Retry an optimistic-concurrency loss.
+   *
+   * The wallet guards its balance with a version check and throws
+   * ConflictDomainException when it loses. Mirrors the retry
+   * RidePaymentService already uses around the same wallet calls — a conflict
+   * means somebody else moved first, and the retry either applies or correctly
+   * discovers the replay.
+   */
+  private async withConflictRetry<T>(op: () => Promise<T>): Promise<T> {
+    const maxAttempts = 5;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await op();
+      } catch (error) {
+        if (!(error instanceof ConflictDomainException) || attempt === maxAttempts) {
+          throw error;
+        }
+      }
+    }
+    throw new ConflictDomainException('Wallet balance changed; retry operation');
   }
 
   /**

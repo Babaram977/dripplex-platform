@@ -136,14 +136,41 @@ export class WalletService {
   }
 
   public async credit(input: WalletMutationInput): Promise<WalletDto> {
-    return await this.mutateAndEmit(input, WalletTransactionType.CREDIT, WalletDirection.CREDIT);
+    const outcome = await this.mutateAndEmit(
+      input,
+      WalletTransactionType.CREDIT,
+      WalletDirection.CREDIT,
+    );
+    return outcome.wallet;
   }
 
   public async debit(input: WalletMutationInput): Promise<WalletDto> {
-    return await this.mutateAndEmit(input, WalletTransactionType.DEBIT, WalletDirection.DEBIT);
+    const outcome = await this.mutateAndEmit(
+      input,
+      WalletTransactionType.DEBIT,
+      WalletDirection.DEBIT,
+    );
+    return outcome.wallet;
   }
 
-  public async refund(input: WalletMutationInput): Promise<WalletDto> {
+  /**
+   * Return money to a wallet, idempotently per
+   * (wallet, referenceType, referenceId).
+   *
+   * Returns the full {@link WalletMutationOutcome} rather than just the wallet
+   * because `applied` is the only thing that distinguishes "we credited this
+   * customer" from "the credit was already there and we did nothing". A caller
+   * that tells the customer their money is back needs to know which of those
+   * happened, and `ledgerId` is the evidence that it did.
+   *
+   * DPX-ORDER-8D-RECOVERY Increment 3 (founder ruling, 2026-09-16): this
+   * information was always computed and always discarded here. It is exposed
+   * on the existing API deliberately, rather than duplicating the
+   * `creditWithin`/`publishCredit` pattern behind a recovery-only entry point.
+   * Every existing caller ignores the return value, so widening it changes no
+   * behaviour anywhere else.
+   */
+  public async refund(input: WalletMutationInput): Promise<WalletMutationOutcome> {
     return await this.mutateAndEmit(input, WalletTransactionType.REFUND, WalletDirection.CREDIT);
   }
 
@@ -197,19 +224,30 @@ export class WalletService {
   }
 
   public async settlement(input: WalletMutationInput): Promise<WalletDto> {
-    return await this.mutateAndEmit(
+    const outcome = await this.mutateAndEmit(
       input,
       WalletTransactionType.SETTLEMENT,
       WalletDirection.CREDIT,
     );
+    return outcome.wallet;
   }
 
   public async cashback(input: WalletMutationInput): Promise<WalletDto> {
-    return await this.mutateAndEmit(input, WalletTransactionType.CASHBACK, WalletDirection.CREDIT);
+    const outcome = await this.mutateAndEmit(
+      input,
+      WalletTransactionType.CASHBACK,
+      WalletDirection.CREDIT,
+    );
+    return outcome.wallet;
   }
 
   public async withdrawal(input: WalletMutationInput): Promise<WalletDto> {
-    return await this.mutateAndEmit(input, WalletTransactionType.WITHDRAWAL, WalletDirection.DEBIT);
+    const outcome = await this.mutateAndEmit(
+      input,
+      WalletTransactionType.WITHDRAWAL,
+      WalletDirection.DEBIT,
+    );
+    return outcome.wallet;
   }
 
   public async transfer(input: {
@@ -519,7 +557,7 @@ export class WalletService {
     input: WalletMutationInput,
     type: WalletTransactionType,
     direction: WalletDirection,
-  ): Promise<WalletDto> {
+  ): Promise<WalletMutationOutcome> {
     const amount = this.toPositiveDecimal(input.amount);
     const currency = this.normalizeCurrency(input.currency);
     const result = await this.prisma.$transaction(
@@ -539,7 +577,11 @@ export class WalletService {
     );
 
     await this.publishMutation(input, type, direction, result);
-    return toWalletDto(result.wallet);
+    return {
+      wallet: toWalletDto(result.wallet),
+      ledgerId: result.ledger.id,
+      applied: result.applied,
+    };
   }
 
   /**

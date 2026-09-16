@@ -119,17 +119,39 @@ export interface OrderRecoveryRepository {
    */
   findOrderStateForRecovery(orderId: string): Promise<{
     id: string;
+    orderNumber: string;
     status: OrderStatus;
     paymentMethod: OrderPaymentMethod | null;
     paymentStatus: PaymentStatus;
+    customerId: string;
+    /** Prisma Decimal. Kept opaque here so the repository interface does not
+     * drag a Decimal dependency into every consumer; the caller converts. */
+    total: unknown;
+    currency: string;
     hasOpenStalledException: boolean;
     openExceptionId: string | null;
   } | null>;
 
   updateCaseStatus(
     recoveryId: string,
-    input: { status: OrderRecoveryStatus; closedAt?: Date; closedById?: string },
+    input: {
+      status: OrderRecoveryStatus;
+      financialOutcome?: OrderRecoveryFinancialOutcome;
+      closedAt?: Date;
+      closedById?: string;
+    },
   ): Promise<void>;
+
+  /**
+   * Record that a wallet reversal returned money, and mark the payment refunded
+   * in one statement.
+   *
+   * DPX-ORDER-8D-RECOVERY Increment 3. The order's STATUS is deliberately not
+   * touched — it stays CANCELLED, because a refunded cancellation is still a
+   * cancellation. Only `paymentStatus`/`refundedAt` move, and only after the
+   * ledger has confirmed the credit.
+   */
+  markOrderRefunded(orderId: string): Promise<void>;
 }
 
 export const ORDER_RECOVERY_REPOSITORY = Symbol('ORDER_RECOVERY_REPOSITORY');

@@ -1720,7 +1720,13 @@ model OrderRecoveryAction {
   recovery           OrderRecovery       @relation(fields: [recoveryId], references: [id], onDelete: Cascade)
   actor              User?               @relation(fields: [actorId], references: [id], onDelete: SetNull)
   paymentTransaction PaymentTransaction? @relation(fields: [paymentTransactionId], references: [id], onDelete: SetNull)
-  walletLedgerEntry  WalletLedgerEntry?  @relation(fields: [walletLedgerEntryId], references: [id], onDelete: SetNull)
+  /// RESTRICT, not SetNull. A recovery action is case evidence: once a row
+  /// says "this was the successful wallet reversal", that reference must not
+  /// be able to vanish and leave a refund claim standing with nothing behind
+  /// it. Nothing in production deletes a ledger entry, so this reinforces an
+  /// invariant the code already keeps rather than imposing a new one.
+  /// Founder ruling, 2026-09-16.
+  walletLedgerEntry  WalletLedgerEntry?  @relation(fields: [walletLedgerEntryId], references: [id], onDelete: Restrict)
   supportTicket      SupportTicket?      @relation(fields: [supportTicketId], references: [id], onDelete: SetNull)
   orderPaymentProof  OrderPaymentProof?  @relation(fields: [orderPaymentProofId], references: [id], onDelete: SetNull)
   notification       Notification?       @relation(fields: [notificationId], references: [id], onDelete: SetNull)

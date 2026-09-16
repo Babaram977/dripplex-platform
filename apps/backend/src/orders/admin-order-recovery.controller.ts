@@ -63,6 +63,40 @@ export class AdminOrderRecoveryController {
    * open an investigation, notify anybody or run unattended — each of those
    * waits for its own increment and its own ruling.
    */
+  /**
+   * Return a cancelled order's money to the customer's DX Wallet.
+   *
+   * Separate route from cancel, not a flag on it. Cancellation and reversal are
+   * separate operations under the founder's ruling: a reversal that fails must
+   * leave the order cancelled and the case retryable, and an operator must be
+   * able to retry the money without re-attempting the cancellation.
+   *
+   * Takes no body. There is nothing for an operator to choose — the amount is
+   * the order's, the destination is the customer's wallet, and the reason was
+   * given at cancellation. A body here would invite a partial-refund parameter
+   * that no ruling authorises.
+   */
+  @Post(':orderId/reverse-wallet')
+  @RequirePermissions(ORDER_PERMISSIONS.ADMIN_RECOVERY_MANAGE)
+  public async reverseWallet(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Req() request: Request,
+  ): Promise<ApiSuccessResponse<OrderRecoveryDto>> {
+    const recovery = await this.recovery.reverseWalletForRecovery({
+      orderId,
+      operatorId: user.id,
+      context: {
+        userId: user.id,
+        ...(request.ip !== undefined ? { ipAddress: request.ip } : {}),
+        ...(typeof request.headers['user-agent'] === 'string'
+          ? { userAgent: request.headers['user-agent'] }
+          : {}),
+      },
+    });
+    return { success: true, data: toOrderRecoveryDto(recovery) };
+  }
+
   @Post(':orderId/cancel')
   @RequirePermissions(ORDER_PERMISSIONS.ADMIN_RECOVERY_MANAGE)
   public async cancel(

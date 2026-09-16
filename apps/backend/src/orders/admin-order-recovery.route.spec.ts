@@ -389,4 +389,54 @@ suite('DPX-ORDER-8D-RECOVERY · admin/order-recoveries over HTTP', () => {
       OrderStatus.CONFIRMED,
     );
   }, 60_000);
+
+  it('AOR-011 · admin:orders:read alone CANNOT reverse a wallet payment', async () => {
+    const { orderId } = await aStalledOrder();
+
+    const result = await call(
+      'POST',
+      `/admin/order-recoveries/${orderId}/reverse-wallet`,
+      readerToken,
+    );
+
+    // The RBAC boundary on the route that moves money. Driven through the real
+    // guard, because a decorator assertion would pass even if the guard were
+    // never wired.
+    expect(result.status).toBe(403);
+    expect(
+      await prisma.walletLedgerEntry.count({
+        where: { referenceType: 'order_refund', referenceId: orderId },
+      }),
+    ).toBe(0);
+  }, 60_000);
+
+  it('AOR-012 · the reverse-wallet route is reachable and enforces cancel-first', async () => {
+    const { orderId } = await aStalledOrder();
+    // A case must exist for the cancel-first guard to be the one that answers;
+    // without it the earlier "no recovery case" refusal fires instead. The
+    // order itself is still CONFIRMED, which is what this asserts against.
+    await prisma.orderRecovery.create({
+      data: {
+        orderId,
+        trigger: 'OPERATOR',
+        paymentMethodAtOpen: OrderPaymentMethod.WALLET,
+        paymentStatusAtOpen: PaymentStatus.PAID,
+      },
+    });
+
+    const result = await call(
+      'POST',
+      `/admin/order-recoveries/${orderId}/reverse-wallet`,
+      operatorToken,
+    );
+
+    // MAPPED IS NOT REACHABLE. A literal segment swallowed by an earlier
+    // parameterised route answers 400 with a UUID-parse body; this reads the
+    // BODY to prove the recovery handler answered. The order here is still
+    // CONFIRMED, so the correct answer is the cancel-first refusal — a 409
+    // carrying that reason is proof of which handler ran.
+    expect(result.status).toBe(409);
+    expect(JSON.stringify(result.body)).toMatch(/must be cancelled through recovery/i);
+    expect(JSON.stringify(result.body)).not.toMatch(/uuid/i);
+  }, 60_000);
 });
