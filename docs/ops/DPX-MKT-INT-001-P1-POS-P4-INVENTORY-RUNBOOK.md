@@ -1,8 +1,35 @@
 # DPX-MKT-INT-001-P1 · P4 production inventory runbook
 
-**Status:** ready to run · **not yet run**
-**Blocks:** P4, and criterion 4 of the 8H POS launch gate
-**Audience:** an authorized DrippleX operator with production database access
+**Status:** ✅ **RUN 2026-09-15** — all six values `0`. See `DPX-PRODUCTION-READ-SESSION-001.md` §0.
+**Blocks:** P4, and criterion 4 of the 8H POS launch gate — **both now unblocked**
+**Audience:** an authorized DrippleX operator with an authorized production database **execution channel**
+
+---
+
+## 0 · Result — 2026-09-15
+
+Run by the founder as authorized operator, via the Railway dashboard Console on
+`@dripplex/backend` in production. Screenshot-verified.
+
+```
+c1_http_webhooks            = 0
+c2a_active_incoming_api_key = 0
+c2b_active_outgoing_api_key = 0
+c3_out_of_vocabulary_scopes = 0
+c4_no_expiry                = 0
+c5_legacy_short_lifetime    = 0    as of 2026-09-15T13:23:26.969Z
+```
+
+**Read this as "there are no integration credentials in production", not as "the population is
+compliant".** `c2a = 0` means no live `INCOMING_API_KEY` exists at all. Every question in §6
+below resolves through the zero column, and P4's purpose — do not invalidate credentials that
+currently work — is satisfied because **none exist**, not because a population was found safe.
+
+That distinction matters for anyone reading this later: if credentials are provisioned after
+2026-09-15, this inventory says nothing about them. It is a measurement of an empty set.
+
+`c5` remains an **as-of** value. At zero it cannot shrink further, so it is stable in a way the
+other readings of it would not have been — but it is still a reading of one moment.
 
 ---
 
@@ -38,6 +65,24 @@ can execute SQL against the production database, and the routes that would creat
 — rendering `DATABASE_URL`, or opening a TCP proxy onto the database service — are exactly
 what the mechanism above rules out. That is a deliberate constraint, not a missing capability
 to be worked around.
+
+> **Re-verified 2026-09-15** against the actual tooling rather than carried forward as a claim,
+> because a statement that something is impossible ages badly and this one gates the launch:
+>
+> | Mechanism                                             | Result                                                                                                                                                                     |
+> | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+> | Railway MCP agent (`railway-agent`)                   | **No SQL execution capability** — no `executeSQL`/`runQuery` tool, file tools read but do not execute, and DB credentials are deliberately not exposed to the agent layer. |
+> | `list-variables`                                      | Would render `DATABASE_URL` in plaintext — excluded.                                                                                                                       |
+> | `create-tcp-proxy`                                    | Would expose Postgres publicly — excluded.                                                                                                                                 |
+> | Deploying a temporary function reading `DATABASE_URL` | Excluded by the §4 mechanism above: new production code **and** a deployment.                                                                                              |
+>
+> The operator hand-off, sequencing this run with the two other outstanding production reads,
+> is `DPX-PRODUCTION-READ-SESSION-001.md`.
+>
+> **A channel was subsequently found for the _operator_** — `railway ssh`, an interactive shell
+> inside the running backend container. It changes nothing above: the engineering session still
+> cannot run this, and did not attempt to. See `DPX-PRODUCTION-READ-SESSION-001.md` §2b, which
+> also carries the exact in-container invocation, because that container has no `psql`.
 
 ---
 

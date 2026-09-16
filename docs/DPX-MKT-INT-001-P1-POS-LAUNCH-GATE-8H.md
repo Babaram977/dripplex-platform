@@ -1,7 +1,8 @@
 # DPX-MKT-INT-001-P1-POS-LAUNCH-GATE-8H — the POS production-readiness gate
 
-**Assessed:** 2026-09-14
-**Against:** `main` @ `924e2ae4`, backend deployment `60fdf316`
+**Assessed:** 2026-09-14 · **criterion 4 re-assessed 2026-09-15**
+**Against:** `main` @ `924e2ae4`, backend deployment `60fdf316`; criterion 4 against the
+production inventory run on 2026-09-15
 **Nature:** 8H is a gate, not an implementation unit. It reads the other seven and reports
 whether the POS integration is ready to be called production-ready.
 
@@ -9,18 +10,29 @@ whether the POS integration is ready to be called production-ready.
 
 ## Verdict
 
-**Five of six criteria pass. One does not.**
+**All six criteria now pass.** Criterion 4 was the sole outstanding one; the read-only production
+inventory it waited on was run on 2026-09-15 and returned zero on all six values.
 
-The one that fails is **not** blocked on engineering. It is blocked on a read-only production
-inventory that has been deliberately gated since the audit and has never been run. Every other
-criterion is satisfied with evidence in the repository.
+**This does not declare DrippleX, or the POS integration, launch-ready.** 8H reads six specific
+criteria about POS production-readiness. It does not assess operational readiness, merchant
+onboarding, support, or anything outside its own scope, and a gate passing is not a launch
+decision. That decision is the founder's and is taken separately.
+
+Two things about criterion 4's resolution should travel with it rather than be lost in the tick:
+
+- It passes because the credential population is **empty**, not because a population was examined
+  and found safe. An inventory of nothing is a weaker assurance than an inventory of something
+  compliant, and it says nothing about credentials provisioned after 2026-09-15.
+- A POS integration with zero provisioned credentials means **no merchant is currently
+  authenticated against it**. Whether that is expected at this stage is a product question,
+  recorded and deliberately unanswered here.
 
 | #   | Criterion                                                    | Verdict                                          |
 | --- | ------------------------------------------------------------ | ------------------------------------------------ |
 | 1   | All required HTTP journeys green                             | ✅                                               |
 | 2   | DB assertions actually executed                              | ✅                                               |
 | 3   | No critical expected-to-fail item left unexplained           | ✅ (three markers, all explained, none critical) |
-| 4   | **Compatibility impact resolved**                            | ❌ **blocked — see §4**                          |
+| 4   | **Compatibility impact resolved**                            | ✅ **resolved 2026-09-15 — see §4**              |
 | 5   | No unauthorized financial effect                             | ✅ (with a structural caveat, §5)                |
 | 6   | Merchant can onboard with the credential DrippleX gives them | ✅                                               |
 
@@ -99,13 +111,46 @@ R6 is recorded as ruled-and-unimplemented in
 alters a security-response semantic on a live API and revises a documented deliberate decision, so
 it wants its own increment rather than being folded into a gate assessment.
 
-## 4 · Compatibility impact resolved ❌ — the blocker
+## 4 · Compatibility impact resolved ✅ — closed 2026-09-15
 
-**P4 is open, and it cannot be closed from inside the repository.**
+**P4 was run against production on 2026-09-15** by the founder acting as authorized operator,
+through the Railway dashboard Console on the backend service. All six values returned `0`:
+
+```
+c1_http_webhooks            = 0     c3_out_of_vocabulary_scopes = 0
+c2a_active_incoming_api_key = 0     c4_no_expiry                = 0
+c2b_active_outgoing_api_key = 0     c5_legacy_short_lifetime    = 0
+                                    as of 2026-09-15T13:23:26.969Z
+```
+
+**The compatibility impact is zero because there is nothing to be compatible with.** `c2a = 0`
+means no live `INCOMING_API_KEY` exists in production. No credential predates the policy, none
+carries an unrecognised scope, none lacks an expiry, and no `http://` webhook row exists.
+
+This criterion is satisfied, and the basis should be stated precisely rather than flattened into
+a tick: it is satisfied by an **empty population**, not by a population examined and found safe.
+`E2E-017` still pins the compatibility guarantee in executable form for whenever credentials do
+exist; this measurement says only that today there are none.
+
+**The caveat, stated as precisely as it deserves (founder, 2026-09-15):**
+
+> The security inventory is clean **because there is currently no active incoming POS credential
+> population to inventory.** That is very different from proving that an actively provisioned
+> merchant/POS ecosystem is ready for launch.
+
+`c2a = 0` does **not** mean the POS integration is broken. It means no merchant is currently
+authenticated against it, so the compatibility surface this criterion measures is empty. Whether
+that is expected at this stage is a product question, not a gate question, and is deliberately
+not answered here.
+
+The practical consequence: **this criterion will need re-reading once credentials are
+provisioned.** A clean inventory of an empty set does not transfer to a populated one.
+
+### The original blocker, kept for the record
 
 P4 rules _inventory first, then decide the migration and expiry treatment of existing
-credentials_. It is a decision to look before deciding, and **the four production counts have
-never been run**:
+credentials_. It is a decision to look before deciding, and until 2026-09-15 **the production
+counts had never been run**:
 
 1. existing `http://` webhook URLs
 2. active `INCOMING_API_KEY` vs `OUTGOING_API_KEY`
