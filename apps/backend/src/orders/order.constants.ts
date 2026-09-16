@@ -79,10 +79,13 @@ export const RESERVATION_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
  * advance from one the merchant simply never accepted; both look identical.
  * Attribution needs separate evidence.
  *
- * Nothing acts on this constant yet. It defines a measurement
- * (docs/ops/DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md); it does not authorise
- * cancelling, declining or advancing any order. Remediation is a separate
- * ruling, and detection must stay separate from state mutation.
+ * REMEDIATION RULING, 2026-09-16. This constant now has a call site:
+ * OrderExceptionSweepService raises an OrderException when an order crosses it.
+ * What it still does NOT do is cancel, decline, refund, release inventory or
+ * advance anything. The ruling is explicit that 30 minutes is a detection and
+ * escalation threshold, not an automatic cancellation rule — making it one
+ * needs the refund, payment, inventory and merchant consequences defined first,
+ * which is a separate ruling. Detection stays separate from state mutation.
  */
 export const ORDER_POTENTIALLY_STRANDED_AFTER_MS = 30 * 60 * 1000;
 
@@ -100,3 +103,10 @@ export const ORDER_WALLET_REFERENCE_TYPE = 'order_refund';
  * (walletId, referenceType, referenceId) uniqueness constraint keeps a
  * payment and its later refund as separate ledger entries. */
 export const ORDER_WALLET_PAYMENT_REFERENCE_TYPE = 'order_payment';
+
+/**
+ * How often the stalled-order sweep runs. Deliberately shorter than
+ * ORDER_POTENTIALLY_STRANDED_AFTER_MS so an order is detected within half a
+ * sweep of crossing the threshold, rather than up to a full interval late.
+ */
+export const ORDER_EXCEPTION_SWEEP_INTERVAL_MS = 15 * 60 * 1000;

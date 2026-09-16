@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { OrderStatus, PaymentStatus, Prisma } from '@prisma/client';
+import {
+  FulfillmentType,
+  OrderExceptionStatus,
+  OrderExceptionType,
+  OrderStatus,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -16,6 +23,9 @@ import type {
 import type { InventoryReservation, Order, OrderDispute } from '@prisma/client';
 
 const ORDER_INCLUDE = { items: true, reservations: true, disputes: true } as const;
+
+/** Postgres unique-violation code, as Prisma surfaces it. */
+const PRISMA_UNIQUE_VIOLATION = 'P2002';
 
 @Injectable()
 export class PrismaOrdersRepository implements OrdersRepository {
@@ -112,7 +122,7 @@ export class PrismaOrdersRepository implements OrdersRepository {
   }
 
   public async transition(id: string, input: OrderTransitionInput): Promise<Order> {
-    return await this.prisma.order.update({
+    const updated = await this.prisma.order.update({
       where: { id },
       data: {
         status: input.status,
@@ -133,6 +143,25 @@ export class PrismaOrdersRepository implements OrdersRepository {
         ...(input.refundedAt !== undefined ? { refundedAt: input.refundedAt } : {}),
       },
     });
+
+    // DPX-ORDER-8D-C — an order that has left CONFIRMED is no longer stalled,
+    // so any open exception on it closes here.
+    //
+    // Resolution is OBSERVED, not decided: this reacts to a status the order
+    // reached by some other means, and changes nothing about the order itself.
+    // It lives in `transition` for the same reason ORDER_ACTIONABLE lives in
+    // finalizeOrderConfirmation — every status change in the system passes
+    // through this one method, so no future path can advance an order and leave
+    // a stale exception behind claiming it is still stalled.
+    //
+    // Guarded on the target status rather than the previous one: a transition
+    // that keeps the order CONFIRMED (markCashPaymentReceived flips only
+    // paymentStatus, passing status through unchanged) must not close it.
+    if (input.status !== OrderStatus.CONFIRMED) {
+      await this.resolveOpenExceptions(id, input.status);
+    }
+
+    return updated;
   }
 
   public async findByCartId(cartId: string): Promise<Order | null> {
@@ -209,6 +238,100 @@ export class PrismaOrdersRepository implements OrdersRepository {
       },
       include: ORDER_INCLUDE,
     });
+  }
+
+  public async findStalledConfirmedOrders(before: Date): Promise<OrderWithItems[]> {
+    return await this.prisma.order.findMany({
+      where: {
+        status: OrderStatus.CONFIRMED,
+        fulfillmentType: FulfillmentType.DELIVERY,
+        // The age anchor is time spent IN CONFIRMED, not time since checkout.
+        // confirmedAt is written in the same transaction that sets the status
+        // and is the only path into it, so it should always be present; the
+        // OR on createdAt is defence, because a null would otherwise silently
+        // exclude the order rather than surface it.
+        OR: [{ confirmedAt: { lte: before } }, { confirmedAt: null, createdAt: { lte: before } }],
+        exceptions: {
+          none: {
+            type: OrderExceptionType.STALLED_CONFIRMED,
+            status: OrderExceptionStatus.OPEN,
+          },
+        },
+      },
+      include: ORDER_INCLUDE,
+    });
+  }
+
+  public async raiseStalledException(input: {
+    orderId: string;
+    waitedMinutes: number;
+    detectedAt: Date;
+  }): Promise<{ raised: boolean }> {
+    try {
+      await this.prisma.orderException.create({
+        data: {
+          orderId: input.orderId,
+          type: OrderExceptionType.STALLED_CONFIRMED,
+          status: OrderExceptionStatus.OPEN,
+          detectedAt: input.detectedAt,
+          waitedMinutes: input.waitedMinutes,
+        },
+      });
+      return { raised: true };
+    } catch (error) {
+      // P2002 = the unique constraint fired, so an exception of this type
+      // already exists for this order. That is the idempotency guarantee doing
+      // its job, not a failure: two sweeps racing, or a RESOLVED row still
+      // holding the (orderId, type) pair. Either way nothing new is raised and
+      // nobody is notified twice.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === PRISMA_UNIQUE_VIOLATION
+      ) {
+        return { raised: false };
+      }
+      throw error;
+    }
+  }
+
+  public async findUnnotifiedOpenExceptions(): Promise<
+    { id: string; waitedMinutes: number; order: OrderWithItems }[]
+  > {
+    const rows = await this.prisma.orderException.findMany({
+      where: {
+        status: OrderExceptionStatus.OPEN,
+        notifiedAt: null,
+      },
+      include: { order: { include: ORDER_INCLUDE } },
+      orderBy: { detectedAt: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      waitedMinutes: row.waitedMinutes,
+      order: row.order,
+    }));
+  }
+
+  public async markExceptionNotified(exceptionId: string): Promise<void> {
+    await this.prisma.orderException.update({
+      where: { id: exceptionId },
+      data: { notifiedAt: new Date() },
+    });
+  }
+
+  public async resolveOpenExceptions(
+    orderId: string,
+    resolvedStatus: OrderStatus,
+  ): Promise<number> {
+    const result = await this.prisma.orderException.updateMany({
+      where: { orderId, status: OrderExceptionStatus.OPEN },
+      data: {
+        status: OrderExceptionStatus.RESOLVED,
+        resolvedAt: new Date(),
+        resolvedStatus,
+      },
+    });
+    return result.count;
   }
 
   public async createDispute(input: CreateDisputeInput): Promise<OrderDispute> {
