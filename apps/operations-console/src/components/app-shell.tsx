@@ -54,6 +54,11 @@ const NAV: NavEntry[] = [
       // reach it, which is the same class of defect as a mapped-but-unreachable
       // route on the API side.
       { href: '/queues/stalled-orders', label: 'Stalled Orders' },
+      // DPX-ORDER-8D-RECOVERY — same reasoning: a screen nobody can reach is a
+      // screen that does not exist. Sits beside the stalled queue because it
+      // answers the question that queue raises — is the platform about to act
+      // on these by itself?
+      { href: '/recovery/activation-state', label: 'Automatic Recovery' },
     ],
   },
   { href: '/pricing', label: 'Ride Pricing' },

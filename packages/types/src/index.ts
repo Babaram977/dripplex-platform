@@ -436,6 +436,7 @@ export type {
   OrderRecoveryActionDto,
   OrderRecoveryActionOutcome,
   OrderRecoveryActionType,
+  OrderRecoveryActivationStateDto,
   OrderRecoveryDto,
   OrderRecoveryFinancialOutcome,
   OrderRecoveryStatus,
