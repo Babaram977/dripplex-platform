@@ -4,6 +4,7 @@ import { AddressesModule } from '../addresses/addresses.module';
 import { AuditModule } from '../audit/audit.module';
 import { CartModule } from '../cart/cart.module';
 import { CommercialModule } from '../commercial/commercial.module';
+import { NotificationCenterModule } from '../notification-center/notification-center.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -50,6 +51,7 @@ import { ReservationCleanupService } from './reservation-cleanup.service';
     PricingModule,
     CommercialModule,
     UploadsModule,
+    NotificationCenterModule,
   ],
   controllers: [
     AdminOrderRecoveryController,

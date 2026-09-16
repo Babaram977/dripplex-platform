@@ -51,12 +51,17 @@ suite('DPX-ORDER-8D-RECOVERY · recovery case foundation', () => {
     await prisma.$connect();
     repository = new PrismaOrderRecoveryRepository(prisma as unknown as PrismaService);
     // Increment 1's tests only exercise recognition, which touches neither the
-    // orders repository nor audit — passing stubs keeps this spec focused on
-    // the case file rather than re-testing increment 2's cancellation.
+    // orders repository, audit, the wallet nor notifications — passing stubs
+    // keeps this spec focused on the case file rather than re-testing the
+    // cancellation and reversal increments. A stubbed wallet here is also a
+    // guarantee: if recognition ever started moving money, these tests would
+    // call a jest.fn() instead of a real ledger and REC-006 would notice.
     service = new OrderRecoveryService(
       repository,
       { transition: jest.fn() } as never,
       { record: jest.fn() } as never,
+      { refund: jest.fn() } as never,
+      { send: jest.fn() } as never,
     );
   }, 60_000);
 

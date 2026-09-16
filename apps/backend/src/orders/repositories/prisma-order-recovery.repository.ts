@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OrderExceptionStatus, OrderExceptionType, Prisma } from '@prisma/client';
+import { OrderExceptionStatus, OrderExceptionType, PaymentStatus, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -14,9 +14,9 @@ import type {
   OrderPaymentMethod,
   OrderRecovery,
   OrderRecoveryAction,
+  OrderRecoveryFinancialOutcome,
   OrderRecoveryStatus,
   OrderStatus,
-  PaymentStatus,
 } from '@prisma/client';
 
 const PRISMA_UNIQUE_VIOLATION = 'P2002';
@@ -155,9 +155,13 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
 
   public async findOrderStateForRecovery(orderId: string): Promise<{
     id: string;
+    orderNumber: string;
     status: OrderStatus;
     paymentMethod: OrderPaymentMethod | null;
     paymentStatus: PaymentStatus;
+    customerId: string;
+    total: unknown;
+    currency: string;
     hasOpenStalledException: boolean;
     openExceptionId: string | null;
   } | null> {
@@ -165,9 +169,16 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
       where: { id: orderId },
       select: {
         id: true,
+        orderNumber: true,
         status: true,
         paymentMethod: true,
         paymentStatus: true,
+        // Increment 3 reads the money fields here too, in the SAME statement as
+        // the status, so a reversal can never be sized from one instant and
+        // authorised from another.
+        customerId: true,
+        total: true,
+        currency: true,
         // Read in the same statement as the status, so the two cannot be
         // fetched at different instants and disagree.
         exceptions: {
@@ -186,9 +197,13 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
     const open = order.exceptions[0];
     return {
       id: order.id,
+      orderNumber: order.orderNumber,
       status: order.status,
       paymentMethod: order.paymentMethod,
       paymentStatus: order.paymentStatus,
+      customerId: order.customerId,
+      total: order.total,
+      currency: order.currency,
       hasOpenStalledException: open !== undefined,
       openExceptionId: open?.id ?? null,
     };
@@ -196,15 +211,33 @@ export class PrismaOrderRecoveryRepository implements OrderRecoveryRepository {
 
   public async updateCaseStatus(
     recoveryId: string,
-    input: { status: OrderRecoveryStatus; closedAt?: Date; closedById?: string },
+    input: {
+      status: OrderRecoveryStatus;
+      financialOutcome?: OrderRecoveryFinancialOutcome;
+      closedAt?: Date;
+      closedById?: string;
+    },
   ): Promise<void> {
     await this.prisma.orderRecovery.update({
       where: { id: recoveryId },
       data: {
         status: input.status,
+        ...(input.financialOutcome !== undefined
+          ? { financialOutcome: input.financialOutcome }
+          : {}),
         ...(input.closedAt !== undefined ? { closedAt: input.closedAt } : {}),
         ...(input.closedById !== undefined ? { closedById: input.closedById } : {}),
       },
+    });
+  }
+
+  public async markOrderRefunded(orderId: string): Promise<void> {
+    // `status` is deliberately absent. The order stays CANCELLED; only its
+    // payment truth moves. Writing REFUNDED into `status` would erase the fact
+    // that this order was cancelled through recovery.
+    await this.prisma.order.update({
+      where: { id: orderId },
+      data: { paymentStatus: PaymentStatus.REFUNDED, refundedAt: new Date() },
     });
   }
 
