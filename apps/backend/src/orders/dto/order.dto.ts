@@ -83,6 +83,51 @@ export class ResolveOrderDisputeDto {
   public resolution!: string;
 }
 
+/// DPX-ORDER-8D-C ops visibility — validation enums for the exception queue.
+/// Declared here rather than imported from @prisma/client because class-validator
+/// needs a real enum object at runtime, and this is how every other query DTO in
+/// this file does it.
+export enum OrderExceptionTypeFilter {
+  STALLED_CONFIRMED = 'STALLED_CONFIRMED',
+}
+
+export enum OrderExceptionStatusFilter {
+  OPEN = 'OPEN',
+  RESOLVED = 'RESOLVED',
+}
+
+/**
+ * Filters for the operations exception queue. Read-only: there is no field here
+ * that changes anything, and deliberately no `orderId` — a single order is
+ * already reachable through `GET admin/orders/:id`.
+ */
+export class AdminOrderExceptionListQueryDto {
+  @IsOptional()
+  @IsEnum(OrderExceptionStatusFilter)
+  public status?: OrderExceptionStatusFilter;
+
+  @IsOptional()
+  @IsEnum(OrderExceptionTypeFilter)
+  public type?: OrderExceptionTypeFilter;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsInt()
+  @Min(1)
+  public page = 1;
+
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' || typeof value === 'number' ? Number(value) : value,
+  )
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  public pageSize = 20;
+}
+
 export class AdminOrderListQueryDto {
   @IsOptional()
   @IsEnum(CheckoutOrderStatus)

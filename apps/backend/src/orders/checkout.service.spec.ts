@@ -145,6 +145,7 @@ describe('CheckoutService', () => {
     resolveOpenExceptions: jest.fn(),
     findUnnotifiedOpenExceptions: jest.fn(),
     markExceptionNotified: jest.fn(),
+    listExceptions: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {
@@ -886,6 +887,7 @@ describe('ReservationCleanupService', () => {
     resolveOpenExceptions: jest.fn(),
     findUnnotifiedOpenExceptions: jest.fn(),
     markExceptionNotified: jest.fn(),
+    listExceptions: jest.fn(),
   };
 
   const cartRepository: jest.Mocked<CartRepository> = {

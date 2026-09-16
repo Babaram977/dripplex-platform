@@ -121,9 +121,55 @@ counted as stranded.
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | **A vs B**                    | ✅ **Ruled — A (strict).** No implicit acceptance.                                                                             |
 | Governing rule                | ✅ **Ruled** — orders must not silently strand.                                                                                |
-| Detection/surfacing mechanism | ⏸ Engineering design, authorised by A, not yet specified.                                                                      |
+| Detection/surfacing mechanism | ✅ **Implemented** — `OrderExceptionSweepService` (#416, merged `839435e2`). See §6.                                           |
 | **C — definition**            | ✅ **Ruled 2026-09-15 — 30 minutes.** `ORDER_POTENTIALLY_STRANDED_AFTER_MS`; see `ops/DPX-ORDER-8D-C-STRANDED-MEASUREMENT.md`. |
-| **C — measurement**           | ⏸ Ready — schema-verified and fixture-tested. Requires an authorized operator.                                                 |
-| **C — remediation**           | ⏸ **Open.** A separate ruling. Detection does not authorise mutation.                                                          |
+| **C — measurement**           | ✅ **Executed in production 2026-09-16** by the authorized operator. One order: `DPX-20260911-F7GK1S`.                         |
+| **C — remediation**           | ⏸ **Partly implemented.** Detection and surfacing are live; **operator ACTION remains unruled** — see §7.                      |
 
-**Nothing in this ruling has been implemented.** It records a decision; it changes no behaviour.
+---
+
+## 6 · What has since been implemented
+
+This section records implementation status only. It rules nothing.
+
+| Increment                    | PR   | Merged     | What it does                                                                                                                                                                         |
+| ---------------------------- | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Detection + merchant warning | #416 | `839435e2` | Sweeps every 15 min for DELIVERY orders `CONFIRMED` past the 30-minute threshold, raises one `OrderException` per order, warns the merchant once. Detection only — mutates no order. |
+| Operations visibility        | —    | —          | `GET admin/orders/exceptions` and the Operations Console **Stalled Orders** queue. Read-only.                                                                                        |
+
+Verified in production on 2026-09-16: the first sweep after deployment raised an exception for
+`DPX-20260911-F7GK1S` (waited 6382 minutes) and announced it; the order's `updated_at` still
+predates the deployment, so the detection-only guarantee held. The second sweep raised nothing,
+confirming the `(orderId, type)` unique constraint suppresses duplicates in production.
+
+---
+
+## 7 · OPEN BLOCKER — the operator recovery/action model
+
+**Status: unruled. Blocking nothing today; blocking the customer-recovery increment.**
+
+The governing rule says an order must not silently strand, and the 2026-09-16 remediation ruling
+says that after 30 minutes the order "becomes a DrippleX-managed exception". Detection and
+visibility now deliver on the _managed_ half only in the sense that the platform can **see** it.
+
+**Operators still cannot act.** There is no ruled mechanism for:
+
+- resolving or dismissing an exception from the operations side;
+- assigning one to a person, or recording that someone is working it;
+- annotating what was attempted;
+- contacting the merchant beyond the one automatic warning;
+- any recovery path when the merchant never acts at all.
+
+Today an exception closes by exactly one route: the **order** moves out of `CONFIRMED` and
+`transition()` resolves it automatically. For `DPX-20260911-F7GK1S` that has not happened in over
+four days, which is precisely the case the ruling was written about.
+
+This was **deliberately not designed** during the ops-visibility increment. Every candidate
+action — cancel, decline, refund, reassign, force-accept — carries payment, inventory and
+merchant-commercial consequences that the 30-minute threshold does not authorise. The threshold
+escalates; it does not confer authority to act.
+
+**Needs a founder ruling** covering: which actions exist, who may perform them, what each does to
+payment and inventory, and what the customer is told. Until then the console stays read-only, and
+the permission spec and console spec both assert that no action control exists — so one cannot be
+added without those tests failing first.

@@ -73,8 +73,13 @@ describe('C2 Admin flow (SDK contract E2E)', () => {
     await sdk.adminCms.list({ page: 1, pageSize: 10 });
     await sdk.auth.logout();
 
-    // Admin order monitoring is on OrderClient, not currently on admin barrel.
-    expect(sdk).not.toHaveProperty('orders');
+    // DPX-ORDER-8D-C ops visibility — this assertion used to read
+    // `not.toHaveProperty('orders')`, recording that admin order monitoring
+    // lived on OrderClient and had never been exposed on the admin barrel.
+    // That gap is now closed deliberately: the Operations Console's stalled-
+    // order queue reads `admin/orders/exceptions` through this barrel, which
+    // is the only Backend Core integration point that app is allowed to use.
+    expect(sdk.orders).toBeDefined();
     expect(sdk.adminDelivery).toBeDefined();
 
     const sequence = pathsOf(calls()).map((p) => `${p.method} ${p.path}`);

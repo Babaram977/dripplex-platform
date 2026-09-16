@@ -56,6 +56,10 @@ export function createAdminSdk(config: Partial<SdkConfig> = {}): AdminSdk {
     adminPlatformCommissionSettings: client.adminPlatformCommissionSettings,
     adminCommissionAccounts: client.adminCommissionAccounts,
     adminCustomerKyc: client.adminCustomerKyc,
+    /** DPX-ORDER-8D-C ops visibility — the admin order reads, including the
+     *  stalled-order exception queue. Read-only on this barrel's behalf: the
+     *  console has no authority to act on an exception. */
+    orders: client.orders,
   };
 }
 
@@ -106,6 +110,7 @@ export interface AdminSdk {
   adminCommissionAccounts: DripplexClient['adminCommissionAccounts'];
   /** DPX-PROFILE-KYC-002 — admin review of customer Level 2 identity verification submissions. */
   adminCustomerKyc: DripplexClient['adminCustomerKyc'];
+  orders: DripplexClient['orders'];
 }
 
 export function resolveAdminSdkConfig(config: Partial<SdkConfig> = {}): SdkConfig {

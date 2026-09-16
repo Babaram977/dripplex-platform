@@ -5,6 +5,8 @@ import {
   FulfillmentType,
   MerchantStatus,
   OrderDisputeStatus,
+  OrderExceptionStatus,
+  OrderExceptionType,
   OrderStatus,
   PaymentStatus,
   UserStatus,
@@ -39,7 +41,13 @@ import { CheckoutFulfillmentType } from './dto/order.dto';
 import { CHECKOUT_INVENTORY_VALIDATOR } from './inventory/checkout-inventory.validator';
 import { InventoryReservationService } from './inventory/inventory-reservation.service';
 import { ORDER_AUDIT_ACTIONS } from './order.constants';
-import { generateOrderNumber, roundMoney, toCheckoutResponseDto, toOrderDto } from './order.mapper';
+import {
+  generateOrderNumber,
+  roundMoney,
+  toCheckoutResponseDto,
+  toOrderDto,
+  toOrderExceptionDto,
+} from './order.mapper';
 import { CHECKOUT_PRODUCT_VALIDATOR } from './pricing/checkout-product.validator';
 import {
   ORDERS_REPOSITORY,
@@ -54,6 +62,7 @@ import type {
   CheckoutResponseDto,
   CustomerMerchantBankDto,
   OrderDto,
+  OrderExceptionDto,
   PaginatedResult,
 } from '@dripplex/types';
 
@@ -404,6 +413,39 @@ export class CheckoutService {
 
     return {
       items: items.map(toOrderDto),
+      meta: {
+        page: input.page,
+        limit: input.pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / input.pageSize) || 1),
+      },
+    };
+  }
+
+  /**
+   * DPX-ORDER-8D-C ops visibility — what the platform is currently holding.
+   *
+   * READ ONLY. The 2026-09-16 remediation ruling makes a stalled order a
+   * DrippleX-managed exception, but gives nobody authority to act on one: no
+   * resolve, no dismiss, no cancel, no refund. So this lists and nothing more.
+   * An exception closes when the ORDER moves and `transition()` resolves it —
+   * never because an operator looked at it.
+   */
+  public async listAdminOrderExceptions(input: {
+    status?: OrderExceptionStatus;
+    type?: OrderExceptionType;
+    page: number;
+    pageSize: number;
+  }): Promise<PaginatedResult<OrderExceptionDto>> {
+    const { items, total } = await this.ordersRepository.listExceptions({
+      ...(input.status !== undefined ? { status: input.status } : {}),
+      ...(input.type !== undefined ? { type: input.type } : {}),
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    });
+
+    return {
+      items: items.map(toOrderExceptionDto),
       meta: {
         page: input.page,
         limit: input.pageSize,

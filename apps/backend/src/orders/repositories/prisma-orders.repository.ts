@@ -14,7 +14,9 @@ import type {
   CreateDisputeInput,
   CreateOrderInput,
   CreateReservationInput,
+  ListOrderExceptionsFilter,
   ListOrdersFilter,
+  OrderExceptionWithOrder,
   OrdersRepository,
   OrderTransitionInput,
   OrderWithItems,
@@ -332,6 +334,42 @@ export class PrismaOrdersRepository implements OrdersRepository {
       },
     });
     return result.count;
+  }
+
+  /**
+   * DPX-ORDER-8D-C ops visibility — the read side.
+   *
+   * `findMany` and `count` only. No write of any kind belongs on this path:
+   * an operator opening the queue must not change what they are looking at,
+   * and in particular must not resolve or re-notify an exception by reading it.
+   *
+   * Ordered by `detectedAt` descending so the newest escalation is first —
+   * an operations queue is worked from the top, and an exception raised ten
+   * minutes ago is the one nobody has looked at yet. `id` breaks ties so the
+   * page boundary is stable: without it two rows sharing a `detectedAt` can
+   * swap between page 1 and page 2 and an operator never sees one of them.
+   */
+  public async listExceptions(filter: ListOrderExceptionsFilter): Promise<{
+    items: OrderExceptionWithOrder[];
+    total: number;
+  }> {
+    const where = {
+      ...(filter.status !== undefined ? { status: filter.status } : {}),
+      ...(filter.type !== undefined ? { type: filter.type } : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.orderException.findMany({
+        where,
+        include: { order: true },
+        orderBy: [{ detectedAt: 'desc' }, { id: 'desc' }],
+        skip: filter.skip,
+        take: filter.take,
+      }),
+      this.prisma.orderException.count({ where }),
+    ]);
+
+    return { items, total };
   }
 
   public async createDispute(input: CreateDisputeInput): Promise<OrderDispute> {

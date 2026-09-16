@@ -50,6 +50,10 @@ const NAV: NavEntry[] = [
       { href: '/queues/sos', label: 'SOS Queue' },
       { href: '/queues/incidents', label: 'Incidents' },
       { href: '/queues/support', label: 'Support' },
+      // DPX-ORDER-8D-C — without this entry the screen exists and nobody can
+      // reach it, which is the same class of defect as a mapped-but-unreachable
+      // route on the API side.
+      { href: '/queues/stalled-orders', label: 'Stalled Orders' },
     ],
   },
   { href: '/pricing', label: 'Ride Pricing' },
