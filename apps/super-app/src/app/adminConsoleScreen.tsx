@@ -124,6 +124,7 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'recovery'
   | 'incidents'
   | 'support'
   | 'analytics'
@@ -644,6 +645,10 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   },
   { page: 'dxpoints', icon: '⭐', label: 'DX Points Earning', requires: 'admin:loyalty:manage' },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
+  // Read-only visibility over the 24-hour automatic recovery backstop. Gated
+  // on the same permission its endpoint is gated on, so the menu cannot offer
+  // a page whose only possible answer for this account is 403.
+  { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
   { page: 'analytics', icon: '📊', label: 'Analytics' },
@@ -845,6 +850,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  recovery: 'Automatic Recovery',
   incidents: 'Incidents',
   support: 'Support Centre',
   analytics: 'Analytics',
@@ -9879,6 +9885,156 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Automatic Recovery ─────────────────────────────────────────────────
+/**
+ * DPX-ORDER-8D-RECOVERY — the operator's answer to "is the platform about to
+ * cancel orders and move money by itself?"
+ *
+ * Ported here from the standalone operations-console on the founder ruling of
+ * 2026-09-16: ops.dripplex.com is the one operator surface, the capability
+ * moves to it, and the standalone app is retired. The capability is unchanged —
+ * same backend endpoint, same `admin:orders:read` permission, no new backend —
+ * and the presentation is this console's own, deliberately: the ruling was to
+ * bring the capability across without bringing the other console's look.
+ *
+ * VISIBILITY ONLY. There is no arm, disarm, run-now, cancel, refund, reverse or
+ * recognise control here, and there must not be. The activation boundary is a
+ * code constant (`RECOVERY_ACTIVATION_AT`) changed only by reviewed deployment —
+ * deliberately, so that no runtime surface can move a financial safety boundary.
+ * A button on this page would defeat the entire reason the boundary lives in
+ * code.
+ *
+ * AN ERROR IS NOT "OFF". If the request fails, this says so rather than
+ * rendering the safe-looking state. "We could not ask" and "the backstop is
+ * disarmed" are different facts, and showing the second when the first is true
+ * is how an operator ends up reassured about something nobody checked.
+ *
+ * That is why the page holds ONE union-typed variable rather than `data | null`
+ * beside `error | null`. With two independent variables, "we have an answer"
+ * and "the read failed" can both be true at once, and the only thing stopping a
+ * stale `OFF` from rendering beside an error banner is that the error happens to
+ * be checked first in the render. That is a convention, and a later edit that
+ * reorders the branches or adds a third one silently reinstates the exact false
+ * reassurance this page exists to prevent. A union cannot hold both, so there is
+ * nothing to reorder. (Written the two-variable way first: a mutation that
+ * dropped the stale-state clearing reddened no test, because the render order
+ * was carrying the guarantee on its own.)
+ */
+type RecoveryActivationView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; activated: boolean; activationAt: string | null };
+
+function PageRecoveryActivation() {
+  const [view, setView] = useState<RecoveryActivationView>({ kind: 'loading' });
+
+  const load = useCallback(async () => {
+    setView({ kind: 'loading' });
+    try {
+      const state = await api.admin.getRecoveryActivationState();
+      setView({ kind: 'ok', activated: state.activated, activationAt: state.activationAt });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not read the activation state.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader
+          title="Automatic Recovery"
+          action={
+            <button
+              className="dx-btn"
+              onClick={() => void load()}
+              style={{
+                background: NAVY_SURFACE,
+                border: `1px solid ${BORDER}`,
+                borderRadius: 6,
+                color: WHITE,
+                cursor: 'pointer',
+                fontFamily: 'Inter, sans-serif',
+                fontSize: 12,
+                padding: '6px 12px',
+              }}
+            >
+              Refresh
+            </button>
+          }
+        />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Whether the 24-hour backstop is armed. When it is, DrippleX can cancel a stalled order and
+          reverse a DX Wallet payment without a person asking. This page only reports the state —
+          the boundary is changed by a reviewed deployment, never from here.
+        </div>
+      </Card>
+
+      <Card style={{ padding: '14px 16px' }}>
+        {view.kind === 'error' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <Chip label="UNKNOWN" color={C_WARN} />
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t read the activation state
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as the backstop being off — the platform could not be asked. Do
+              not treat this as confirmation that automatic recovery is disabled.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Loading…
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                Automatic Recovery
+              </div>
+              <div>
+                <Chip
+                  label={view.activated ? 'ON' : 'OFF'}
+                  color={view.activated ? C_WARN : MUTED}
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                Activation boundary
+              </div>
+              {/* The exact instant the server resolved, verbatim. Not reformatted
+                  into a friendlier local string: this is the boundary that decides
+                  which stalled orders the platform may cancel by itself, and an
+                  operator comparing it against the deployed constant needs the
+                  same characters, not a rendering of them. */}
+              <div style={{ fontSize: 12.5, color: WHITE, fontFamily: 'ui-monospace, monospace' }}>
+                {view.activationAt ?? 'Not set'}
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function PageIncidents() {
   const [cases, setCases] = useState<AdminOperationsCaseDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -13619,6 +13775,8 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'recovery':
+      return <PageRecoveryActivation />;
     case 'incidents':
       return <PageIncidents />;
     case 'support':
