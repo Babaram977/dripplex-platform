@@ -1,28 +1,47 @@
-import { configure, render, screen, waitFor } from '@testing-library/react';
+import { configure, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { campaignRatePercent, campaignWindowLength } from './adminConsoleScreen';
+import {
+  campaignAppliesPlatformWide,
+  campaignRateFromPercent,
+  campaignRatePercent,
+  campaignWindowLength,
+  campaignWindowValid,
+  canPauseCampaign,
+  canResumeCampaign,
+} from './adminConsoleScreen';
 
 /**
- * DPX-COMMISSION-001 — the commission campaigns desk, read-only.
+ * DPX-COMMISSION-001 — the commission campaigns desk, full capability.
  *
- * Founder ruling 2026-09-17: the LIST is ported; create, update, pause, resume
- * and archive are HELD. The backend bounds a campaign's window only by
- * `endsAt > startsAt` — no maximum — while the rate is valid at 0 and a
- * campaign without `rules` applies platform-wide within its scope, so
- * permanent platform-wide zero commission is expressible in one call. The
- * bound belongs on the server; a client guard is not a boundary.
+ * Founder ruling 2026-09-18: campaign duration is an OPS-CONTROLLED PARAMETER
+ * with no maximum, and the five mutations held on 2026-09-17 are RELEASED. See
+ * docs/DPX-COMMISSION-002-CAMPAIGN-DURATION.md.
  *
- * These tests pin that the desk stays a desk:
- *  - no mutating control reaches it while the five are held
- *  - a failed load is not reported as "no campaigns", because an empty desk
- *    asserts that nothing is overriding the standing rates
- *  - the stored FRACTION renders as a percentage
- *  - a zero-rate campaign is named as charging nothing, not left as "0%"
- *  - a long window is legible as a length, not just an end date
+ * With no duration ceiling, a permanent platform-wide zero-commission campaign
+ * is creatable from this screen. That is deliberate. The controls are
+ * permission, audit and reversibility — and this console's contribution is the
+ * fourth: VISIBILITY. These tests pin the visibility, because it is the part a
+ * restyle could quietly cost:
+ *
+ *  - THE RATE IS SENT AS A FRACTION, not the percentage the operator typed.
+ *    Getting this wrong charges a hundred times the intended rate. Asserted on
+ *    the request body, not on the form.
+ *  - A PLATFORM-WIDE CAMPAIGN CANNOT BE CREATED UNACKNOWLEDGED.
+ *  - A ZERO RATE IS NAMED as charging nothing at all.
+ *  - AN UNCAPPED WINDOW IS STATED AS A LENGTH before the campaign exists.
+ *  - PAUSE AND RESUME ARE OFFERED ONLY WHERE THE SERVER ACCEPTS THEM.
+ *  - THERE IS NO DELETE, and archiving says the record is kept.
+ *  - A READ-ONLY OPERATOR GETS NO MUTATING CONTROL and is told why.
+ *  - A failed load is still not reported as "no campaigns".
  */
 
 const getCommissionCampaigns = vi.fn();
+const createCommissionCampaign = vi.fn();
+const updateCommissionCampaign = vi.fn();
+const pauseCommissionCampaign = vi.fn();
+const resumeCommissionCampaign = vi.fn();
+const archiveCommissionCampaign = vi.fn();
 let permissions: string[] = [];
 
 vi.mock('../lib/api', () => ({
@@ -45,6 +64,11 @@ vi.mock('../lib/api', () => ({
     },
     admin: {
       getCommissionCampaigns: (q: unknown) => getCommissionCampaigns(q),
+      createCommissionCampaign: (b: unknown) => createCommissionCampaign(b),
+      updateCommissionCampaign: (id: string, b: unknown) => updateCommissionCampaign(id, b),
+      pauseCommissionCampaign: (id: string) => pauseCommissionCampaign(id),
+      resumeCommissionCampaign: (id: string) => resumeCommissionCampaign(id),
+      archiveCommissionCampaign: (id: string) => archiveCommissionCampaign(id),
       listVehicles: () => Promise.resolve({ items: [] }),
       listDrivers: () => Promise.resolve({ items: [] }),
       getOpsCounters: () => Promise.resolve({ openIncidentsCount: 0, openSupportTicketsCount: 0 }),
@@ -70,6 +94,7 @@ vi.mock('../lib/maps', () => ({
 }));
 
 const READ = 'admin:commission-campaign:read';
+const MANAGE = 'admin:commission-campaign:manage';
 
 const campaign = (over: Record<string, unknown> = {}) => ({
   id: 'camp-1',
@@ -109,9 +134,34 @@ function controls(): HTMLElement[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  permissions = [READ];
+  // Default: a full operator. Read-only is asserted explicitly where it matters.
+  permissions = [READ, MANAGE];
   getCommissionCampaigns.mockResolvedValue(page([campaign()]));
+  createCommissionCampaign.mockResolvedValue(campaign());
+  updateCommissionCampaign.mockResolvedValue(campaign());
+  pauseCommissionCampaign.mockResolvedValue(campaign({ status: 'PAUSED' }));
+  resumeCommissionCampaign.mockResolvedValue(campaign({ status: 'SCHEDULED' }));
+  archiveCommissionCampaign.mockResolvedValue(campaign({ status: 'ARCHIVED' }));
 });
+
+/** Fill the create form with a valid campaign, leaving the caller to vary one thing. */
+async function openCreateForm(): Promise<void> {
+  fireEvent.click(screen.getByText('+ New campaign'));
+  await waitFor(() => expect(screen.getByLabelText('Campaign name')).toBeTruthy());
+}
+
+function fillValid(over: { percent?: string; starts?: string; ends?: string } = {}): void {
+  fireEvent.change(screen.getByLabelText('Campaign name'), { target: { value: 'Launch week' } });
+  fireEvent.change(screen.getByLabelText('Commission rate percent'), {
+    target: { value: over.percent ?? '7' },
+  });
+  fireEvent.change(screen.getByLabelText('Starts at'), {
+    target: { value: over.starts ?? '2026-10-01T00:00' },
+  });
+  fireEvent.change(screen.getByLabelText('Ends at'), {
+    target: { value: over.ends ?? '2026-10-08T00:00' },
+  });
+}
 
 configure({ asyncUtilTimeout: 5_000 });
 
@@ -205,31 +255,283 @@ describe('Commission Campaigns — a failed load is not an empty desk', () => {
   });
 });
 
-describe('Commission Campaigns — the five mutations are held', () => {
-  it('offers no control that could create, edit, pause, resume or archive', async () => {
-    await renderPage();
-    await waitFor(() => expect(screen.getByText(/Launch week/)).toBeTruthy());
-
-    const forbidden =
-      /\b(create|new|edit|update|pause|resume|archive|delete|save|launch|start|stop|end)\b/i;
-    const offending = controls()
-      .map((el) => `${el.textContent ?? ''} ${el.getAttribute('aria-label') ?? ''}`.trim())
-      .filter((label) => forbidden.test(label));
-
-    // Held until a server-side bound on the campaign window is ruled and
-    // shipped. Remove the control; do not relax the pattern.
-    expect(offending).toEqual([]);
+describe('campaignRateFromPercent — the conversion that could charge 100x', () => {
+  it('reads 7 as the fraction 0.07', () => {
+    expect(campaignRateFromPercent('7')).toBe(0.07);
   });
 
-  it('renders no interactive element at all on this desk', async () => {
-    await renderPage();
-    await waitFor(() => expect(screen.getByText(/Launch week/)).toBeTruthy());
-    expect(controls()).toEqual([]);
+  it('reads 0 as 0, not as "nothing entered"', () => {
+    // A zero rate is a legitimate instrument. Conflating it with a blank field
+    // would make the one campaign that charges nothing the hardest to create.
+    expect(campaignRateFromPercent('0')).toBe(0);
   });
 
-  it('says out loud that the desk is read-only', async () => {
+  it('tolerates a typed percent sign and whitespace', () => {
+    expect(campaignRateFromPercent(' 12.5 % ')).toBe(0.125);
+  });
+
+  it('rounds to the four decimals the column stores', () => {
+    // Decimal(5,4). An unrounded divide leaves 0.07000000000000001, which the
+    // server rejects on @Max for reasons no operator could diagnose.
+    const rate = campaignRateFromPercent('7');
+    expect(rate).not.toBeNull();
+    expect(String(rate)).toBe('0.07');
+  });
+
+  it('refuses anything it cannot read, rather than guessing', () => {
+    expect(campaignRateFromPercent('')).toBeNull();
+    expect(campaignRateFromPercent('abc')).toBeNull();
+    expect(campaignRateFromPercent('-1')).toBeNull();
+  });
+
+  it('refuses a rate at or above the server ceiling of 99.99%', () => {
+    expect(campaignRateFromPercent('99.99')).toBe(0.9999);
+    expect(campaignRateFromPercent('100')).toBeNull();
+  });
+});
+
+describe('the lifecycle helpers mirror what the server accepts', () => {
+  it('offers pause only for a scheduled or active campaign', () => {
+    expect(canPauseCampaign('ACTIVE')).toBe(true);
+    expect(canPauseCampaign('SCHEDULED')).toBe(true);
+    for (const s of ['PAUSED', 'EXPIRED', 'ARCHIVED', 'DRAFT'] as const) {
+      expect([s, canPauseCampaign(s)]).toEqual([s, false]);
+    }
+  });
+
+  it('offers resume only for a paused campaign', () => {
+    expect(canResumeCampaign('PAUSED')).toBe(true);
+    for (const s of ['ACTIVE', 'SCHEDULED', 'EXPIRED', 'ARCHIVED', 'DRAFT'] as const) {
+      expect([s, canResumeCampaign(s)]).toEqual([s, false]);
+    }
+  });
+
+  it('treats a campaign with no rules as platform-wide', () => {
+    expect(campaignAppliesPlatformWide(null)).toBe(true);
+    expect(campaignAppliesPlatformWide({ weekdays: [0, 6] })).toBe(false);
+  });
+
+  it('mirrors the server rule that a window must end after it starts', () => {
+    expect(campaignWindowValid('2026-10-01T00:00', '2026-10-08T00:00')).toBe(true);
+    expect(campaignWindowValid('2026-10-08T00:00', '2026-10-01T00:00')).toBe(false);
+    expect(campaignWindowValid('2026-10-01T00:00', '2026-10-01T00:00')).toBe(false);
+  });
+});
+
+describe('Commission Campaigns — creating one', () => {
+  it('SENDS THE RATE AS A FRACTION, not the percentage typed', async () => {
+    // The single most consequential assertion on this page. 7 typed must reach
+    // the server as 0.07; sending 7 would be a 700% rate request.
     await renderPage();
-    await waitFor(() => expect(screen.getByText(/This desk is read-only/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid({ percent: '7' });
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+    fireEvent.click(screen.getByText('Create campaign'));
+
+    await waitFor(() => expect(createCommissionCampaign).toHaveBeenCalled());
+    expect(createCommissionCampaign.mock.calls[0]?.[0]).toMatchObject({
+      name: 'Launch week',
+      scope: 'MERCHANT_ORDER',
+      commissionRate: 0.07,
+    });
+  });
+
+  it('sends the window as ISO instants', async () => {
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid();
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+    fireEvent.click(screen.getByText('Create campaign'));
+
+    await waitFor(() => expect(createCommissionCampaign).toHaveBeenCalled());
+    const body = createCommissionCampaign.mock.calls[0]?.[0] as Record<string, string>;
+    expect(body['startsAt']).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
+    expect(new Date(body['endsAt']).getTime()).toBeGreaterThan(
+      new Date(body['startsAt']).getTime(),
+    );
+  });
+
+  it('WILL NOT CREATE until the platform-wide scope is acknowledged', async () => {
+    // Eligibility rules cannot be set here, so every campaign created from this
+    // console applies to every partner in its scope. That must be a decision,
+    // not a default someone clicked past.
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid();
+
+    const create = screen.getByText('Create campaign').closest('button');
+    expect((create as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+    expect((create as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('states the window length in words before the campaign exists', async () => {
+    // Duration is uncapped, so its length is the thing the operator must see.
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid({ starts: '2026-10-01T00:00', ends: '2099-10-01T00:00' });
+
+    await waitFor(() =>
+      expect(screen.getByText(/This campaign will run for .*years/)).toBeTruthy(),
+    );
+  });
+
+  it('names a zero rate as charging nothing at all', async () => {
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid({ percent: '0' });
+
+    await waitFor(() => expect(screen.getByText(/charges no commission at all/)).toBeTruthy());
+  });
+
+  it('refuses an inverted window and says the rule', async () => {
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid({ starts: '2026-10-08T00:00', ends: '2026-10-01T00:00' });
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+
+    await waitFor(() =>
+      expect(screen.getByText(/A campaign must end after it starts/)).toBeTruthy(),
+    );
+    const create = screen.getByText('Create campaign').closest('button');
+    expect((create as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('re-reads the list afterwards rather than trusting its own guess', async () => {
+    await renderPage();
+    await waitFor(() => expect(getCommissionCampaigns).toHaveBeenCalledTimes(1));
+    await openCreateForm();
+    fillValid();
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+    fireEvent.click(screen.getByText('Create campaign'));
+
+    await waitFor(() => expect(getCommissionCampaigns).toHaveBeenCalledTimes(2));
+  });
+
+  it('reports a rejected create instead of implying it worked', async () => {
+    createCommissionCampaign.mockRejectedValue(new Error('commissionRate must not exceed 0.9999'));
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('+ New campaign')).toBeTruthy());
+    await openCreateForm();
+    fillValid();
+    fireEvent.click(screen.getByLabelText('Acknowledge platform-wide scope'));
+    fireEvent.click(screen.getByText('Create campaign'));
+
+    await waitFor(() =>
+      expect(screen.getByText('commissionRate must not exceed 0.9999')).toBeTruthy(),
+    );
+  });
+});
+
+describe('Commission Campaigns — the lifecycle controls', () => {
+  it('pauses an active campaign and says the effect is not retroactive', async () => {
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Pause')).toBeTruthy());
+    fireEvent.click(screen.getByText('Pause'));
+
+    await waitFor(() => expect(pauseCommissionCampaign).toHaveBeenCalledWith('camp-1'));
+    await waitFor(() =>
+      expect(screen.getByText(/already-settled transactions keep the rate they were charged/)),
+    );
+  });
+
+  it('offers resume, and not pause, for a paused campaign', async () => {
+    getCommissionCampaigns.mockResolvedValue(page([campaign({ status: 'PAUSED' })]));
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Resume')).toBeTruthy());
+    expect(screen.queryByText('Pause')).toBeNull();
+
+    fireEvent.click(screen.getByText('Resume'));
+    await waitFor(() => expect(resumeCommissionCampaign).toHaveBeenCalledWith('camp-1'));
+  });
+
+  it('offers neither pause nor resume on an expired campaign', async () => {
+    // The server refuses both. Offering a control that can only 400 is worse
+    // than offering none.
+    getCommissionCampaigns.mockResolvedValue(page([campaign({ status: 'EXPIRED' })]));
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('EXPIRED')).toBeTruthy());
+
+    expect(screen.queryByText('Pause')).toBeNull();
+    expect(screen.queryByText('Resume')).toBeNull();
+  });
+
+  it('ENDS A RUNNING CAMPAIGN NOW by shortening its window', async () => {
+    // With no duration ceiling this is the control that carries the weight:
+    // the answer to a campaign running too long is that Ops can stop it.
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('End now')).toBeTruthy());
+    fireEvent.click(screen.getByText('End now'));
+
+    await waitFor(() => expect(updateCommissionCampaign).toHaveBeenCalled());
+    const [id, body] = updateCommissionCampaign.mock.calls[0] as [string, Record<string, string>];
+    expect(id).toBe('camp-1');
+    expect(new Date(body['endsAt']).getTime()).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('archives, and says the record is kept', async () => {
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Archive')).toBeTruthy());
+    fireEvent.click(screen.getByText('Archive'));
+
+    await waitFor(() => expect(archiveCommissionCampaign).toHaveBeenCalledWith('camp-1'));
+    await waitFor(() => expect(screen.getByText(/The record is kept/)).toBeTruthy());
+  });
+
+  it('OFFERS NO DELETE — checked against the controls, not the prose', async () => {
+    getCommissionCampaigns.mockResolvedValue(
+      page([campaign(), campaign({ id: 'camp-2', name: 'Weekend', status: 'PAUSED' })]),
+    );
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Weekend · 5%')).toBeTruthy());
+
+    for (const label of controls().map((el) => (el.textContent ?? '').toLowerCase())) {
+      expect(label).not.toMatch(/delete|remove|destroy/);
+    }
+  });
+
+  it('warns that a running campaign with no rules covers every partner', async () => {
+    await renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/Applies to every partner in this scope/)).toBeTruthy(),
+    );
+  });
+
+  it('reports a rejected mutation instead of showing the new state', async () => {
+    pauseCommissionCampaign.mockRejectedValue(new Error('Insufficient permissions'));
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Pause')).toBeTruthy());
+    fireEvent.click(screen.getByText('Pause'));
+
+    await waitFor(() => expect(screen.getByText('Insufficient permissions')).toBeTruthy());
+    expect(screen.getByText('ACTIVE')).toBeTruthy();
+  });
+});
+
+describe('Commission Campaigns — a read-only operator', () => {
+  it('gets no mutating control at all', async () => {
+    permissions = [READ];
+    await renderPage();
+    await waitFor(() => expect(screen.getByText('Launch week · 5%')).toBeTruthy());
+
+    for (const label of controls().map((el) => (el.textContent ?? '').toLowerCase())) {
+      expect(label).not.toMatch(/new campaign|pause|resume|archive|end now|create/);
+    }
+  });
+
+  it('is told why, rather than left to wonder', async () => {
+    permissions = [READ];
+    await renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/need the commission-campaign manage permission/)).toBeTruthy(),
+    );
   });
 });
 
