@@ -16,6 +16,7 @@ import type {
   FleetOverviewDto,
   FleetPeriodDto,
   InitiatedCallDto,
+  MerchantNegotiatedRateDto,
   SosAlertDto,
 } from '@dripplex/types';
 
@@ -27,6 +28,7 @@ import type {
  * apply.
  */
 export type {
+  MerchantNegotiatedRateDto,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -4448,6 +4450,43 @@ export const api = {
       }),
     settleFleetPeriod: (fleetId: string, periodStart: string) =>
       dx<FleetPeriodDto>('POST', `/admin/fleets/${fleetId}/commission/settle`, { periodStart }),
+
+    /**
+     * The same instrument for a MERCHANT — DPX-MERCHANT-016, founder-locked
+     * 2026-09-11. Placed beside the fleet one deliberately: the two express
+     * the same commercial idea, and the backend DTOs say keeping their shapes
+     * identical is what stops one quietly acquiring different bounds.
+     *
+     * Precedence is Campaign → Negotiated → Platform. A campaign is
+     * exceptional promotional pricing overriding the agreement only for its
+     * eligible window, after which resolution returns to the agreement
+     * automatically. Do not change that precedence without founder approval.
+     *
+     * THE ID IS THE MERCHANT PROFILE ID — `AdminMerchantDto.id`, NOT
+     * `.merchantId`. The DTO carries both and the invitingly-named one is
+     * wrong: merchant.mapper.ts maps `id` to `profile.id` and `merchantId` to
+     * `profile.userId`. The profile id is what `Order.merchantId` matches and
+     * what settlement resolves against; the user id would 404 — or name a
+     * different merchant.
+     *
+     * `rate` is a FRACTION: 0.075 is 7.5%. Null clears the agreement and
+     * returns the merchant to the platform rate. The server bounds it
+     * strictly inside 0 and 1 (@Min(0.0001) @Max(0.9999)): zero commission is
+     * deliberately not expressible here, because a merchant DrippleX charges
+     * nothing is a decision with no ceiling on its cost, and a campaign is
+     * the instrument for that. Nothing client-side may relax those bounds —
+     * the server's refusal is the boundary.
+     *
+     * Requires admin:merchant-settlement:commission:manage, which the RBAC
+     * seed grants to administrator and super_administrator only, NOT to
+     * operations_staff.
+     */
+    setMerchantNegotiatedRate: (merchantProfileId: string, rate: number | null, note?: string) =>
+      dx<MerchantNegotiatedRateDto>(
+        'POST',
+        `/admin/merchant-settlement/commission/${merchantProfileId}/rate`,
+        { rate, ...(note === undefined ? {} : { note }) },
+      ),
 
     /**
      * DPX-OPS — the completed record, for audit, disputes and security
