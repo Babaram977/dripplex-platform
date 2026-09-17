@@ -5848,6 +5848,174 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 // ─── Page: Merchants ──────────────────────────────────────────────────────────
+/**
+ * The commission rate agreed with one merchant — DPX-MERCHANT-016,
+ * founder-locked 2026-09-11.
+ *
+ * Ported from the standalone operations-console. Same endpoint, same
+ * permission, no new backend. Shaped to mirror the FLEET negotiated-rate
+ * control above, deliberately: SetMerchantNegotiatedRateDto states that the
+ * two express the same commercial idea and that keeping their shapes
+ * identical is what stops one quietly acquiring different bounds from the
+ * other. Percentage in, fraction out, optional note, clear-to-platform — the
+ * same four moves, so an operator who knows one knows the other.
+ *
+ * PRECEDENCE IS LOCKED: Campaign → Negotiated → Platform. What is agreed here
+ * is the merchant's standing rate; a campaign is exceptional promotional
+ * pricing that overrides it for its eligible window only, after which
+ * resolution returns to this agreement automatically. This control cannot
+ * express a campaign and must never be made to.
+ *
+ * ZERO IS NOT EXPRESSIBLE. The server bounds the fraction strictly inside 0
+ * and 1, because a merchant DrippleX charges nothing is a decision with no
+ * ceiling on its cost. The guard below mirrors that; it does not replace it.
+ * The server's refusal is the boundary, and nothing here may widen it.
+ *
+ * EDITING IS NOT RETROACTIVE. Every financially settled transaction snapshots
+ * the rate in force at the time, so changing an agreement cannot rewrite a
+ * settlement that already happened. Said in the copy because an operator
+ * about to change a live commercial rate should not have to assume it.
+ */
+function MerchantRatePanel({ m, reload }: { m: AdminMerchantDto; reload: () => void }) {
+  const [rateInput, setRateInput] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Hiding a control is a courtesy; the server's 403 is the refusal that
+  // counts. The seed grants this to administrator and super_administrator
+  // only — an operations_staff session will correctly not see this panel.
+  if (!hasPerm('admin:merchant-settlement:commission:manage')) return null;
+
+  const name = m.business?.businessName ?? `${m.firstName} ${m.lastName}`;
+
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    void (async () => {
+      try {
+        await fn();
+        setMsg(okMsg);
+        setRateInput('');
+        setNote('');
+        reload();
+      } catch (e: unknown) {
+        setErr((e as { message?: string }).message ?? 'Could not save that rate.');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid ${BORDER}`,
+        background: 'rgba(255,255,255,.03)',
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>Commission rate</div>
+      <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+        {m.negotiatedRate === null
+          ? 'None agreed — the platform-wide rate applies to this merchant.'
+          : `${FLEET_PCT(m.negotiatedRate)} agreed${
+              m.negotiatedAt === null
+                ? ''
+                : ` on ${new Date(m.negotiatedAt).toLocaleDateString('en-NG')}`
+            }. This overrides the platform rate.`}
+        {m.negotiationNote !== null && m.negotiationNote !== '' && ` — ${m.negotiationNote}`}
+      </div>
+      <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+        A campaign still overrides this for its eligible window, after which the agreement applies
+        again automatically. Settled transactions keep the rate that was in force, so changing this
+        never rewrites a settlement that already happened.
+      </div>
+
+      {msg !== null && <div style={{ fontSize: 11.5, color: G3 }}>{msg}</div>}
+      {err !== null && <div style={{ fontSize: 11.5, color: C_ERR }}>{err}</div>}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          className="dx-input"
+          style={{ flex: 1, minWidth: 110 }}
+          placeholder="Rate %, e.g. 7.5"
+          aria-label="Commission rate percent"
+          value={rateInput}
+          onChange={(e) => {
+            setRateInput(e.target.value);
+          }}
+        />
+        <input
+          className="dx-input"
+          style={{ flex: 2, minWidth: 160 }}
+          placeholder="What was agreed (optional)"
+          aria-label="What was agreed"
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+          }}
+        />
+        <Btn
+          label="Save rate"
+          small
+          color={G3}
+          disabled={busy || rateInput.trim() === ''}
+          onClick={() => {
+            const percent = Number(rateInput.trim());
+            // Mirrors the server's @Min(0.0001) @Max(0.9999) as a courtesy so
+            // the operator gets a sentence instead of a 400. It must never be
+            // LOOSER than the server: zero commission is not expressible
+            // through this instrument, and a campaign is what expresses it.
+            if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+              setErr('Enter the rate as a percentage between 0 and 100 — 7.5 for 7.5%.');
+              return;
+            }
+            run(
+              // Entered as a percentage because that is how it is agreed;
+              // sent as the fraction the server validates and stores.
+              // THE PROFILE ID, m.id — NOT m.merchantId, which is the user id
+              // the account and detail routes take. See AdminMerchantDto.
+              async () =>
+                await api.admin.setMerchantNegotiatedRate(
+                  m.id,
+                  percent / 100,
+                  note.trim() === '' ? undefined : note.trim(),
+                ),
+              `${name} is now on ${String(percent)}%.`,
+            );
+          }}
+        />
+        {m.negotiatedRate !== null && (
+          <Btn
+            label="Clear"
+            small
+            outline
+            color={C_WARN}
+            disabled={busy}
+            onClick={() => {
+              // null CLEARS the agreement. Not zero — zero is refused, and
+              // sending it to mean "no agreement" would be a 400 an operator
+              // could not act on.
+              run(
+                async () => await api.admin.setMerchantNegotiatedRate(m.id, null),
+                `${name} is back on the platform rate.`,
+              );
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showReject, setShowReject] = useState(false);
@@ -6188,6 +6356,7 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
               </div>
             </div>
           )}
+          <MerchantRatePanel m={m} reload={reload} />
           {/* merchantId, NOT m.id — m.id is the MerchantProfile's own primary
               key and the account routes are keyed on the user. */}
           <DeleteAccountPanel
