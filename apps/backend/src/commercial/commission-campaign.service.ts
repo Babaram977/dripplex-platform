@@ -19,6 +19,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   COMMISSION_CAMPAIGN_ANNOUNCE_BATCH_SIZE,
   COMMISSION_CAMPAIGN_AUDIT_ACTIONS,
+  resolveCommissionCampaignMaxWindowMs,
 } from './commission-campaign.constants';
 
 import type { PromotionRules } from '../promotions/promotion-rules';
@@ -542,9 +543,35 @@ export class CommissionCampaignService {
     }
   }
 
+  /**
+   * The only place a campaign's window is validated, on both create and
+   * update. Kept as one seam so a ceiling cannot be enforced on one path and
+   * not the other.
+   */
   private assertWindow(startsAt: Date, endsAt: Date): void {
     if (endsAt.getTime() <= startsAt.getTime()) {
       throw new ValidationDomainException('A campaign must end after it starts');
+    }
+
+    // DPX-COMMISSION-002 — the maximum window, if one has been ruled.
+    //
+    // INERT UNTIL A FOUNDER SETS IT. The resolver returns null today, so this
+    // branch does nothing and every window legal now stays legal. See
+    // COMMISSION_CAMPAIGN_MAX_WINDOW_MS for why the seam exists and why the
+    // number is not engineering's to choose.
+    const maxWindowMs = resolveCommissionCampaignMaxWindowMs();
+    if (maxWindowMs === null) {
+      return;
+    }
+    const windowMs = endsAt.getTime() - startsAt.getTime();
+    if (windowMs > maxWindowMs) {
+      const maxDays = Math.floor(maxWindowMs / 86_400_000);
+      const askedDays = Math.ceil(windowMs / 86_400_000);
+      throw new ValidationDomainException(
+        `A commission campaign may run for at most ${String(maxDays)} days; ` +
+          `this one asks for ${String(askedDays)}. Shorten the window, or use a ` +
+          `negotiated rate for a standing commercial agreement.`,
+      );
     }
   }
 
