@@ -225,6 +225,38 @@ export interface RegistrationResponse {
   onboardingId?: string;
 }
 
+/**
+ * A commission campaign — DPX-COMMISSION-001. Exceptional promotional pricing
+ * that overrides a standing rate for its eligible window.
+ *
+ * Declared here rather than imported: the backend exports this type from its
+ * own service, not from @dripplex/types, so there is no shared contract to
+ * re-export yet. Kept field-for-field with `CommissionCampaignDto` in
+ * apps/backend/src/commercial/commission-campaign.service.ts.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** A FRACTION, not a percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: unknown | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
@@ -4127,6 +4159,39 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Commission campaigns ─────────────────────────────────────────────
+    // DPX-COMMISSION-001. Exceptional promotional pricing that overrides a
+    // standing rate for its eligible window: Campaign → Negotiated → Platform.
+    //
+    // READ ONLY, AND DELIBERATELY INCOMPLETE. The operations-console can also
+    // create, update, pause, resume and archive campaigns. Those five are NOT
+    // ported, on the founder ruling of 2026-09-17, because the backend bounds
+    // a campaign's window only by `endsAt > startsAt` — no maximum duration —
+    // while the campaign rate is valid at 0 and a campaign without `rules`
+    // applies platform-wide within its scope. Permanent, platform-wide zero
+    // commission is therefore expressible in a single call: the "decision with
+    // no ceiling on its cost" that the negotiated-rate control explicitly
+    // refuses to allow.
+    //
+    // That is pre-existing backend behaviour, not something a console creates.
+    // But the standalone console cannot reach the API at all, so porting the
+    // mutations is precisely what would make it reachable. They stay held
+    // until a server-side bound is ruled on and shipped. Do not add them here
+    // first: a client-side guard is not a boundary, and this file has been
+    // consistent about that — the server's refusal is the boundary.
+    getCommissionCampaigns: (params?: {
+      scope?: CommissionScope;
+      status?: CommissionCampaignStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<CommissionCampaignDto>>(
+        'GET',
+        '/admin/commercial/commission-campaigns',
+        undefined,
+        params,
+      ),
+
     // ── Automatic recovery ───────────────────────────────────────────────
     // Is the 24-hour recovery backstop armed, and from when?
     //

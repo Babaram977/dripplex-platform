@@ -62,6 +62,9 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type CommissionCampaignDto,
+  type CommissionCampaignStatus,
+  type CommissionScope,
 } from '../lib/api';
 import { auth, type DxUser } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -124,6 +127,7 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'commissioncampaigns'
   | 'recovery'
   | 'incidents'
   | 'support'
@@ -648,6 +652,15 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   // Read-only visibility over the 24-hour automatic recovery backstop. Gated
   // on the same permission its endpoint is gated on, so the menu cannot offer
   // a page whose only possible answer for this account is 403.
+  // "Commission Campaigns", never "Campaigns": Referral Campaigns is a
+  // different desk and this file already records what two similarly-named
+  // menu entries cost an operator once.
+  {
+    page: 'commissioncampaigns',
+    icon: '🏷️',
+    label: 'Commission Campaigns',
+    requires: 'admin:commission-campaign:read',
+  },
   { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -850,6 +863,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  commissioncampaigns: 'Commission Campaigns',
   recovery: 'Automatic Recovery',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -9885,6 +9899,225 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Commission Campaigns ───────────────────────────────────────────────
+/**
+ * DPX-COMMISSION-001 — what the platform is currently charging, and why.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * "Commission Campaigns", never "Campaigns": the menu already carries
+ * "Referral Campaigns" for a different desk, and this file already records
+ * what two similarly-named entries cost an operator once.
+ *
+ * READ ONLY, AND DELIBERATELY INCOMPLETE — founder ruling, 2026-09-17. The
+ * standalone console can also create, update, pause, resume and archive. Those
+ * five are held, because the backend bounds a campaign's window only by
+ * `endsAt > startsAt` (no maximum), the rate is valid at 0, and a campaign
+ * without `rules` applies platform-wide within its scope. Permanent,
+ * platform-wide zero commission is expressible in one call. That is
+ * pre-existing backend behaviour — but the standalone console cannot reach the
+ * API at all, so porting the mutations is what would make it reachable.
+ *
+ * DO NOT ADD A CONTROL HERE FIRST. The bound belongs on the server; a
+ * client-side guard is not a boundary. Until that ships, this page reports and
+ * does not act.
+ *
+ * WHAT IT MAKES LEGIBLE, because reading is the point: the rate as a
+ * percentage of the fraction stored, the window in plain words, and — for an
+ * active campaign — how long it still has to run. An operator asking "why is
+ * this merchant being charged this?" should be able to answer it here.
+ */
+type CampaignsView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: CommissionCampaignDto[]; total: number };
+
+const CAMPAIGN_SCOPE_LABEL: Record<CommissionScope, string> = {
+  MERCHANT_ORDER: 'Merchant orders',
+  DELIVERY: 'Delivery fees',
+  RIDE: 'Ride fares',
+  FLEET: 'Fleet trading',
+};
+
+const CAMPAIGN_STATUS_COLOR: Record<CommissionCampaignStatus, string> = {
+  DRAFT: MUTED,
+  SCHEDULED: C_INFO,
+  ACTIVE: G3,
+  PAUSED: C_WARN,
+  EXPIRED: MUTED,
+  ARCHIVED: MUTED,
+};
+
+/** The stored fraction as a percentage. 0.07 → "7%". */
+export function campaignRatePercent(rate: number): string {
+  const percent = rate * 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2)}%`;
+}
+
+/**
+ * How long a window runs, in words an operator can judge.
+ *
+ * Exists because `endsAt` alone does not read as a risk. "Ends 12 Mar 2099" and
+ * "Ends 12 Mar 2027" look alike in a table; "runs for 26,842 days" does not.
+ * The backend places no ceiling on this, so the console at least states it.
+ */
+export function campaignWindowLength(startsAt: string, endsAt: string): string {
+  const from = new Date(startsAt).getTime();
+  const to = new Date(endsAt).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return 'an invalid window';
+  const days = Math.round((to - from) / 86_400_000);
+  if (days < 1) return 'under a day';
+  if (days === 1) return '1 day';
+  if (days < 365) return `${String(days)} days`;
+  const years = Math.round((days / 365) * 10) / 10;
+  return `${String(days)} days (~${String(years)} years)`;
+}
+
+function PageCommissionCampaigns() {
+  const [view, setView] = useState<CampaignsView>({ kind: 'loading' });
+
+  const load = useCallback(async () => {
+    setView({ kind: 'loading' });
+    try {
+      const page = await api.admin.getCommissionCampaigns({ pageSize: 50 });
+      setView({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load commission campaigns.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader
+          title="Commission Campaigns"
+          action={
+            <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.kind === 'ok'
+                ? `${view.total.toLocaleString('en-NG')} ${
+                    view.total === 1 ? 'campaign' : 'campaigns'
+                  }`
+                : ''}
+            </span>
+          }
+        />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Promotional pricing that overrides a standing commission rate for its window. Precedence
+          is Campaign → Negotiated rate → Platform rate; when a campaign ends, resolution returns to
+          the agreement automatically.
+        </div>
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            lineHeight: 1.5,
+          }}
+        >
+          This desk is read-only. Creating, editing, pausing and archiving campaigns are not
+          available here yet.
+        </div>
+      </Card>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load commission campaigns
+            </div>
+            {/* NOT "no campaigns". An empty desk says nothing is overriding
+                the standing rates; a failed load says nobody asked. */}
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as there being none — the platform could not be asked, so no
+              conclusion about what is currently being charged follows from this screen.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No commission campaigns. Every partner is on their standing rate.
+          </div>
+        ) : (
+          view.items.map((c, i) => <CampaignRow key={c.id} c={c} first={i === 0} />)
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function CampaignRow({ c, first }: { c: CommissionCampaignDto; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+          {c.name} · {campaignRatePercent(c.commissionRate)}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {CAMPAIGN_SCOPE_LABEL[c.scope]} · {new Date(c.startsAt).toLocaleDateString('en-NG')} →{' '}
+          {new Date(c.endsAt).toLocaleDateString('en-NG')} ·{' '}
+          {campaignWindowLength(c.startsAt, c.endsAt)}
+          {c.priority > 0 && ` · priority ${String(c.priority)}`}
+        </div>
+        {/* A zero-rate campaign is charging nothing at all. It is a legitimate
+            instrument — the negotiated rate refuses zero precisely because
+            this is where it belongs — but it should never be something an
+            operator has to compute from "0%" in a list. */}
+        {c.commissionRate === 0 && (
+          <div style={{ fontSize: 11, color: C_WARN, marginTop: 2 }}>
+            Charging no commission at all while this runs.
+          </div>
+        )}
+      </div>
+      <Chip label={c.status} color={CAMPAIGN_STATUS_COLOR[c.status]} />
+    </div>
+  );
+}
+
 // ─── Page: Automatic Recovery ─────────────────────────────────────────────────
 /**
  * DPX-ORDER-8D-RECOVERY — the operator's answer to "is the platform about to
@@ -13775,6 +14008,8 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'commissioncampaigns':
+      return <PageCommissionCampaigns />;
     case 'recovery':
       return <PageRecoveryActivation />;
     case 'incidents':
