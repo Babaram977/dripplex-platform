@@ -1606,7 +1606,22 @@ export interface AdminDriverKycDto {
 // `business`/`kyc` are embedded, so the queue shows the business + KYC state
 // without an extra fetch.
 export interface AdminMerchantDto {
+  /**
+   * The merchant PROFILE id.
+   *
+   * TWO ENDPOINTS IN THIS FEATURE TAKE DIFFERENT IDS FOR THE SAME MERCHANT,
+   * so which field you pass is not interchangeable:
+   *   · POST /admin/merchant-settlement/commission/:merchantProfileId/rate
+   *     takes THIS one. It is what `Order.merchantId` matches and what the
+   *     settlement path resolves against.
+   *   · GET /admin/merchant/:id takes `merchantId` below — the USER id
+   *     (`merchantsService.getMerchantProfile(merchantUserId)`).
+   * Passing the wrong one 404s at best and names a different merchant at
+   * worst, and neither is visible from the call site.
+   */
   id: string;
+  /** The merchant's USER id — `profile.userId` in merchant.mapper.ts. NOT the
+   *  id the commission-rate endpoint takes. See `id` above. */
   merchantId: string;
   email: string;
   phone: string | null;
@@ -1615,6 +1630,19 @@ export interface AdminMerchantDto {
   status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   isApproved: boolean;
   rejectedReason: string | null;
+  /**
+   * The commission rate agreed with this merchant individually
+   * (DPX-MERCHANT-016), or null when the platform-wide rate applies.
+   * A FRACTION, not a percent: 0.075 is 7.5%.
+   *
+   * The list endpoint has always returned these — it serves
+   * `MerchantProfileDto`, which carries them — they were simply not declared
+   * here, so the console could not see a rate it was already being sent.
+   */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
   createdAt: string;
   business: {
     businessName: string;
