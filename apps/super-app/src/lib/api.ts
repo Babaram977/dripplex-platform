@@ -4127,6 +4127,26 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Automatic recovery ───────────────────────────────────────────────
+    // Is the 24-hour recovery backstop armed, and from when?
+    //
+    // Ported from the standalone operations-console (founder ruling,
+    // 2026-09-16: ops.dripplex.com is the operator surface and that app is
+    // retired). Same backend endpoint, same admin:orders:read permission —
+    // no new backend, and nothing here can arm, disarm or run recovery. The
+    // boundary is a code constant changed only by reviewed deployment, so
+    // that no runtime surface can move a financial safety boundary.
+    //
+    // A failed call must surface as a failure. "We could not ask" and "the
+    // backstop is disarmed" are different facts, and reporting the second
+    // when the first is true is how an operator ends up reassured about
+    // something nobody checked.
+    getRecoveryActivationState: () =>
+      dx<{ activated: boolean; activationAt: string | null }>(
+        'GET',
+        '/admin/order-recoveries/activation-state',
+      ),
+
     // ── Commissions ──────────────────────────────────────────────────────
     // Who owes DrippleX money, and who is blocked from trading because of
     // it. A merchant blocked here shows their customers "blocked due to an
