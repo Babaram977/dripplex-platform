@@ -62,6 +62,11 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type OperationsPayoutRequestDto,
+  type OperationsPayoutStatus,
+  type PayoutQueueSummary,
+  type PayoutRequesterType,
+  type PayoutRequestKind,
 } from '../lib/api';
 import { auth, type DxUser } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -124,6 +129,7 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'payoutqueue'
   | 'recovery'
   | 'incidents'
   | 'support'
@@ -648,6 +654,9 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   // Read-only visibility over the 24-hour automatic recovery backstop. Gated
   // on the same permission its endpoint is gated on, so the menu cannot offer
   // a page whose only possible answer for this account is 403.
+  // Who is waiting to be paid. Read-only: approving a payout is a separate
+  // capability behind separate permissions and is not offered here.
+  { page: 'payoutqueue', icon: '💸', label: 'Payout Queue', requires: 'operations:finance:read' },
   { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -850,6 +859,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  payoutqueue: 'Payout Queue',
   recovery: 'Automatic Recovery',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -9885,6 +9895,298 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Payout Queue ───────────────────────────────────────────────────────
+/**
+ * DPX-OPS finance — who is waiting to be paid, and how much is outstanding.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Same two endpoints, same FINANCE_READ permission, no new backend.
+ *
+ * READ ONLY, AND THAT IS PARITY, NOT AN UNDER-PORT. `actionPath` on each row
+ * names the endpoint where that request is approved — but approval is a
+ * separate capability behind separate permissions, and the standalone console
+ * renders the same field as monospace text with no approve or reject control
+ * anywhere on its page. Checked before deciding, not assumed.
+ *
+ * So `actionPath` renders as TEXT here too. It must never become a link, a
+ * button, or the target of a fetch: this is the one payload in the migration
+ * whose own field points at a mutation, and a console that turned it into an
+ * affordance would be shipping money-movement by accident.
+ *
+ * The queue is COMPOSED from two sources and the difference matters: a
+ * WALLET_PAYOUT is a withdrawal from someone's DX Wallet, a FLEET_RECEIVABLE
+ * is a fleet settlement. They are approved through different endpoints, so a
+ * single undifferentiated list would be lying about what an operator is
+ * looking at.
+ *
+ * Summary and list load INDEPENDENTLY. "₦0 outstanding" and "we could not ask"
+ * are different facts, and the headline figure failing must not blank the rows
+ * underneath it.
+ */
+type PayoutView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: OperationsPayoutRequestDto[]; total: number };
+
+type SummaryView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: PayoutQueueSummary };
+
+const PAYOUT_KIND_LABEL: Record<PayoutRequestKind, string> = {
+  WALLET_PAYOUT: 'Wallet payout',
+  FLEET_RECEIVABLE: 'Fleet settlement',
+};
+
+const PAYOUT_STATUS_COLOR: Record<OperationsPayoutStatus, string> = {
+  PENDING: C_WARN,
+  APPROVED: C_INFO,
+  PAID: G3,
+  REJECTED: MUTED,
+  FAILED: C_ERR,
+};
+
+const PAYOUT_REQUESTER_LABEL: Record<PayoutRequesterType, string> = {
+  CUSTOMER: 'Customer',
+  DRIVER: 'Driver',
+  RIDER: 'Rider',
+  MERCHANT: 'Merchant',
+  FLEET_OWNER: 'Fleet owner',
+};
+
+/** How long someone has been waiting. The queue's whole point is that this
+ *  number grows while nobody looks at it. */
+export function payoutWaitingFor(requestedAt: string, now = Date.now()): string {
+  const then = new Date(requestedAt).getTime();
+  if (Number.isNaN(then)) return '—';
+  const minutes = Math.max(0, Math.round((now - then) / 60000));
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${String(hours)}h`;
+  const days = Math.floor(hours / 24);
+  return `${String(days)}d`;
+}
+
+function PagePayoutQueue() {
+  const [status, setStatus] = useState<OperationsPayoutStatus | 'ALL'>('PENDING');
+  const [list, setList] = useState<PayoutView>({ kind: 'loading' });
+  const [summary, setSummary] = useState<SummaryView>({ kind: 'loading' });
+
+  const loadList = useCallback(async (next: OperationsPayoutStatus | 'ALL') => {
+    setList({ kind: 'loading' });
+    try {
+      const page = await api.admin.getPayoutRequests({
+        ...(next === 'ALL' ? {} : { status: next }),
+        pageSize: 50,
+      });
+      setList({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setList({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load the payout queue.',
+      });
+    }
+  }, []);
+
+  const loadSummary = useCallback(async () => {
+    setSummary({ kind: 'loading' });
+    try {
+      setSummary({ kind: 'ok', data: await api.admin.getPayoutSummary() });
+    } catch (e: unknown) {
+      setSummary({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load the outstanding total.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadList(status);
+  }, [loadList, status]);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
+
+  const tabs: (OperationsPayoutStatus | 'ALL')[] = ['PENDING', 'APPROVED', 'PAID', 'FAILED', 'ALL'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Payout queue" />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Everyone waiting to be paid — wallet withdrawals and fleet settlements in one queue. This
+          desk reports; approving a payout happens elsewhere and is not available here.
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          {summary.kind === 'ok' ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 8 }}>
+              <AnalyticsLikeStat
+                label="Pending"
+                value={summary.data.pendingCount.toLocaleString('en-NG')}
+              />
+              <AnalyticsLikeStat
+                label="Outstanding"
+                value={`₦${Math.round(summary.data.pendingAmount).toLocaleString()}`}
+              />
+              {summary.data.pendingByRequester.map((row) => (
+                <AnalyticsLikeStat
+                  key={row.requesterType}
+                  label={PAYOUT_REQUESTER_LABEL[row.requesterType]}
+                  value={`${row.count.toLocaleString('en-NG')} · ₦${Math.round(row.amount).toLocaleString()}`}
+                />
+              ))}
+            </div>
+          ) : summary.kind === 'loading' ? (
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Loading the outstanding total…
+            </div>
+          ) : (
+            // NOT ₦0. A headline figure of zero for a request that failed says
+            // nobody is owed anything, which is the most reassuring possible
+            // way to be wrong about money.
+            <div style={{ fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+              Couldn&rsquo;t load the outstanding total — this is not ₦0. {summary.message}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t}
+            className="dx-btn dx-tab"
+            onClick={() => setStatus(t)}
+            style={{
+              background: status === t ? G2 : 'rgba(255,255,255,.05)',
+              color: status === t ? NAVY_DEEP : MUTED,
+              border: `1px solid ${status === t ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: status === t ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t === 'ALL' ? 'All' : t.charAt(0) + t.slice(1).toLowerCase()}
+          </button>
+        ))}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {list.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load the payout queue
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as nobody waiting to be paid — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {list.message}
+            </div>
+          </div>
+        ) : list.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : list.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {status === 'PENDING'
+              ? 'Nobody is waiting to be paid.'
+              : 'No payout requests with that status.'}
+          </div>
+        ) : (
+          list.items.map((r, i) => <PayoutRow key={r.id} r={r} first={i === 0} />)
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Same shape as the analytics stat, kept local so this page does not depend
+ *  on a component that lives on another branch of the migration. */
+function AnalyticsLikeStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 130, fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ fontSize: 10.5, color: MUTED }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: WHITE, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function PayoutRow({ r, first }: { r: OperationsPayoutRequestDto; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+          {r.requesterName} · ₦{Math.round(r.amount).toLocaleString()}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {PAYOUT_REQUESTER_LABEL[r.requesterType]} · {PAYOUT_KIND_LABEL[r.kind]}
+          {r.requesterReference !== null && ` · ${r.requesterReference}`}
+          {r.status === 'PENDING'
+            ? ` · waiting ${payoutWaitingFor(r.requestedAt)}`
+            : r.resolvedAt !== null && ` · resolved ${formatCaseTime(r.resolvedAt)}`}
+        </div>
+        {r.note !== null && r.note !== '' && (
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{r.note}</div>
+        )}
+        {/* TEXT, NEVER A CONTROL. This names the endpoint where the request is
+            approved. Approval is a different capability behind different
+            permissions and is not offered here — the standalone console
+            renders it the same way. Do not make it a link or a button. */}
+        <div
+          style={{
+            fontSize: 10.5,
+            color: MUTED,
+            marginTop: 2,
+            fontFamily: 'ui-monospace, monospace',
+          }}
+        >
+          {r.actionPath}
+        </div>
+      </div>
+      <Chip label={r.status} color={PAYOUT_STATUS_COLOR[r.status]} />
+    </div>
+  );
+}
+
 // ─── Page: Automatic Recovery ─────────────────────────────────────────────────
 /**
  * DPX-ORDER-8D-RECOVERY — the operator's answer to "is the platform about to
@@ -13775,6 +14077,8 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'payoutqueue':
+      return <PagePayoutQueue />;
     case 'recovery':
       return <PageRecoveryActivation />;
     case 'incidents':
