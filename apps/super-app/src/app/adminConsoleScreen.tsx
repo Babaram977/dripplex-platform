@@ -62,6 +62,8 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type OrderExceptionDto,
+  type OrderExceptionStatus,
 } from '../lib/api';
 import { auth, type DxUser } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -124,6 +126,7 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'stalledorders'
   | 'recovery'
   | 'incidents'
   | 'support'
@@ -648,6 +651,10 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   // Read-only visibility over the 24-hour automatic recovery backstop. Gated
   // on the same permission its endpoint is gated on, so the menu cannot offer
   // a page whose only possible answer for this account is 403.
+  // The two order-exception desks, adjacent because they are two views of
+  // one situation: what has stalled, and whether the platform will act on it
+  // by itself. Both read-only, both on the permission their endpoints enforce.
+  { page: 'stalledorders', icon: '⏳', label: 'Stalled Orders', requires: 'admin:orders:read' },
   { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -850,6 +857,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  stalledorders: 'Stalled Orders',
   recovery: 'Automatic Recovery',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -9885,6 +9893,234 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Stalled Orders ─────────────────────────────────────────────────────
+/**
+ * DPX-ORDER-8D-C ops visibility — the stalled-order queue.
+ *
+ * Founder remediation ruling, 2026-09-16: a DELIVERY order left CONFIRMED and
+ * unadvanced for 30 minutes stops being the merchant's private problem and
+ * becomes a DrippleX-managed exception. #416 detects those and warns the
+ * merchant; until a screen existed, the rows were written to a table nothing
+ * read, so the platform could not see what it had taken ownership of.
+ *
+ * Ported here from the standalone operations-console on the 2026-09-16 ruling
+ * that ops.dripplex.com is the single operator surface. Same endpoint, same
+ * `admin:orders:read`, no new backend. The presentation is this console's own.
+ *
+ * READ ONLY, deliberately. No resolve, dismiss, assign, annotate or
+ * contact-merchant control, because no ruling defines one — the 30-minute
+ * threshold escalates an order, it does not authorise anyone to act on one. An
+ * exception closes when the ORDER moves and the backend resolves it; nothing
+ * here can close one.
+ *
+ * AN ERROR IS NOT AN EMPTY QUEUE. A failed read says so rather than rendering
+ * "No stalled orders" — the same class of lie as reporting a failed safety
+ * read as OFF, and worse here, because the reassuring state is the one an
+ * operator is hoping for. One union-typed variable, so a stale list cannot sit
+ * under an error banner.
+ */
+type StalledOrdersView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: OrderExceptionDto[]; total: number };
+
+/**
+ * Minutes read badly past a couple of hours, and this queue's whole point is
+ * that an order has waited an unreasonable time — "6382 minutes" makes that
+ * harder to see, not easier.
+ */
+export function formatStalledWait(minutes: number): string {
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    return rest === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(rest)}m`;
+  }
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return restHours === 0 ? `${String(days)}d` : `${String(days)}d ${String(restHours)}h`;
+}
+
+function PageStalledOrders() {
+  const [status, setStatus] = useState<OrderExceptionStatus>('OPEN');
+  const [view, setView] = useState<StalledOrdersView>({ kind: 'loading' });
+
+  const load = useCallback(async (next: OrderExceptionStatus) => {
+    setView({ kind: 'loading' });
+    try {
+      const page = await api.admin.getOrderExceptions({ status: next, pageSize: 50 });
+      setView({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load stalled orders.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(status);
+  }, [load, status]);
+
+  const tabs: { value: OrderExceptionStatus; label: string }[] = [
+    { value: 'OPEN', label: 'Open' },
+    { value: 'RESOLVED', label: 'Resolved' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader
+          title="Stalled Orders"
+          action={
+            <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.kind === 'ok'
+                ? `${view.total.toLocaleString('en-NG')} ${
+                    view.total === 1 ? 'exception' : 'exceptions'
+                  }`
+                : ''}
+            </span>
+          }
+        />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Confirmed delivery orders a merchant has not advanced. DrippleX owns these; the merchant
+          has already been warned automatically. This queue is a view — an exception closes when the
+          order moves, not from here.
+        </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 6 }}>
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            className="dx-btn dx-tab"
+            onClick={() => setStatus(t.value)}
+            style={{
+              background: status === t.value ? G2 : 'rgba(255,255,255,.05)',
+              color: status === t.value ? NAVY_DEEP : MUTED,
+              border: `1px solid ${status === t.value ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: status === t.value ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load stalled orders
+            </div>
+            {/* NOT "no stalled orders". A queue that failed to load and a queue
+                that is genuinely empty look identical to a reassured operator,
+                and only one of them means every order is moving. */}
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as the queue being empty — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {status === 'OPEN'
+              ? 'No stalled orders. Every confirmed delivery order is moving.'
+              : 'Nothing has been resolved yet.'}
+          </div>
+        ) : (
+          view.items.map((x, i) => <StalledOrderRow key={x.id} exception={x} first={i === 0} />)
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function StalledOrderRow({ exception, first }: { exception: OrderExceptionDto; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: WHITE,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {exception.order.orderNumber} · ₦{Math.round(exception.order.total).toLocaleString()}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            marginTop: 2,
+          }}
+        >
+          {/* The STORED wait, not a live clock. It records what the order had
+              waited when the platform took ownership; recomputing it would
+              quietly disagree the moment the order moves. */}
+          Waited {formatStalledWait(exception.waitedMinutes)} · Detected{' '}
+          {formatCaseTime(exception.detectedAt)}
+          {exception.notifiedAt === null
+            ? ' · Merchant warning pending retry'
+            : ` · Merchant warned ${formatCaseTime(exception.notifiedAt)}`}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <Chip
+          label={exception.status === 'OPEN' ? 'Open' : 'Resolved'}
+          color={exception.status === 'OPEN' ? C_WARN : MUTED}
+        />
+        <Chip label={exception.order.status} color={MUTED} />
+        <Chip label={exception.order.paymentStatus} color={MUTED} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Page: Automatic Recovery ─────────────────────────────────────────────────
 /**
  * DPX-ORDER-8D-RECOVERY — the operator's answer to "is the platform about to
@@ -13775,6 +14011,8 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'stalledorders':
+      return <PageStalledOrders />;
     case 'recovery':
       return <PageRecoveryActivation />;
     case 'incidents':
