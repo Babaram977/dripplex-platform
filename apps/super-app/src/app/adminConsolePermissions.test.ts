@@ -37,9 +37,26 @@ function permissionsCheckedByTheConsole(source: string): string[] {
   return [...found].filter((p) => p !== '');
 }
 
-/** Every permission code the RBAC seed writes. */
+/**
+ * Every permission code the RBAC seed writes.
+ *
+ * The pattern has to match what the seed actually contains, not what a
+ * permission code was once assumed to look like. It was written as exactly
+ * three underscore-only segments, which made 26 of the seed's 140 codes
+ * invisible to this guard — every four-segment code, and every code with a
+ * hyphen in a segment, among them `admin:inspection-centres:manage` and
+ * `admin:merchant-settlement:commission:manage`. A guard that cannot see a
+ * granted permission reports it as ungranted, which is the same false alarm as
+ * the real bug it exists to catch, pointing the other way: it tells you to
+ * "fix" a string that was already right.
+ *
+ * So: at least three segments, each starting with a letter and allowing
+ * hyphens as well as underscores.
+ */
 function permissionsGrantedByTheSeed(source: string): Set<string> {
-  return new Set([...source.matchAll(/'([a-z_]+:[a-z_]+:[a-z_]+)'/g)].map((m) => m[1] ?? ''));
+  return new Set(
+    [...source.matchAll(/'([a-z][a-z_-]*(?::[a-z][a-z_-]*){2,})'/g)].map((m) => m[1] ?? ''),
+  );
 }
 
 describe('Operations Console permission strings', () => {
@@ -51,7 +68,10 @@ describe('Operations Console permission strings', () => {
     // the regexes stop matching — the exact way a guard rots into decoration.
     expect(consoleSource.length).toBeGreaterThan(1000);
     expect(permissionsCheckedByTheConsole(consoleSource).length).toBeGreaterThan(4);
-    expect(permissionsGrantedByTheSeed(seedSource).size).toBeGreaterThan(50);
+    // The seed carries 140 codes. A floor of 130 catches the pattern silently
+    // narrowing again — the failure mode this guard has already had once, where
+    // it kept passing on a subset and reported real permissions as unknown.
+    expect(permissionsGrantedByTheSeed(seedSource).size).toBeGreaterThan(130);
   });
 
   it('checks only permissions the RBAC seed actually grants', () => {
