@@ -15,7 +15,11 @@ import type {
   FleetRegistrationDto,
   FleetOverviewDto,
   FleetPeriodDto,
+  DispatchSupportDto,
   InitiatedCallDto,
+  OperationsRideAllocationDto,
+  OperationsRideDetailDto,
+  OperationsRideTrackingDto,
   SosAlertDto,
 } from '@dripplex/types';
 
@@ -27,6 +31,10 @@ import type {
  * apply.
  */
 export type {
+  DispatchSupportDto,
+  OperationsRideAllocationDto,
+  OperationsRideDetailDto,
+  OperationsRideTrackingDto,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -4127,6 +4135,36 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Ride & dispatch (operator reads) ─────────────────────────────────
+    // Four DISTINCT endpoint contracts behind one operator surface. They are
+    // deliberately four calls, not one aggregate: each answers a different
+    // question, each can fail on its own, and collapsing them would make one
+    // slow or broken answer hide the other three.
+    //
+    // ALL FOUR ARE READS, and that is proven rather than assumed — see
+    // apps/backend/src/operations/operations-rides-read-only.spec.ts, which
+    // builds each service with a Prisma stub whose write verbs throw, and
+    // which catches a deliberately injected rideOffer.create by name. There
+    // is no allocate, reassign, offer or dispatch method here, and none may
+    // be added: the ranked candidate list is decision support, and the DTO
+    // itself says it "backs a 'here are the best available drivers' display,
+    // never an assignment action".
+    getOperationsRideDetail: (rideId: string) =>
+      dx<OperationsRideDetailDto>('GET', `/operations/rides/${rideId}`),
+
+    getOperationsRideAllocation: (rideId: string) =>
+      dx<OperationsRideAllocationDto>('GET', `/operations/rides/${rideId}/allocation`),
+
+    getOperationsRideTracking: (rideId: string) =>
+      dx<OperationsRideTrackingDto>('GET', `/operations/rides/${rideId}/tracking`),
+
+    // `etaSeconds` on each candidate is a constant-speed STRAIGHT-LINE
+    // estimate, and `isEstimate` is always true so a console can never
+    // present it as a routed, traffic-aware duration. Render it as an
+    // estimate or not at all.
+    getOperationsDispatchCandidates: (rideId: string) =>
+      dx<DispatchSupportDto>('GET', `/operations/rides/${rideId}/dispatch-candidates`),
+
     // ── Automatic recovery ───────────────────────────────────────────────
     // Is the 24-hour recovery backstop armed, and from when?
     //
