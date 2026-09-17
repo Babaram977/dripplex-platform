@@ -65,6 +65,36 @@ extending, or building on prior work:
   reporting the ratio — never by one green run. Report a non-deterministic mutation as the
   ratio it is, not as a clean red.
 
+## The operator surface is ops.dripplex.com — LOCKED
+
+**`ops.dripplex.com` is the Operations Console. There is no other one.** It is served
+by `apps/super-app` (`portalFromHostname()` routes the `ops` host label to the
+`admindash` screen). This restates and reinforces the founder decision of 2026-08-24
+recorded at `apps/super-app/src/app/App.tsx:518` — _"the standalone operations-console
+is not the console we want; the super-app's is"_ — after that decision was
+contradicted in practice on 2026-09-16.
+
+Reaffirmed by the founder on 2026-09-16, with three standing instructions:
+
+1. **Everything in `apps/operations-console` moves to `ops.dripplex.com`.** Operator
+   capability belongs in the super-app's console, not in a second application.
+2. **Keep the ops.dripplex.com look.** Port the FUNCTION, render it in the super-app's
+   existing design language. Do **not** carry over `apps/operations-console`'s UI,
+   shell, navigation style or component idiom, and do not restyle ops.dripplex.com to
+   resemble it.
+3. **Retire `apps/operations-console`** once the migration is complete.
+
+**Do not build a new operator screen in `apps/operations-console`. Do not give it a
+production domain. Do not create a third operator address.** A new operator capability
+goes into the super-app's console or it does not ship.
+
+Why this is written here rather than left in a document: it has now been got wrong
+twice. `docs/DPX-OPS-001-OPERATIONS-COMMAND-CENTRE.md` (frozen 2026-08-26) specifies
+four Phase-1 slices against `apps/operations-console` — it postdates the 2026-08-24
+decision and builds on the app that decision rejected. Treat DPX-OPS-001 as a
+specification of WHAT operators need, and this section as the ruling on WHERE it
+lives. Where they conflict on the destination app, this section wins.
+
 ## Founder decisions already locked
 
 - **No username.** Stable identity is phone (primary) + optional email + name.
