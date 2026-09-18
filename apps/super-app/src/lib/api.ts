@@ -15,8 +15,14 @@ import type {
   FleetRegistrationDto,
   FleetOverviewDto,
   FleetPeriodDto,
-  DispatchSupportDto,
+  DispatchPerformanceAnalyticsDto,
+  DriverUtilizationAnalyticsDto,
+  GeographicDemandAnalyticsDto,
   InitiatedCallDto,
+  OperationsResponseAnalyticsDto,
+  RideOperationsAnalyticsDto,
+  ShiftAnalyticsDto,
+  DispatchSupportDto,
   OperationsRideAllocationDto,
   OperationsRideDetailDto,
   OperationsRideTrackingDto,
@@ -34,6 +40,12 @@ import type {
  * apply.
  */
 export type {
+  DispatchPerformanceAnalyticsDto,
+  DriverUtilizationAnalyticsDto,
+  GeographicDemandAnalyticsDto,
+  OperationsResponseAnalyticsDto,
+  RideOperationsAnalyticsDto,
+  ShiftAnalyticsDto,
   DispatchSupportDto,
   OperationsRideAllocationDto,
   OperationsRideDetailDto,
@@ -289,6 +301,23 @@ export interface PaginatedResult<T> {
  * change. New code should use this one. Recorded so the discrepancy is a known
  * thing rather than a trap the next person rediscovers.
  */
+/**
+ * The period an analytics question is asked about.
+ *
+ * Both fields are REQUIRED because the server requires them
+ * (AnalyticsRangeQueryDto: `from` and `to` are @IsDateString with no
+ * @IsOptional). Typed as required here so a caller that has not got a range
+ * yet cannot compile, rather than discovering it as a 400.
+ *
+ * Deliberately does NOT carry cellSizeDegrees: only the geography endpoint
+ * accepts it, and putting it here would leak it into the other five the first
+ * time somebody spread this object into a request.
+ */
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+}
+
 export interface ApiPage<T> {
   items: T[];
   meta: { page: number; limit: number; total: number; totalPages: number };
@@ -4201,6 +4230,61 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Operations analytics (six drill-downs) ───────────────────────────
+    // GET /operations/analytics/{driver-utilization,shifts,rides,dispatch,
+    // response,geography}, all behind OPERATIONS_PERMISSIONS.ANALYTICS_READ.
+    // `overview` is deliberately absent: getAnalyticsOverview already covers
+    // it, and a second method for the same endpoint is how two callers start
+    // disagreeing about one contract.
+    //
+    // `from` and `to` are REQUIRED @IsDateString on the server, not optional.
+    // A call without them is a 400, so `AnalyticsRange` is a required
+    // parameter here rather than a defaulted one — there is no sensible
+    // default for "which period is the operator asking about", and inventing
+    // one would answer a question nobody asked.
+    //
+    // PROVEN READ-ONLY, not assumed: see
+    // apps/backend/src/operations/operations-analytics-read-only.spec.ts,
+    // which runs every method against a Prisma stub whose write verbs throw
+    // and catches an injected roll-up cache write by name. No mutating
+    // method belongs in this block.
+    getAnalyticsDriverUtilization: (range: AnalyticsRange) =>
+      dx<DriverUtilizationAnalyticsDto>(
+        'GET',
+        '/operations/analytics/driver-utilization',
+        undefined,
+        {
+          ...range,
+        },
+      ),
+
+    getAnalyticsShifts: (range: AnalyticsRange) =>
+      dx<ShiftAnalyticsDto>('GET', '/operations/analytics/shifts', undefined, { ...range }),
+
+    getAnalyticsRides: (range: AnalyticsRange) =>
+      dx<RideOperationsAnalyticsDto>('GET', '/operations/analytics/rides', undefined, {
+        ...range,
+      }),
+
+    getAnalyticsDispatch: (range: AnalyticsRange) =>
+      dx<DispatchPerformanceAnalyticsDto>('GET', '/operations/analytics/dispatch', undefined, {
+        ...range,
+      }),
+
+    getAnalyticsResponse: (range: AnalyticsRange) =>
+      dx<OperationsResponseAnalyticsDto>('GET', '/operations/analytics/response', undefined, {
+        ...range,
+      }),
+
+    // The ONLY one that takes cellSizeDegrees. The server accepts it here and
+    // nowhere else, so it is a parameter of this method alone rather than of
+    // AnalyticsRange — a shared optional field would leak into the other five
+    // requests the first time someone spread the range object.
+    getAnalyticsGeography: (range: AnalyticsRange, cellSizeDegrees?: number) =>
+      dx<GeographicDemandAnalyticsDto>('GET', '/operations/analytics/geography', undefined, {
+        ...range,
+        ...(cellSizeDegrees === undefined ? {} : { cellSizeDegrees }),
+      }),
     // ── Ride & dispatch (operator reads) ─────────────────────────────────
     // Four DISTINCT endpoint contracts behind one operator surface. They are
     // deliberately four calls, not one aggregate: each answers a different

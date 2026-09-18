@@ -62,6 +62,12 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type DispatchPerformanceAnalyticsDto,
+  type DriverUtilizationAnalyticsDto,
+  type GeographicDemandAnalyticsDto,
+  type OperationsResponseAnalyticsDto,
+  type RideOperationsAnalyticsDto,
+  type ShiftAnalyticsDto,
   type CommissionCampaignDto,
   type CommissionCampaignStatus,
   type CommissionScope,
@@ -12207,6 +12213,589 @@ interface PeakHourRow {
 
 const PEAK_HOURS: PeakHourRow[] = []; // mock cleared — no demand-series endpoint yet
 
+// ─── Operations analytics (six drill-downs) ───────────────────────────────────
+/**
+ * DPX-OPS analytics — the six operator drill-downs, ported from the standalone
+ * operations-console on the 2026-09-16 ruling.
+ *
+ * RANGE FIRST, AND NEVER INVENTED. `from` and `to` are required
+ * `@IsDateString` on the server; a request without them is a 400. So no panel
+ * fires on mount, nothing loads until the operator has chosen a period, and
+ * the range that is SENT is always the range that is SHOWN. The presets fill
+ * the visible fields rather than standing in for them — a picker that displays
+ * one period while quietly querying another is the regression this shape
+ * exists to prevent, and it is pinned by a test.
+ *
+ * LOAD ON OPEN. Six aggregate queries fired because a screen mounted is six
+ * expensive scans nobody asked for. Opening a panel loads that panel, with the
+ * range currently on screen.
+ *
+ * CHANGING THE RANGE DISCARDS WHAT WAS LOADED. Stale numbers under a new range
+ * are worse than no numbers: they answer a question the operator has stopped
+ * asking, and nothing on screen would say so.
+ *
+ * ISOLATED STATE. Each panel owns its loading/error/empty/data. One failing
+ * drill-down must not take down the other five, and a reader must be able to
+ * tell WHICH question went unanswered.
+ *
+ * READ ONLY, proven at the service layer by
+ * apps/backend/src/operations/operations-analytics-read-only.spec.ts and
+ * pinned again here: no control on this screen mutates anything, and none may
+ * be manufactured from whatever a response happens to contain.
+ */
+type AnalyticsPanelId =
+  'driver-utilization' | 'shifts' | 'rides' | 'dispatch' | 'response' | 'geography';
+
+type PanelState<T> =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: T };
+
+/** A range is usable only when both ends parse and `to` is not before `from`. */
+export function isUsableAnalyticsRange(from: string, to: string): boolean {
+  if (from === '' || to === '') return false;
+  const f = new Date(from).getTime();
+  const t = new Date(to).getTime();
+  if (Number.isNaN(f) || Number.isNaN(t)) return false;
+  return t >= f;
+}
+
+/** `YYYY-MM-DD` as the date inputs produce it, for a preset N days back. */
+function daysAgoIso(days: number): string {
+  const d = new Date(Date.now() - days * 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+function secondsToHours(s: number): string {
+  return `${String(Math.round((s / 3600) * 10) / 10)} h`;
+}
+
+function ratePercent(rate: number | null): string {
+  return rate === null ? '—' : `${String(Math.round(rate * 1000) / 10)}%`;
+}
+
+function durationLabel(seconds: number | null): string {
+  if (seconds === null) return '—';
+  if (seconds < 60) return `${String(Math.round(seconds))}s`;
+  if (seconds < 3600) return `${String(Math.round(seconds / 60))} min`;
+  return secondsToHours(seconds);
+}
+
+function AnalyticsStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 130, fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ fontSize: 10.5, color: MUTED }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: WHITE, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function AnalyticsStatRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 10 }}>{children}</div>;
+}
+
+function AnalyticsPanelBody<T>({
+  state,
+  render,
+}: {
+  state: PanelState<T>;
+  render: (data: T) => React.ReactNode;
+}) {
+  if (state.kind === 'idle') {
+    return (
+      <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        Choose a date range, then open this panel to load it.
+      </div>
+    );
+  }
+  if (state.kind === 'loading') {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Loading…</div>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          style={{ fontSize: 12.5, color: C_ERR, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}
+        >
+          Couldn&rsquo;t load this analysis
+        </div>
+        {/* Not zero. An analytics panel that renders 0 for a failed request is
+            reporting a measurement nobody took. */}
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {state.message} — these are not zeroes, they are unknowns.
+        </div>
+      </div>
+    );
+  }
+  return <>{render(state.data)}</>;
+}
+
+function PageOperationsAnalytics() {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [open, setOpen] = useState<AnalyticsPanelId | null>(null);
+
+  const [utilisation, setUtilisation] = useState<PanelState<DriverUtilizationAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [shifts, setShifts] = useState<PanelState<ShiftAnalyticsDto>>({ kind: 'idle' });
+  const [rides, setRides] = useState<PanelState<RideOperationsAnalyticsDto>>({ kind: 'idle' });
+  const [dispatch, setDispatch] = useState<PanelState<DispatchPerformanceAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [response, setResponse] = useState<PanelState<OperationsResponseAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [geography, setGeography] = useState<PanelState<GeographicDemandAnalyticsDto>>({
+    kind: 'idle',
+  });
+
+  const usable = isUsableAnalyticsRange(from, to);
+
+  /**
+   * Any change to the range discards every loaded answer.
+   *
+   * Not a refetch — a discard. Refetching only the open panel would leave the
+   * other five showing numbers for the previous period with nothing on screen
+   * saying so.
+   */
+  const resetAll = useCallback(() => {
+    setUtilisation({ kind: 'idle' });
+    setShifts({ kind: 'idle' });
+    setRides({ kind: 'idle' });
+    setDispatch({ kind: 'idle' });
+    setResponse({ kind: 'idle' });
+    setGeography({ kind: 'idle' });
+  }, []);
+
+  const changeFrom = (value: string) => {
+    setFrom(value);
+    rangeChanged({ from: value, to });
+  };
+  const changeTo = (value: string) => {
+    setTo(value);
+    rangeChanged({ from, to: value });
+  };
+  const applyPreset = (days: number) => {
+    // Fills the VISIBLE fields. The request always carries what is on screen.
+    const next = { from: daysAgoIso(days), to: daysAgoIso(0) };
+    setFrom(next.from);
+    setTo(next.to);
+    rangeChanged(next);
+  };
+
+  /**
+   * Takes the range EXPLICITLY rather than reading it from state.
+   *
+   * A range change has to reload the open panel with the value it is changing
+   * TO, and React has not committed that state yet at the moment the handler
+   * runs. Closing over `from`/`to` here would send the previous period while
+   * the picker showed the new one — the exact substitution this screen is
+   * built to make impossible.
+   */
+  const loadPanel = useCallback((panel: AnalyticsPanelId, range: { from: string; to: string }) => {
+    // The precondition, enforced here rather than discovered as a 400.
+    if (!isUsableAnalyticsRange(range.from, range.to)) return;
+
+    const run = async <T,>(
+      set: (s: PanelState<T>) => void,
+      fetcher: () => Promise<T>,
+    ): Promise<void> => {
+      set({ kind: 'loading' });
+      try {
+        set({ kind: 'ok', data: await fetcher() });
+      } catch (e: unknown) {
+        set({
+          kind: 'error',
+          message: (e as { message?: string }).message ?? 'Could not load this analysis.',
+        });
+      }
+    };
+
+    if (panel === 'driver-utilization') {
+      void run(setUtilisation, () => api.admin.getAnalyticsDriverUtilization(range));
+    } else if (panel === 'shifts') {
+      void run(setShifts, () => api.admin.getAnalyticsShifts(range));
+    } else if (panel === 'rides') {
+      void run(setRides, () => api.admin.getAnalyticsRides(range));
+    } else if (panel === 'dispatch') {
+      void run(setDispatch, () => api.admin.getAnalyticsDispatch(range));
+    } else if (panel === 'response') {
+      void run(setResponse, () => api.admin.getAnalyticsResponse(range));
+    } else {
+      // Geography is the only endpoint that accepts cellSizeDegrees, and it
+      // is passed only here. The server chooses its own default when it is
+      // omitted, which is the honest thing for the console to let it do.
+      void run(setGeography, () => api.admin.getAnalyticsGeography(range));
+    }
+  }, []);
+
+  const toggle = (panel: AnalyticsPanelId) => {
+    if (open === panel) {
+      setOpen(null);
+      return;
+    }
+    setOpen(panel);
+    loadPanel(panel, { from, to });
+  };
+
+  /**
+   * A range change discards every loaded answer and re-asks the open one.
+   *
+   * Discarding alone left a dead end: the panel stayed open showing "choose a
+   * range", and clicking it again TOGGLED IT SHUT rather than reloading, so
+   * the operator had to close and reopen to get their answer. Re-asking keeps
+   * the invariant that matters — nothing stale is ever on screen — without
+   * making the operator fight the panel.
+   */
+  const rangeChanged = (next: { from: string; to: string }) => {
+    resetAll();
+    if (open !== null) {
+      loadPanel(open, next);
+    }
+  };
+
+  const panelHeader = (panel: AnalyticsPanelId, label: string) => (
+    <button
+      className="dx-btn"
+      onClick={() => toggle(panel)}
+      disabled={!usable}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        background: 'transparent',
+        border: 'none',
+        padding: 0,
+        cursor: usable ? 'pointer' : 'not-allowed',
+        opacity: usable ? 1 : 0.5,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{label}</span>
+      <span style={{ fontSize: 11, color: MUTED }}>{open === panel ? 'Hide' : 'Show'}</span>
+    </button>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Operations analytics" />
+        <div
+          style={{
+            fontSize: 12,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            marginBottom: 10,
+          }}
+        >
+          Pick a period, then open a question. Nothing loads until you do — each of these is an
+          aggregate scan, and six of them fired because a screen opened would cost the platform six
+          answers nobody asked for.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="dx-input"
+            type="date"
+            aria-label="From date"
+            value={from}
+            onChange={(e) => changeFrom(e.target.value)}
+            style={{ minWidth: 140 }}
+          />
+          <input
+            className="dx-input"
+            type="date"
+            aria-label="To date"
+            value={to}
+            onChange={(e) => changeTo(e.target.value)}
+            style={{ minWidth: 140 }}
+          />
+          <Btn label="Last 7 days" small outline color={G3} onClick={() => applyPreset(7)} />
+          <Btn label="Last 30 days" small outline color={G3} onClick={() => applyPreset(30)} />
+        </div>
+
+        {!usable && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 11.5,
+              color: C_WARN,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {from === '' || to === ''
+              ? 'Choose both a start and an end date to load any analysis.'
+              : 'The end date is before the start date.'}
+          </div>
+        )}
+      </Card>
+
+      {/* Driver utilisation */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('driver-utilization', 'Driver utilisation')}
+        {open === 'driver-utilization' && (
+          <AnalyticsPanelBody
+            state={utilisation}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Drivers" value={d.driverCount.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Online" value={secondsToHours(d.totalOnlineSeconds)} />
+                  <AnalyticsStat label="On trip" value={secondsToHours(d.totalOnTripSeconds)} />
+                  <AnalyticsStat
+                    label="Utilisation"
+                    value={ratePercent(d.averageUtilizationRate)}
+                  />
+                  <AnalyticsStat
+                    label="Trips"
+                    value={d.totalTripsCompleted.toLocaleString('en-NG')}
+                  />
+                  <AnalyticsStat
+                    label="Earnings"
+                    value={`₦${Math.round(d.totalEarnings).toLocaleString()}`}
+                  />
+                </AnalyticsStatRow>
+                {d.topDrivers.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No driver activity in this period.
+                  </div>
+                ) : (
+                  d.topDrivers.map((row) => (
+                    <div
+                      key={row.driverId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        paddingTop: 8,
+                        borderTop: `1px solid ${BORDER}`,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: WHITE }}>{row.driverName}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {row.tripsCompleted.toLocaleString('en-NG')} trips ·{' '}
+                        {ratePercent(row.utilizationRate)} ·{' '}
+                        {`₦${Math.round(row.earnings).toLocaleString()}`}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Shifts */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('shifts', 'Shifts')}
+        {open === 'shifts' && (
+          <AnalyticsPanelBody
+            state={shifts}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Started" value={d.shiftsStarted.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Ended" value={d.shiftsEnded.toLocaleString('en-NG')} />
+                <AnalyticsStat
+                  label="Active now"
+                  value={d.activeShiftsNow.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="On break"
+                  value={d.onBreakShiftsNow.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Force-ended"
+                  value={d.forceEndedCount.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Avg shift"
+                  value={durationLabel(d.averageShiftDurationSeconds)}
+                />
+                <AnalyticsStat label="Avg break" value={durationLabel(d.averageBreakSeconds)} />
+                <AnalyticsStat
+                  label="Fatigue warnings"
+                  value={d.fatigueWarningCount.toLocaleString('en-NG')}
+                />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Rides */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('rides', 'Ride operations')}
+        {open === 'rides' && (
+          <AnalyticsPanelBody
+            state={rides}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Requested" value={d.requested.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Completed" value={d.completed.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Cancelled" value={d.cancelled.toLocaleString('en-NG')} />
+                <AnalyticsStat
+                  label="No driver found"
+                  value={d.noDriversFound.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat label="Completion" value={ratePercent(d.completionRate)} />
+                <AnalyticsStat label="Cancellation" value={ratePercent(d.cancellationRate)} />
+                <AnalyticsStat
+                  label="Cancelled by customer"
+                  value={d.cancelledByCustomer.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Cancelled by driver"
+                  value={d.cancelledByDriver.toLocaleString('en-NG')}
+                />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Dispatch */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('dispatch', 'Dispatch performance')}
+        {open === 'dispatch' && (
+          <AnalyticsPanelBody
+            state={dispatch}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Offers" value={d.totalOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Accepted" value={d.acceptedOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Declined" value={d.declinedOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Expired" value={d.expiredOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Acceptance" value={ratePercent(d.acceptanceRate)} />
+                <AnalyticsStat
+                  label="Time to accept"
+                  value={durationLabel(d.averageTimeToAcceptSeconds)}
+                />
+                <AnalyticsStat label="Repeat offers" value={ratePercent(d.repeatedOfferRate)} />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Response */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('response', 'Operations response')}
+        {open === 'response' && (
+          <AnalyticsPanelBody
+            state={response}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Cases" value={d.totalCases.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Open" value={d.openCasesCount.toLocaleString('en-NG')} />
+                  <AnalyticsStat
+                    label="First response"
+                    value={durationLabel(d.averageTimeToFirstResponseSeconds)}
+                  />
+                  <AnalyticsStat
+                    label="Resolution"
+                    value={durationLabel(d.averageTimeToResolutionSeconds)}
+                  />
+                  <AnalyticsStat
+                    label="Closure"
+                    value={durationLabel(d.averageTimeToClosureSeconds)}
+                  />
+                </AnalyticsStatRow>
+                {d.byType.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No cases in this period.
+                  </div>
+                ) : (
+                  d.byType.map((row) => (
+                    <div
+                      key={row.caseType}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        paddingTop: 8,
+                        borderTop: `1px solid ${BORDER}`,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: WHITE }}>{row.caseType}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {row.totalCases.toLocaleString('en-NG')} ·{' '}
+                        {durationLabel(row.averageTimeToResolutionSeconds)} to resolve
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Geography */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('geography', 'Geographic demand')}
+        {open === 'geography' && (
+          <AnalyticsPanelBody
+            state={geography}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Pickups" value={d.totalPickups.toLocaleString('en-NG')} />
+                  <AnalyticsStat
+                    label="Drop-offs"
+                    value={d.totalDropoffs.toLocaleString('en-NG')}
+                  />
+                  <AnalyticsStat label="Cells" value={d.cells.length.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Cell size" value={`${String(d.cellSizeDegrees)}°`} />
+                </AnalyticsStatRow>
+                {d.cells.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No demand recorded in this period.
+                  </div>
+                ) : (
+                  [...d.cells]
+                    .sort((a, b) => b.pickupCount - a.pickupCount)
+                    .slice(0, 12)
+                    .map((cell) => (
+                      <div
+                        key={`${String(cell.latitude)},${String(cell.longitude)}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          paddingTop: 8,
+                          borderTop: `1px solid ${BORDER}`,
+                          fontFamily: 'Inter, sans-serif',
+                        }}
+                      >
+                        <span style={{ fontSize: 11.5, color: WHITE }}>
+                          {cell.latitude.toFixed(3)}, {cell.longitude.toFixed(3)}
+                        </span>
+                        <span style={{ fontSize: 11, color: MUTED }}>
+                          {cell.pickupCount.toLocaleString('en-NG')} pickups ·{' '}
+                          {cell.dropoffCount.toLocaleString('en-NG')} drop-offs
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function PageAnalytics() {
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -12215,12 +12804,15 @@ function PageAnalytics() {
   const heatVal = (_d: number, _h: number) => 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* The six operator drill-downs, ported from the standalone console. */}
+      <PageOperationsAnalytics />
+
       <Card style={{ padding: '10px 14px' }}>
         <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          These charts need day/hour/month time-series and a revenue feed. The Operations analytics
-          endpoints currently return KPI aggregates and ranked lists (surfaced on the Dashboard),
-          not chart-ready series — so these render empty until a series endpoint exists. See
-          docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+          The KPI aggregates and ranked lists those endpoints return are now on this page, above.
+          The charts BELOW still need day/hour/month time-series and a revenue feed, which no
+          endpoint provides yet — so they render empty rather than synthetic until a series endpoint
+          exists. See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
         </span>
       </Card>
       <div className="dx-split-row" style={{ display: 'flex', gap: 12 }}>
