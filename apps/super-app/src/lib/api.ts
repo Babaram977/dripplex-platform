@@ -2685,10 +2685,22 @@ export interface UpdateLoyaltyEarningProgrammeRequest {
   dailyPointsCap?: number | null;
 }
 
+/**
+ * What the server can still say about a promoter once removal has run.
+ *
+ * No `status` and no `removedAt`, and their absence is the contract: removal
+ * DELETES the participation (founder ruling, 2026-09-18), so there is no row
+ * to carry them. A response saying `REMOVED` would tell this console the
+ * participation still exists in a removed state — the shape the ruling got
+ * rid of.
+ *
+ * `detachedRedemptions` is what the removal cost: how many past acquisitions
+ * kept their money record but lost their link to this participation.
+ */
 export interface RemoveCampaignPromoterResultDto {
   id: string;
-  status: CampaignPromoterStatus;
-  removedAt: string | null;
+  promotionId: string;
+  detachedRedemptions: number;
 }
 
 export interface CreatePromotionRequest {
