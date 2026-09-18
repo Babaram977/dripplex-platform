@@ -37,9 +37,25 @@ function permissionsCheckedByTheConsole(source: string): string[] {
   return [...found].filter((p) => p !== '');
 }
 
-/** Every permission code the RBAC seed writes. */
+/**
+ * Every permission code the RBAC seed writes.
+ *
+ * The pattern allows HYPHENS and FOUR-OR-MORE segments. It used to be
+ * `[a-z_]+:[a-z_]+:[a-z_]+` — exactly three segments, underscores only — which
+ * made it blind to 26 of the 140 permissions the seed actually grants, among
+ * them `admin:merchant-settlement:commission:manage`,
+ * `admin:orders:recovery:manage` and `admin:drivers:security-settings:manage`.
+ *
+ * That narrowing could not let a bad string through — an unseen grant makes
+ * the check below flag a VALID permission, not miss an invalid one — but a
+ * guard that silently verifies 114 of 140 codes is not the guard it says it
+ * is, and the first console control to use a four-segment permission failed
+ * this test for being correct.
+ */
 function permissionsGrantedByTheSeed(source: string): Set<string> {
-  return new Set([...source.matchAll(/'([a-z_]+:[a-z_]+:[a-z_]+)'/g)].map((m) => m[1] ?? ''));
+  return new Set(
+    [...source.matchAll(/'([a-z][a-z_-]*(?::[a-z][a-z_-]*){2,})'/g)].map((m) => m[1] ?? ''),
+  );
 }
 
 describe('Operations Console permission strings', () => {
@@ -51,7 +67,9 @@ describe('Operations Console permission strings', () => {
     // the regexes stop matching — the exact way a guard rots into decoration.
     expect(consoleSource.length).toBeGreaterThan(1000);
     expect(permissionsCheckedByTheConsole(consoleSource).length).toBeGreaterThan(4);
-    expect(permissionsGrantedByTheSeed(seedSource).size).toBeGreaterThan(50);
+    // 140 at the time of writing. Held well above the 114 the old
+    // three-segment pattern saw, so a silent re-narrowing fails here.
+    expect(permissionsGrantedByTheSeed(seedSource).size).toBeGreaterThan(130);
   });
 
   it('checks only permissions the RBAC seed actually grants', () => {

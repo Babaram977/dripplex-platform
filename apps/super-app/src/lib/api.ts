@@ -20,6 +20,9 @@ import type {
   OperationsRideAllocationDto,
   OperationsRideDetailDto,
   OperationsRideTrackingDto,
+  MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
   SosAlertDto,
 } from '@dripplex/types';
 
@@ -35,6 +38,9 @@ export type {
   OperationsRideAllocationDto,
   OperationsRideDetailDto,
   OperationsRideTrackingDto,
+  MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -231,6 +237,38 @@ export interface RegistrationResponse {
   verification: Record<string, unknown>;
   profileId?: string;
   onboardingId?: string;
+}
+
+/**
+ * A commission campaign — DPX-COMMISSION-001. Exceptional promotional pricing
+ * that overrides a standing rate for its eligible window.
+ *
+ * Declared here rather than imported: the backend exports this type from its
+ * own service, not from @dripplex/types, so there is no shared contract to
+ * re-export yet. Kept field-for-field with `CommissionCampaignDto` in
+ * apps/backend/src/commercial/commission-campaign.service.ts.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** A FRACTION, not a percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: unknown | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PaginatedResult<T> {
@@ -1612,7 +1650,22 @@ export interface AdminDriverKycDto {
 // `business`/`kyc` are embedded, so the queue shows the business + KYC state
 // without an extra fetch.
 export interface AdminMerchantDto {
+  /**
+   * The merchant PROFILE id.
+   *
+   * TWO ENDPOINTS IN THIS FEATURE TAKE DIFFERENT IDS FOR THE SAME MERCHANT,
+   * so which field you pass is not interchangeable:
+   *   · POST /admin/merchant-settlement/commission/:merchantProfileId/rate
+   *     takes THIS one. It is what `Order.merchantId` matches and what the
+   *     settlement path resolves against.
+   *   · GET /admin/merchant/:id takes `merchantId` below — the USER id
+   *     (`merchantsService.getMerchantProfile(merchantUserId)`).
+   * Passing the wrong one 404s at best and names a different merchant at
+   * worst, and neither is visible from the call site.
+   */
   id: string;
+  /** The merchant's USER id — `profile.userId` in merchant.mapper.ts. NOT the
+   *  id the commission-rate endpoint takes. See `id` above. */
   merchantId: string;
   email: string;
   phone: string | null;
@@ -1621,6 +1674,19 @@ export interface AdminMerchantDto {
   status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   isApproved: boolean;
   rejectedReason: string | null;
+  /**
+   * The commission rate agreed with this merchant individually
+   * (DPX-MERCHANT-016), or null when the platform-wide rate applies.
+   * A FRACTION, not a percent: 0.075 is 7.5%.
+   *
+   * The list endpoint has always returned these — it serves
+   * `MerchantProfileDto`, which carries them — they were simply not declared
+   * here, so the console could not see a rate it was already being sent.
+   */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
   createdAt: string;
   business: {
     businessName: string;
@@ -4164,6 +4230,143 @@ export const api = {
     // estimate or not at all.
     getOperationsDispatchCandidates: (rideId: string) =>
       dx<DispatchSupportDto>('GET', `/operations/rides/${rideId}/dispatch-candidates`),
+    // ── Commission campaigns ─────────────────────────────────────────────
+    // DPX-COMMISSION-001. Exceptional promotional pricing that overrides a
+    // standing rate for its eligible window: Campaign → Negotiated → Platform.
+    //
+    // FULL CAPABILITY, released on the founder ruling of 2026-09-18.
+    //
+    // The five mutations below were held on 2026-09-17 while a maximum campaign
+    // duration was proposed. The ruling was that there is no maximum: campaign
+    // duration is an OPS-CONTROLLED PARAMETER, flexible by design, bounded only
+    // by `endsAt > startsAt`. See docs/DPX-COMMISSION-002-CAMPAIGN-DURATION.md.
+    //
+    // WHAT THAT MEANS FOR THIS CLIENT. A campaign rate is valid at 0 and a
+    // campaign with no `rules` applies platform-wide within its scope, so a
+    // permanent platform-wide zero-commission campaign is expressible here. The
+    // founder accepted that deliberately. The controls are PERMISSION (all five
+    // need admin:commission-campaigns:manage, enforced by the server), AUDIT
+    // (every mutation records one) and REVERSIBILITY (pause and a shortened
+    // endsAt both stop a campaign at any time).
+    //
+    // DO NOT add a client-side duration cap here. It would not be a boundary —
+    // the server accepts what the server accepts — and it would contradict the
+    // ruling. If a bound is ever wanted it belongs in assertWindow.
+    //
+    // `scope` is set at creation and is NOT updatable: UpdateCommissionCampaignDto
+    // has no scope field. Changing what a campaign applies to is a new campaign.
+    getCommissionCampaigns: (params?: {
+      scope?: CommissionScope;
+      status?: CommissionCampaignStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<CommissionCampaignDto>>(
+        'GET',
+        '/admin/commercial/commission-campaigns',
+        undefined,
+        params,
+      ),
+
+    /** One campaign by id — used after a mutation to show the server's answer. */
+    getCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>('GET', `/admin/commercial/commission-campaigns/${campaignId}`),
+
+    /**
+     * Create a campaign. `commissionRate` is a FRACTION (0.07 is 7%), bounded
+     * 0 <= rate <= 0.9999 by the server — zero is legal and intended, since the
+     * negotiated merchant rate refuses it and the locked precedence names the
+     * campaign as the instrument for expressing it.
+     *
+     * Omitting `rules` means the campaign applies PLATFORM-WIDE within its
+     * scope. That is the single most consequential choice on this call and the
+     * UI says so before it is sent.
+     */
+    createCommissionCampaign: (body: {
+      name: string;
+      description?: string;
+      scope: CommissionScope;
+      commissionRate: number;
+      priority?: number;
+      startsAt: string;
+      endsAt: string;
+      rules?: unknown;
+      announce?: boolean;
+    }) => dx<CommissionCampaignDto>('POST', '/admin/commercial/commission-campaigns', body),
+
+    /**
+     * Edit a campaign. Every field is optional; only what is sent changes.
+     * There is deliberately no `scope` — the server cannot change it, so
+     * offering it here would be a control that silently does nothing.
+     */
+    updateCommissionCampaign: (
+      campaignId: string,
+      body: {
+        name?: string;
+        description?: string;
+        commissionRate?: number;
+        priority?: number;
+        startsAt?: string;
+        endsAt?: string;
+        rules?: unknown;
+        announce?: boolean;
+      },
+    ) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}`,
+        body,
+      ),
+
+    /** Stop a campaign applying, without ending it. Reversible via resume. */
+    pauseCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/pause`,
+      ),
+
+    /** Put a paused campaign back in force for the remainder of its window. */
+    resumeCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/resume`,
+      ),
+
+    /**
+     * Retire a campaign. Archiving is how a campaign leaves the list — there is
+     * no delete, and there must not be one: settled transactions snapshot the
+     * rate that was in force, and the campaign row is the record of what that
+     * rate was and why.
+     */
+    archiveCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/archive`,
+      ),
+
+    // ── Stalled orders ───────────────────────────────────────────────────
+    // Confirmed DELIVERY orders a merchant has not advanced for 30 minutes.
+    // DrippleX owns these; the merchant has already been warned automatically.
+    //
+    // Ported from the standalone operations-console (founder ruling,
+    // 2026-09-16). Same backend endpoint, same admin:orders:read permission,
+    // no new backend.
+    //
+    // READ ONLY, and deliberately no companion resolve/dismiss/assign method:
+    // the 2026-09-16 ruling escalates a stalled order but authorises nobody to
+    // act on one. An exception closes when the ORDER moves and the backend
+    // resolves it; nothing an operator can press closes one. A method for an
+    // action that does not exist would invite a control to be built against it.
+    //
+    // ApiPage, NOT the flat PaginatedResult above — this endpoint returns its
+    // counts under `meta`, and the flat type typechecks against it happily
+    // while rendering `undefined`. See the note on ApiPage.
+    getOrderExceptions: (params?: {
+      status?: OrderExceptionStatus;
+      type?: 'STALLED_CONFIRMED';
+      page?: number;
+      pageSize?: number;
+    }) => dx<ApiPage<OrderExceptionDto>>('GET', '/admin/orders/exceptions', undefined, params),
 
     // ── Automatic recovery ───────────────────────────────────────────────
     // Is the 24-hour recovery backstop armed, and from when?
@@ -4486,6 +4689,43 @@ export const api = {
       }),
     settleFleetPeriod: (fleetId: string, periodStart: string) =>
       dx<FleetPeriodDto>('POST', `/admin/fleets/${fleetId}/commission/settle`, { periodStart }),
+
+    /**
+     * The same instrument for a MERCHANT — DPX-MERCHANT-016, founder-locked
+     * 2026-09-11. Placed beside the fleet one deliberately: the two express
+     * the same commercial idea, and the backend DTOs say keeping their shapes
+     * identical is what stops one quietly acquiring different bounds.
+     *
+     * Precedence is Campaign → Negotiated → Platform. A campaign is
+     * exceptional promotional pricing overriding the agreement only for its
+     * eligible window, after which resolution returns to the agreement
+     * automatically. Do not change that precedence without founder approval.
+     *
+     * THE ID IS THE MERCHANT PROFILE ID — `AdminMerchantDto.id`, NOT
+     * `.merchantId`. The DTO carries both and the invitingly-named one is
+     * wrong: merchant.mapper.ts maps `id` to `profile.id` and `merchantId` to
+     * `profile.userId`. The profile id is what `Order.merchantId` matches and
+     * what settlement resolves against; the user id would 404 — or name a
+     * different merchant.
+     *
+     * `rate` is a FRACTION: 0.075 is 7.5%. Null clears the agreement and
+     * returns the merchant to the platform rate. The server bounds it
+     * strictly inside 0 and 1 (@Min(0.0001) @Max(0.9999)): zero commission is
+     * deliberately not expressible here, because a merchant DrippleX charges
+     * nothing is a decision with no ceiling on its cost, and a campaign is
+     * the instrument for that. Nothing client-side may relax those bounds —
+     * the server's refusal is the boundary.
+     *
+     * Requires admin:merchant-settlement:commission:manage, which the RBAC
+     * seed grants to administrator and super_administrator only, NOT to
+     * operations_staff.
+     */
+    setMerchantNegotiatedRate: (merchantProfileId: string, rate: number | null, note?: string) =>
+      dx<MerchantNegotiatedRateDto>(
+        'POST',
+        `/admin/merchant-settlement/commission/${merchantProfileId}/rate`,
+        { rate, ...(note === undefined ? {} : { note }) },
+      ),
 
     /**
      * DPX-OPS — the completed record, for audit, disputes and security
