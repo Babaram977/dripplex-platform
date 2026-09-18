@@ -11,7 +11,10 @@ import {
 import { NotFoundDomainException } from '../common/exceptions/domain.exception';
 import { LOYALTY_SETTING_ID } from '../loyalty/loyalty.constants';
 import { PrismaService } from '../prisma/prisma.service';
-import { CampaignPromoterService } from '../referrals/campaign-promoter.service';
+import {
+  CampaignPromoterService,
+  type RemovedPromoter,
+} from '../referrals/campaign-promoter.service';
 import {
   UNIVERSAL_ACQUISITION_INCENTIVE_ID,
   UNIVERSAL_ACQUISITION_INCENTIVE_MAX_RIDES,
@@ -222,13 +225,22 @@ export class OperationsPromotionsService {
     return row;
   }
 
+  /**
+   * Take a promoter off a campaign — a delete, per the founder ruling of
+   * 2026-09-18.
+   *
+   * The response no longer carries `status` and `removedAt`. It cannot: there
+   * is no row to carry them, and returning `REMOVED`/a timestamp would tell a
+   * console the participation still exists in a removed state, which is the
+   * shape this ruling got rid of. `detachedRedemptions` is the honest
+   * replacement — what the removal actually cost.
+   */
   public async removePromoter(
     promoterId: string,
     adminUserId: string,
     context: AuditContext,
-  ): Promise<{ id: string; status: CampaignPromoterStatus; removedAt: Date | null }> {
-    const removed = await this.promoters.removePromoter(promoterId, adminUserId, context);
-    return { id: removed.id, status: removed.status, removedAt: removed.removedAt };
+  ): Promise<RemovedPromoter> {
+    return await this.promoters.removePromoter(promoterId, adminUserId, context);
   }
 
   /**

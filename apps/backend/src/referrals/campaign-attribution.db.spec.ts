@@ -172,7 +172,7 @@ describe('CampaignAttributionService', () => {
     expect(promoRedemptions).toBe(0);
   });
 
-  it('refuses an unknown token, a self-referral, and a removed promoter', async () => {
+  it('refuses an unknown token, a self-referral, and the token of a deleted promoter', async () => {
     if (!databaseAvailable) return;
     const { promoter, userId } = await aPromoter();
     const referee = await aUser();
@@ -184,9 +184,13 @@ describe('CampaignAttributionService', () => {
       ATTRIBUTION_OUTCOME.SELF_REFERRAL,
     );
 
+    // TOKEN_UNKNOWN, not PROMOTER_INACTIVE, and the change is the founder ruling
+    // of 2026-09-18 rather than a regression: removal now DELETES the
+    // participation, so the token does not resolve to anything. There is no
+    // inactive promoter to find, because there is no promoter.
     await promoters.removePromoter(promoter.id, ADMIN);
     expect((await attribution.attribute(referee, promoter.token, ctx)).outcome).toBe(
-      ATTRIBUTION_OUTCOME.PROMOTER_INACTIVE,
+      ATTRIBUTION_OUTCOME.TOKEN_UNKNOWN,
     );
     expect(await prisma.referralRedemption.count({ where: { refereeUserId: referee } })).toBe(0);
   });

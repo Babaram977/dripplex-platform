@@ -30,6 +30,20 @@ export interface PromoterReward {
   points?: number | undefined;
 }
 
+/**
+ * What is left to say about a promoter once the row is gone.
+ *
+ * Deliberately not a `CampaignPromoter`: removal deletes the row, so returning
+ * one would hand callers an object that no longer exists and invite a console
+ * to render it as if it did. `detachedRedemptions` is what the removal cost —
+ * how many historical attributions lost their link to this participation.
+ */
+export interface RemovedPromoter {
+  id: string;
+  promotionId: string;
+  detachedRedemptions: number;
+}
+
 export interface AddPromoterInput {
   promotionId: string;
   userId: string;
@@ -80,11 +94,17 @@ export class CampaignPromoterService {
     const ownerType = PARTICIPANT_OWNER_TYPE[input.participantType];
     await this.referrals.getOrCreateMyCode(input.userId, ownerType, context);
 
+    // Since removal became a delete (founder ruling, 2026-09-18) an existing row
+    // can only be a LIVE participation — there is no removed state to reinstate
+    // from. Somebody taken off a campaign and added back gets a NEW row and a
+    // NEW token; their old links stop working. That is a real consequence of
+    // total removal rather than an oversight, and it is why this refuses by
+    // name instead of quietly resurrecting anything.
     const existing = await this.prisma.campaignPromoter.findUnique({
       where: { promotionId_userId: { promotionId: campaign.id, userId: input.userId } },
     });
     if (existing) {
-      return await this.reinstate(existing, input, reward, adminUserId, context);
+      throw new ConflictDomainException('That user is already an active promoter on this campaign');
     }
 
     // Founder ruling, 2026-09-13: one campaign at a time.
@@ -149,90 +169,76 @@ export class CampaignPromoterService {
   }
 
   /**
-   * Stop a promoter attracting new acquisitions.
+   * Take a promoter off a campaign. A DELETE, not a status change.
    *
-   * A status change, never a delete. Founder ruling: removing somebody ends
-   * their future participation and leaves every historical referral and reward
-   * record readable — which is also why the foreign keys are RESTRICT, so a
-   * later attempt to tidy the row away fails loudly instead of taking the
-   * attribution with it. The token is kept rather than cleared: it is what
-   * historical rows were attributed through, and a removed promoter's past
-   * acquisitions still have to be explainable.
+   * FOUNDER RULING, 2026-09-18, reversing the earlier soft-removal decision:
+   * "No soft removal in any campaign, removal should be completely, ops have
+   * total control. If it has been trigger by ops there is a reason for that."
+   *
+   * The ruling came from what soft removal actually looked like on the desk:
+   * promoters sitting in the campaign list as REMOVED with `0/0` and `₦0`,
+   * justified by copy about attributions and earnings standing when there were
+   * no attributions and no earnings to stand. Rows kept for a reason that did
+   * not apply to them.
+   *
+   * WHAT IS DELETED AND WHAT SURVIVES. The participation row goes: the token,
+   * the rate, the class. `ReferralRedemption` is the only table that points
+   * here, its `campaignPromoterId` is nullable by design, and those rows record
+   * money that actually moved into people's wallets — the wallet ledger holds
+   * the matching entries. So they are DETACHED, not deleted: who referred whom,
+   * what was paid, when it qualified and when it was paid all survive on the
+   * redemption and its referral, which names the referrer independently of this
+   * table. What is lost is the campaign → participation → token link on those
+   * historical rows, and that is the price of the ruling rather than an
+   * oversight.
+   *
+   * Detaching first is also what makes the delete possible at all: the FK is
+   * `onDelete: Restrict`, so a bare delete of a promoter carrying attributions
+   * would fail. One transaction, so a promoter is never left detached-but-alive.
+   *
+   * No guard on attributions or earnings. The ruling is explicit that an
+   * operator who triggered this had a reason; the console states the
+   * consequence before the click rather than refusing after it.
    */
   public async removePromoter(
     promoterId: string,
     adminUserId: string,
     context?: AuditContext,
-  ): Promise<CampaignPromoter> {
+  ): Promise<RemovedPromoter> {
     const promoter = await this.prisma.campaignPromoter.findUnique({ where: { id: promoterId } });
     if (!promoter) {
       throw new NotFoundDomainException('Campaign promoter not found');
     }
-    if (promoter.status === CampaignPromoterStatus.REMOVED) {
-      return promoter;
-    }
 
-    const removed = await this.prisma.campaignPromoter.update({
-      where: { id: promoterId },
-      data: {
-        status: CampaignPromoterStatus.REMOVED,
-        removedAt: new Date(),
-        removedBy: adminUserId,
-      },
+    const detached = await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.referralRedemption.updateMany({
+        where: { campaignPromoterId: promoterId },
+        data: { campaignPromoterId: null },
+      });
+      await tx.campaignPromoter.delete({ where: { id: promoterId } });
+      return count;
     });
+
     await this.auditService.record(
       CAMPAIGN_PROMOTER_AUDIT_ACTIONS.REMOVED,
       { ...context, userId: adminUserId },
       {
         resource: 'campaign_promoter',
-        resourceId: removed.id,
-        metadata: { promotionId: removed.promotionId, promoterUserId: removed.userId },
+        resourceId: promoter.id,
+        metadata: {
+          promotionId: promoter.promotionId,
+          promoterUserId: promoter.userId,
+          // The row is gone, so the audit entry is the only remaining record of
+          // what it was and what removing it cost. `detachedRedemptions` is how
+          // many historical attributions lost their link to this participation.
+          token: promoter.token,
+          participantType: promoter.participantType,
+          detachedRedemptions: detached,
+          deleted: true,
+        },
       },
     );
-    return removed;
-  }
-
-  /**
-   * Put a previously removed promoter back on the campaign, keeping their token.
-   *
-   * Re-adding cannot create a second row — `@@unique([promotionId, userId])`
-   * forbids it — so the choice is between refusing and reinstating. Reinstating
-   * with the *same* token is what keeps their history one series rather than
-   * two: every acquisition they ever made for this campaign stays attributed to
-   * one participation, before and after the gap.
-   */
-  private async reinstate(
-    existing: CampaignPromoter,
-    input: AddPromoterInput,
-    reward: PromoterReward,
-    adminUserId: string,
-    context?: AuditContext,
-  ): Promise<CampaignPromoter> {
-    if (existing.status === CampaignPromoterStatus.ACTIVE) {
-      throw new ConflictDomainException('That user is already an active promoter on this campaign');
-    }
-    const reinstated = await this.prisma.campaignPromoter.update({
-      where: { id: existing.id },
-      data: {
-        status: CampaignPromoterStatus.ACTIVE,
-        participantType: input.participantType,
-        rewardAmount: reward.amountNgn ?? null,
-        rewardPoints: reward.points ?? null,
-        removedAt: null,
-        removedBy: null,
-        addedBy: adminUserId,
-      },
-    });
-    await this.auditService.record(
-      CAMPAIGN_PROMOTER_AUDIT_ACTIONS.ADDED,
-      { ...context, userId: adminUserId },
-      {
-        resource: 'campaign_promoter',
-        resourceId: reinstated.id,
-        metadata: { reinstated: true, promotionId: reinstated.promotionId },
-      },
-    );
-    return reinstated;
+    return { id: promoter.id, promotionId: promoter.promotionId, detachedRedemptions: detached };
   }
 
   /**
