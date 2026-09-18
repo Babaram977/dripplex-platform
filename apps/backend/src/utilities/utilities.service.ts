@@ -95,8 +95,43 @@ export interface UtilityPurchaseDto {
   completedAt: string | null;
 }
 
+/**
+ * Who bought it — the identity an operator needs before they can do anything.
+ *
+ * Nullable only so a purchase whose customer record has gone renders as
+ * "unknown" rather than crashing the one desk that exists to sort out
+ * somebody's money. The relation is required and cascades, so in practice it
+ * is always there.
+ */
+export interface UtilityPurchaseCustomerDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  /** Primary identity per the founder decision — no username. */
+  phone: string | null;
+  email: string;
+}
+
 export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
   customerId: string;
+  /**
+   * WHO BOUGHT IT, not what was topped up.
+   *
+   * `customerIdentifier` on the base DTO is the phone, meter or smartcard
+   * number the purchase TARGETS — routinely somebody else's number, and for
+   * BETTING not a number at all. It was the only person-shaped field on this
+   * desk, so a failing purchase could be read in full without ever
+   * establishing whose money it was; `customerId` is a UUID and was rendered
+   * nowhere.
+   *
+   * Founder, 2026-09-18, on a customer who tried to buy airtime six times: the
+   * console "is not given enough details to check what is the problem and
+   * customer cannot be identified".
+   *
+   * Ops-only. It is not on `UtilityPurchaseDto`, so no customer's own receipt
+   * can carry it.
+   */
+  customer: UtilityPurchaseCustomerDto | null;
   /** Ops-only: what the float was actually debited, and therefore the
    * margin. Never sent to the customer. */
   providerCost: number | null;
@@ -669,6 +704,16 @@ export class UtilitiesService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        // An explicit select, never `include: { customer: true }`: the User
+        // model carries password hashes, tokens and everything else, and none
+        // of it needs to be read to say who bought some airtime. The mapper
+        // below independently names what leaves; this is the half that keeps
+        // the rest from being fetched at all.
+        include: {
+          customer: {
+            select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+          },
+        },
       }),
     ]);
     return {
@@ -847,8 +892,16 @@ export class UtilitiesService {
       metadata: { outcome: dto.outcome, note: dto.note },
     });
 
+    // The same customer select as the list, because the console replaces the
+    // row it was showing with this answer — without it, resolving a purchase
+    // would blank out the very identity the operator had just used to act.
     const refreshed = await this.prisma.utilityPurchase.findUniqueOrThrow({
       where: { id: purchase.id },
+      include: {
+        customer: {
+          select: { id: true, firstName: true, lastName: true, phone: true, email: true },
+        },
+      },
     });
 
     // The reversal path already told the customer from inside `reverse()`.
@@ -1252,10 +1305,46 @@ export function toPurchaseDto(purchase: UtilityPurchase): UtilityPurchaseDto {
   };
 }
 
-export function toAdminPurchaseDto(purchase: UtilityPurchase): AdminUtilityPurchaseDto {
+/**
+ * Exactly the columns `listAllPurchases` selects.
+ *
+ * It is NOT the thing that stops the rest of the user row reaching an operator
+ * screen — TypeScript permits a wider row to be spread into a narrower type,
+ * so widening the select alone compiles. Verified by mutation: widening the
+ * select leaves every test green, and so does spreading the row in the mapper.
+ * Only doing BOTH leaks, and that is what the key-list assertion in
+ * bill-payments-operator-identity.db.spec.ts catches. The narrow select's own
+ * job is to not fetch password hashes and tokens into memory in the first
+ * place; the mapper's is to name what leaves.
+ */
+interface UtilityPurchaseCustomerRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  email: string;
+}
+
+export function toAdminPurchaseDto(
+  purchase: UtilityPurchase & { customer?: UtilityPurchaseCustomerRow | null },
+): AdminUtilityPurchaseDto {
+  const customer = purchase.customer;
   return {
     ...toPurchaseDto(purchase),
     customerId: purchase.customerId,
+    // A caller that did not ask for the relation and a purchase whose customer
+    // is gone deliberately look the same to the console, which renders one
+    // "unknown" for both.
+    customer:
+      customer === undefined || customer === null
+        ? null
+        : {
+            id: customer.id,
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            phone: customer.phone,
+            email: customer.email,
+          },
     providerCost: purchase.providerCost === null ? null : Number(purchase.providerCost),
     providerResponse: purchase.providerResponse ?? null,
   };
