@@ -65,6 +65,8 @@ import {
   type CommissionCampaignDto,
   type CommissionCampaignStatus,
   type CommissionScope,
+  type OrderExceptionDto,
+  type OrderExceptionStatus,
 } from '../lib/api';
 import { auth, type DxUser } from '../lib/auth';
 import { addressPredictions, geocodeAddress, mapsEnabled, mapsLibrary } from '../lib/maps';
@@ -128,6 +130,7 @@ export type AdminPage =
   | 'dxpoints'
   | 'billpayments'
   | 'commissioncampaigns'
+  | 'stalledorders'
   | 'recovery'
   | 'incidents'
   | 'support'
@@ -661,6 +664,10 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
     label: 'Commission Campaigns',
     requires: 'admin:commission-campaign:read',
   },
+  // The two order-exception desks, adjacent because they are two views of
+  // one situation: what has stalled, and whether the platform will act on it
+  // by itself. Both read-only, both on the permission their endpoints enforce.
+  { page: 'stalledorders', icon: '⏳', label: 'Stalled Orders', requires: 'admin:orders:read' },
   { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
   { page: 'support', icon: '🎧', label: 'Support' },
@@ -864,6 +871,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
   commissioncampaigns: 'Commission Campaigns',
+  stalledorders: 'Stalled Orders',
   recovery: 'Automatic Recovery',
   incidents: 'Incidents',
   support: 'Support Centre',
@@ -5862,6 +5870,174 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 // ─── Page: Merchants ──────────────────────────────────────────────────────────
+/**
+ * The commission rate agreed with one merchant — DPX-MERCHANT-016,
+ * founder-locked 2026-09-11.
+ *
+ * Ported from the standalone operations-console. Same endpoint, same
+ * permission, no new backend. Shaped to mirror the FLEET negotiated-rate
+ * control above, deliberately: SetMerchantNegotiatedRateDto states that the
+ * two express the same commercial idea and that keeping their shapes
+ * identical is what stops one quietly acquiring different bounds from the
+ * other. Percentage in, fraction out, optional note, clear-to-platform — the
+ * same four moves, so an operator who knows one knows the other.
+ *
+ * PRECEDENCE IS LOCKED: Campaign → Negotiated → Platform. What is agreed here
+ * is the merchant's standing rate; a campaign is exceptional promotional
+ * pricing that overrides it for its eligible window only, after which
+ * resolution returns to this agreement automatically. This control cannot
+ * express a campaign and must never be made to.
+ *
+ * ZERO IS NOT EXPRESSIBLE. The server bounds the fraction strictly inside 0
+ * and 1, because a merchant DrippleX charges nothing is a decision with no
+ * ceiling on its cost. The guard below mirrors that; it does not replace it.
+ * The server's refusal is the boundary, and nothing here may widen it.
+ *
+ * EDITING IS NOT RETROACTIVE. Every financially settled transaction snapshots
+ * the rate in force at the time, so changing an agreement cannot rewrite a
+ * settlement that already happened. Said in the copy because an operator
+ * about to change a live commercial rate should not have to assume it.
+ */
+function MerchantRatePanel({ m, reload }: { m: AdminMerchantDto; reload: () => void }) {
+  const [rateInput, setRateInput] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Hiding a control is a courtesy; the server's 403 is the refusal that
+  // counts. The seed grants this to administrator and super_administrator
+  // only — an operations_staff session will correctly not see this panel.
+  if (!hasPerm('admin:merchant-settlement:commission:manage')) return null;
+
+  const name = m.business?.businessName ?? `${m.firstName} ${m.lastName}`;
+
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    void (async () => {
+      try {
+        await fn();
+        setMsg(okMsg);
+        setRateInput('');
+        setNote('');
+        reload();
+      } catch (e: unknown) {
+        setErr((e as { message?: string }).message ?? 'Could not save that rate.');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+        padding: 10,
+        borderRadius: 10,
+        border: `1px solid ${BORDER}`,
+        background: 'rgba(255,255,255,.03)',
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ fontSize: 12, fontWeight: 600, color: WHITE }}>Commission rate</div>
+      <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.5 }}>
+        {m.negotiatedRate === null
+          ? 'None agreed — the platform-wide rate applies to this merchant.'
+          : `${FLEET_PCT(m.negotiatedRate)} agreed${
+              m.negotiatedAt === null
+                ? ''
+                : ` on ${new Date(m.negotiatedAt).toLocaleDateString('en-NG')}`
+            }. This overrides the platform rate.`}
+        {m.negotiationNote !== null && m.negotiationNote !== '' && ` — ${m.negotiationNote}`}
+      </div>
+      <div style={{ fontSize: 10.5, color: MUTED, lineHeight: 1.5 }}>
+        A campaign still overrides this for its eligible window, after which the agreement applies
+        again automatically. Settled transactions keep the rate that was in force, so changing this
+        never rewrites a settlement that already happened.
+      </div>
+
+      {msg !== null && <div style={{ fontSize: 11.5, color: G3 }}>{msg}</div>}
+      {err !== null && <div style={{ fontSize: 11.5, color: C_ERR }}>{err}</div>}
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          className="dx-input"
+          style={{ flex: 1, minWidth: 110 }}
+          placeholder="Rate %, e.g. 7.5"
+          aria-label="Commission rate percent"
+          value={rateInput}
+          onChange={(e) => {
+            setRateInput(e.target.value);
+          }}
+        />
+        <input
+          className="dx-input"
+          style={{ flex: 2, minWidth: 160 }}
+          placeholder="What was agreed (optional)"
+          aria-label="What was agreed"
+          value={note}
+          onChange={(e) => {
+            setNote(e.target.value);
+          }}
+        />
+        <Btn
+          label="Save rate"
+          small
+          color={G3}
+          disabled={busy || rateInput.trim() === ''}
+          onClick={() => {
+            const percent = Number(rateInput.trim());
+            // Mirrors the server's @Min(0.0001) @Max(0.9999) as a courtesy so
+            // the operator gets a sentence instead of a 400. It must never be
+            // LOOSER than the server: zero commission is not expressible
+            // through this instrument, and a campaign is what expresses it.
+            if (!Number.isFinite(percent) || percent <= 0 || percent >= 100) {
+              setErr('Enter the rate as a percentage between 0 and 100 — 7.5 for 7.5%.');
+              return;
+            }
+            run(
+              // Entered as a percentage because that is how it is agreed;
+              // sent as the fraction the server validates and stores.
+              // THE PROFILE ID, m.id — NOT m.merchantId, which is the user id
+              // the account and detail routes take. See AdminMerchantDto.
+              async () =>
+                await api.admin.setMerchantNegotiatedRate(
+                  m.id,
+                  percent / 100,
+                  note.trim() === '' ? undefined : note.trim(),
+                ),
+              `${name} is now on ${String(percent)}%.`,
+            );
+          }}
+        />
+        {m.negotiatedRate !== null && (
+          <Btn
+            label="Clear"
+            small
+            outline
+            color={C_WARN}
+            disabled={busy}
+            onClick={() => {
+              // null CLEARS the agreement. Not zero — zero is refused, and
+              // sending it to mean "no agreement" would be a 400 an operator
+              // could not act on.
+              run(
+                async () => await api.admin.setMerchantNegotiatedRate(m.id, null),
+                `${name} is back on the platform rate.`,
+              );
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showReject, setShowReject] = useState(false);
@@ -6202,6 +6378,7 @@ function MerchantReviewCard({ m, reload }: { m: AdminMerchantDto; reload: () => 
               </div>
             </div>
           )}
+          <MerchantRatePanel m={m} reload={reload} />
           {/* merchantId, NOT m.id — m.id is the MerchantProfile's own primary
               key and the account routes are keyed on the user. */}
           <DeleteAccountPanel
@@ -10539,6 +10716,234 @@ function CampaignRow({
   );
 }
 
+// ─── Page: Stalled Orders ─────────────────────────────────────────────────────
+/**
+ * DPX-ORDER-8D-C ops visibility — the stalled-order queue.
+ *
+ * Founder remediation ruling, 2026-09-16: a DELIVERY order left CONFIRMED and
+ * unadvanced for 30 minutes stops being the merchant's private problem and
+ * becomes a DrippleX-managed exception. #416 detects those and warns the
+ * merchant; until a screen existed, the rows were written to a table nothing
+ * read, so the platform could not see what it had taken ownership of.
+ *
+ * Ported here from the standalone operations-console on the 2026-09-16 ruling
+ * that ops.dripplex.com is the single operator surface. Same endpoint, same
+ * `admin:orders:read`, no new backend. The presentation is this console's own.
+ *
+ * READ ONLY, deliberately. No resolve, dismiss, assign, annotate or
+ * contact-merchant control, because no ruling defines one — the 30-minute
+ * threshold escalates an order, it does not authorise anyone to act on one. An
+ * exception closes when the ORDER moves and the backend resolves it; nothing
+ * here can close one.
+ *
+ * AN ERROR IS NOT AN EMPTY QUEUE. A failed read says so rather than rendering
+ * "No stalled orders" — the same class of lie as reporting a failed safety
+ * read as OFF, and worse here, because the reassuring state is the one an
+ * operator is hoping for. One union-typed variable, so a stale list cannot sit
+ * under an error banner.
+ */
+type StalledOrdersView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: OrderExceptionDto[]; total: number };
+
+/**
+ * Minutes read badly past a couple of hours, and this queue's whole point is
+ * that an order has waited an unreasonable time — "6382 minutes" makes that
+ * harder to see, not easier.
+ */
+export function formatStalledWait(minutes: number): string {
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const rest = minutes % 60;
+    return rest === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(rest)}m`;
+  }
+  const days = Math.floor(hours / 24);
+  const restHours = hours % 24;
+  return restHours === 0 ? `${String(days)}d` : `${String(days)}d ${String(restHours)}h`;
+}
+
+function PageStalledOrders() {
+  const [status, setStatus] = useState<OrderExceptionStatus>('OPEN');
+  const [view, setView] = useState<StalledOrdersView>({ kind: 'loading' });
+
+  const load = useCallback(async (next: OrderExceptionStatus) => {
+    setView({ kind: 'loading' });
+    try {
+      const page = await api.admin.getOrderExceptions({ status: next, pageSize: 50 });
+      setView({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load stalled orders.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load(status);
+  }, [load, status]);
+
+  const tabs: { value: OrderExceptionStatus; label: string }[] = [
+    { value: 'OPEN', label: 'Open' },
+    { value: 'RESOLVED', label: 'Resolved' },
+  ];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader
+          title="Stalled Orders"
+          action={
+            <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.kind === 'ok'
+                ? `${view.total.toLocaleString('en-NG')} ${
+                    view.total === 1 ? 'exception' : 'exceptions'
+                  }`
+                : ''}
+            </span>
+          }
+        />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Confirmed delivery orders a merchant has not advanced. DrippleX owns these; the merchant
+          has already been warned automatically. This queue is a view — an exception closes when the
+          order moves, not from here.
+        </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 6 }}>
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            className="dx-btn dx-tab"
+            onClick={() => setStatus(t.value)}
+            style={{
+              background: status === t.value ? G2 : 'rgba(255,255,255,.05)',
+              color: status === t.value ? NAVY_DEEP : MUTED,
+              border: `1px solid ${status === t.value ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: status === t.value ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load stalled orders
+            </div>
+            {/* NOT "no stalled orders". A queue that failed to load and a queue
+                that is genuinely empty look identical to a reassured operator,
+                and only one of them means every order is moving. */}
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as the queue being empty — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {status === 'OPEN'
+              ? 'No stalled orders. Every confirmed delivery order is moving.'
+              : 'Nothing has been resolved yet.'}
+          </div>
+        ) : (
+          view.items.map((x, i) => <StalledOrderRow key={x.id} exception={x} first={i === 0} />)
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function StalledOrderRow({ exception, first }: { exception: OrderExceptionDto; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: 12.5,
+            fontWeight: 600,
+            color: WHITE,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {exception.order.orderNumber} · ₦{Math.round(exception.order.total).toLocaleString()}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            marginTop: 2,
+          }}
+        >
+          {/* The STORED wait, not a live clock. It records what the order had
+              waited when the platform took ownership; recomputing it would
+              quietly disagree the moment the order moves. */}
+          Waited {formatStalledWait(exception.waitedMinutes)} · Detected{' '}
+          {formatCaseTime(exception.detectedAt)}
+          {exception.notifiedAt === null
+            ? ' · Merchant warning pending retry'
+            : ` · Merchant warned ${formatCaseTime(exception.notifiedAt)}`}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <Chip
+          label={exception.status === 'OPEN' ? 'Open' : 'Resolved'}
+          color={exception.status === 'OPEN' ? C_WARN : MUTED}
+        />
+        <Chip label={exception.order.status} color={MUTED} />
+        <Chip label={exception.order.paymentStatus} color={MUTED} />
+      </div>
+    </div>
+  );
+}
+
 // ─── Page: Automatic Recovery ─────────────────────────────────────────────────
 /**
  * DPX-ORDER-8D-RECOVERY — the operator's answer to "is the platform about to
@@ -14431,6 +14836,8 @@ function renderPage(page: AdminPage) {
       return <PageBillPayments />;
     case 'commissioncampaigns':
       return <PageCommissionCampaigns />;
+    case 'stalledorders':
+      return <PageStalledOrders />;
     case 'recovery':
       return <PageRecoveryActivation />;
     case 'incidents':
