@@ -17,6 +17,8 @@ import type {
   FleetPeriodDto,
   InitiatedCallDto,
   MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
   SosAlertDto,
 } from '@dripplex/types';
 
@@ -29,6 +31,8 @@ import type {
  */
 export type {
   MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -4157,6 +4161,30 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Stalled orders ───────────────────────────────────────────────────
+    // Confirmed DELIVERY orders a merchant has not advanced for 30 minutes.
+    // DrippleX owns these; the merchant has already been warned automatically.
+    //
+    // Ported from the standalone operations-console (founder ruling,
+    // 2026-09-16). Same backend endpoint, same admin:orders:read permission,
+    // no new backend.
+    //
+    // READ ONLY, and deliberately no companion resolve/dismiss/assign method:
+    // the 2026-09-16 ruling escalates a stalled order but authorises nobody to
+    // act on one. An exception closes when the ORDER moves and the backend
+    // resolves it; nothing an operator can press closes one. A method for an
+    // action that does not exist would invite a control to be built against it.
+    //
+    // ApiPage, NOT the flat PaginatedResult above — this endpoint returns its
+    // counts under `meta`, and the flat type typechecks against it happily
+    // while rendering `undefined`. See the note on ApiPage.
+    getOrderExceptions: (params?: {
+      status?: OrderExceptionStatus;
+      type?: 'STALLED_CONFIRMED';
+      page?: number;
+      pageSize?: number;
+    }) => dx<ApiPage<OrderExceptionDto>>('GET', '/admin/orders/exceptions', undefined, params),
+
     // ── Automatic recovery ───────────────────────────────────────────────
     // Is the 24-hour recovery backstop armed, and from when?
     //
