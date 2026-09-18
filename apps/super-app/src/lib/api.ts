@@ -16,6 +16,7 @@ import type {
   FleetOverviewDto,
   FleetPeriodDto,
   InitiatedCallDto,
+  MerchantNegotiatedRateDto,
   OrderExceptionDto,
   OrderExceptionStatus,
   SosAlertDto,
@@ -29,6 +30,7 @@ import type {
  * apply.
  */
 export type {
+  MerchantNegotiatedRateDto,
   OrderExceptionDto,
   OrderExceptionStatus,
   FleetOverviewDto,
@@ -1608,7 +1610,22 @@ export interface AdminDriverKycDto {
 // `business`/`kyc` are embedded, so the queue shows the business + KYC state
 // without an extra fetch.
 export interface AdminMerchantDto {
+  /**
+   * The merchant PROFILE id.
+   *
+   * TWO ENDPOINTS IN THIS FEATURE TAKE DIFFERENT IDS FOR THE SAME MERCHANT,
+   * so which field you pass is not interchangeable:
+   *   · POST /admin/merchant-settlement/commission/:merchantProfileId/rate
+   *     takes THIS one. It is what `Order.merchantId` matches and what the
+   *     settlement path resolves against.
+   *   · GET /admin/merchant/:id takes `merchantId` below — the USER id
+   *     (`merchantsService.getMerchantProfile(merchantUserId)`).
+   * Passing the wrong one 404s at best and names a different merchant at
+   * worst, and neither is visible from the call site.
+   */
   id: string;
+  /** The merchant's USER id — `profile.userId` in merchant.mapper.ts. NOT the
+   *  id the commission-rate endpoint takes. See `id` above. */
   merchantId: string;
   email: string;
   phone: string | null;
@@ -1617,6 +1634,19 @@ export interface AdminMerchantDto {
   status: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   isApproved: boolean;
   rejectedReason: string | null;
+  /**
+   * The commission rate agreed with this merchant individually
+   * (DPX-MERCHANT-016), or null when the platform-wide rate applies.
+   * A FRACTION, not a percent: 0.075 is 7.5%.
+   *
+   * The list endpoint has always returned these — it serves
+   * `MerchantProfileDto`, which carries them — they were simply not declared
+   * here, so the console could not see a rate it was already being sent.
+   */
+  negotiatedRate: number | null;
+  negotiatedBy: string | null;
+  negotiatedAt: string | null;
+  negotiationNote: string | null;
   createdAt: string;
   business: {
     businessName: string;
@@ -4476,6 +4506,43 @@ export const api = {
       }),
     settleFleetPeriod: (fleetId: string, periodStart: string) =>
       dx<FleetPeriodDto>('POST', `/admin/fleets/${fleetId}/commission/settle`, { periodStart }),
+
+    /**
+     * The same instrument for a MERCHANT — DPX-MERCHANT-016, founder-locked
+     * 2026-09-11. Placed beside the fleet one deliberately: the two express
+     * the same commercial idea, and the backend DTOs say keeping their shapes
+     * identical is what stops one quietly acquiring different bounds.
+     *
+     * Precedence is Campaign → Negotiated → Platform. A campaign is
+     * exceptional promotional pricing overriding the agreement only for its
+     * eligible window, after which resolution returns to the agreement
+     * automatically. Do not change that precedence without founder approval.
+     *
+     * THE ID IS THE MERCHANT PROFILE ID — `AdminMerchantDto.id`, NOT
+     * `.merchantId`. The DTO carries both and the invitingly-named one is
+     * wrong: merchant.mapper.ts maps `id` to `profile.id` and `merchantId` to
+     * `profile.userId`. The profile id is what `Order.merchantId` matches and
+     * what settlement resolves against; the user id would 404 — or name a
+     * different merchant.
+     *
+     * `rate` is a FRACTION: 0.075 is 7.5%. Null clears the agreement and
+     * returns the merchant to the platform rate. The server bounds it
+     * strictly inside 0 and 1 (@Min(0.0001) @Max(0.9999)): zero commission is
+     * deliberately not expressible here, because a merchant DrippleX charges
+     * nothing is a decision with no ceiling on its cost, and a campaign is
+     * the instrument for that. Nothing client-side may relax those bounds —
+     * the server's refusal is the boundary.
+     *
+     * Requires admin:merchant-settlement:commission:manage, which the RBAC
+     * seed grants to administrator and super_administrator only, NOT to
+     * operations_staff.
+     */
+    setMerchantNegotiatedRate: (merchantProfileId: string, rate: number | null, note?: string) =>
+      dx<MerchantNegotiatedRateDto>(
+        'POST',
+        `/admin/merchant-settlement/commission/${merchantProfileId}/rate`,
+        { rate, ...(note === undefined ? {} : { note }) },
+      ),
 
     /**
      * DPX-OPS — the completed record, for audit, disputes and security
