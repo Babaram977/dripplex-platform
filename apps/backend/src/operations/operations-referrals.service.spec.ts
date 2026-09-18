@@ -305,13 +305,22 @@ describe('OperationsReferralsService', () => {
       if (!databaseAvailable) return;
       const programmes = await service.programmes();
 
+      // DRIVER joined on the founder ruling of 2026-09-18. This assertion is
+      // exhaustive on purpose — a persona appearing or disappearing from the
+      // pricing desk is exactly the change worth failing on — so it is updated
+      // rather than loosened.
       expect(programmes.map((programme) => programme.refereeType).sort()).toEqual([
         'CUSTOMER',
+        'DRIVER',
         'FLEET',
         'MERCHANT',
       ]);
       const fleet = programmes.find((programme) => programme.refereeType === 'FLEET');
       expect(fleet?.referrerRewardAmount).toBe(2500);
+      // DRIVER ships inactive, priced by Operations rather than here. If this
+      // ever reads true, the row shipped carrying a rate nobody chose.
+      const driver = programmes.find((programme) => programme.refereeType === 'DRIVER');
+      expect(driver?.active).toBe(false);
     });
   });
 });
