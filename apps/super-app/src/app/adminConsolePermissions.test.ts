@@ -40,18 +40,17 @@ function permissionsCheckedByTheConsole(source: string): string[] {
 /**
  * Every permission code the RBAC seed writes.
  *
- * The pattern has to match what the seed actually contains, not what a
- * permission code was once assumed to look like. It was written as exactly
- * three underscore-only segments, which made 26 of the seed's 140 codes
- * invisible to this guard — every four-segment code, and every code with a
- * hyphen in a segment, among them `admin:inspection-centres:manage` and
- * `admin:merchant-settlement:commission:manage`. A guard that cannot see a
- * granted permission reports it as ungranted, which is the same false alarm as
- * the real bug it exists to catch, pointing the other way: it tells you to
- * "fix" a string that was already right.
+ * The pattern allows HYPHENS and FOUR-OR-MORE segments. It used to be
+ * `[a-z_]+:[a-z_]+:[a-z_]+` — exactly three segments, underscores only — which
+ * made it blind to 26 of the 140 permissions the seed actually grants, among
+ * them `admin:merchant-settlement:commission:manage`,
+ * `admin:orders:recovery:manage` and `admin:drivers:security-settings:manage`.
  *
- * So: at least three segments, each starting with a letter and allowing
- * hyphens as well as underscores.
+ * That narrowing could not let a bad string through — an unseen grant makes
+ * the check below flag a VALID permission, not miss an invalid one — but a
+ * guard that silently verifies 114 of 140 codes is not the guard it says it
+ * is, and the first console control to use a four-segment permission failed
+ * this test for being correct.
  */
 function permissionsGrantedByTheSeed(source: string): Set<string> {
   return new Set(
@@ -68,9 +67,8 @@ describe('Operations Console permission strings', () => {
     // the regexes stop matching — the exact way a guard rots into decoration.
     expect(consoleSource.length).toBeGreaterThan(1000);
     expect(permissionsCheckedByTheConsole(consoleSource).length).toBeGreaterThan(4);
-    // The seed carries 140 codes. A floor of 130 catches the pattern silently
-    // narrowing again — the failure mode this guard has already had once, where
-    // it kept passing on a subset and reported real permissions as unknown.
+    // 140 at the time of writing. Held well above the 114 the old
+    // three-segment pattern saw, so a silent re-narrowing fails here.
     expect(permissionsGrantedByTheSeed(seedSource).size).toBeGreaterThan(130);
   });
 

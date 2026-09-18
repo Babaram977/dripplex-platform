@@ -3,10 +3,82 @@
 | Field                 | Value                   |
 | --------------------- | ----------------------- |
 | **Bundle ID**         | `com.dripplex.customer` |
-| **Display name**      | Dripplex                |
+| **Display name**      | DrippleX                |
 | **Marketing version** | `1.0.0`                 |
 | **Build**             | `1000100`               |
 | **Min iOS**           | 15.0                    |
+
+## First archive — 2026-09-17
+
+**DrippleX 1.0.0 (1000100) is on App Store Connect.** Built with Xcode 26.6 on a
+MacinCloud host, archived for `arm64`, passed Apple's validation with no
+findings, uploaded. The app also runs on the iPhone 17 Pro simulator and renders
+`app.dripplex.com` — proven remote rather than the bundled placeholder, because
+`www/index.html` is a grey "Connecting…" card and what rendered was the real
+landing page.
+
+Three things cost hours. They are written down so the next session does not pay
+for them again.
+
+**1. Xcode had no iOS platform installed.** The first-run component picker was
+still sitting there with _iOS 26.5 — 8.52 GB_ un-downloaded. Without the SDK
+there are no simulators and nothing to compile against, so the build failed with
+`Unable to resolve module dependency: 'Capacitor'` and seven warnings about
+DerivedData search paths that nothing had created. CocoaPods was fine the whole
+time — `pod install` does not need the SDK, the compiler does. Check with
+`xcodebuild -showsdks` before diagnosing anything else; install with
+`xcodebuild -downloadPlatform iOS`.
+
+**2. `App/App/public` is gitignored but required.** It is a folder reference in
+Copy Bundle Resources (`project.pbxproj:161`) and `ios/.gitignore:4` excludes it,
+so a fresh clone never has it and recent Xcode treats the missing build input as
+a hard error. `npx cap sync ios` creates it from the committed `www/index.html`.
+
+**3. THE ARCHIVE BLOCKER: automatic signing needs a registered device.** With
+`CODE_SIGN_STYLE = Automatic`, Xcode wants an _iOS App Development_ provisioning
+profile to build the archive, and a development profile requires at least one
+device registered to the team. A cloud Mac has none and an iPhone cannot be
+attached over RDP, so `Product ▸ Archive` failed in about one second with
+"Communication with Apple failed — your team has no devices" and "No profiles for
+'com.dripplex.customer' were found".
+
+**The fix is an App Store distribution profile, which has no device list at all:**
+
+1. Xcode ▸ Settings ▸ Accounts ▸ AFNAN HOMES LTD ▸ Manage Certificates ▸ + ▸
+   **Apple Distribution** (Xcode generates the CSR itself).
+2. developer.apple.com ▸ Profiles ▸ + ▸ Distribution ▸ **App Store Connect**, for
+   `com.dripplex.customer`, using that certificate. Download and install.
+3. Target App ▸ Signing & Capabilities ▸ **Release** ▸ untick "Automatically
+   manage signing" ▸ select that profile.
+4. Product ▸ Archive.
+
+**Two dead ends, recorded so they are not retried.** Setting
+`CODE_SIGN_IDENTITY = "Apple Distribution"` by hand while automatic signing is on
+produces "App has conflicting provisioning settings" — Xcode refuses a manual
+identity in automatic mode. And `xcodebuild -allowProvisioningUpdates` does not
+rescue a command-line archive here: it reports `error: No Accounts`, because
+provisioning updates from the CLI need an App Store Connect API key, not the
+GUI's signed-in account.
+
+**Do not let Xcode "Manage Version and Build Number" during distribution.**
+`apps/customer-mobile/scripts/verify-config.mjs` asserts the literals
+`MARKETING_VERSION = 1.0.0` and `CURRENT_PROJECT_VERSION = 1000100`, so an
+auto-increment silently rewrites the project and turns CI red.
+
+### Still open after the first upload
+
+- **An APNs key.** The push entitlement validated, but no key exists yet, so push
+  is not proven end to end.
+- **Universal Links at runtime.** Entitlement and hosted AASA are both correct;
+  the actual "tap a link, app opens" test needs the build on a real device via
+  TestFlight.
+- **EU trader status.** App Store Connect shows a Digital Services Act banner
+  that blocks EU _submission_. It does not block TestFlight, and it needs an
+  Admin or Account Holder.
+- **Category.** Xcode wrote
+  `INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel"`, which
+  matches Google Play's Travel & Local. `docs/store/APP-STORE.md` still lists the
+  iOS primary category as Shopping, pending founder confirmation.
 
 ## Apple's build-tool floor — Xcode 26, and what it forces
 
@@ -69,23 +141,27 @@ Both configurations are now wired, and the App Store value is in place.
 ## Configuration status
 
 Two columns, deliberately. **Present** means the repository contains it and it was
-read; **Proven** means something executed it. Nothing in the signing path has
-been proven, because no Mac has built this project — see the CI build note below.
-The single ✅ column this table used to carry is what let "entitlements exist" be
-recorded as "push works".
+read; **Proven** means something executed it. The single ✅ column this table used
+to carry is what let "entitlements exist" be recorded as "push works".
 
-| Item                   | Present                                              | Proven                                                            |
-| ---------------------- | ---------------------------------------------------- | ----------------------------------------------------------------- |
-| Bundle identifier      | ✅ `com.dripplex.customer`                           | ✅ CI Release compile                                             |
-| Launch screen          | ✅ `LaunchScreen.storyboard`                         | ✅ CI Release compile                                             |
-| App icons              | ✅ 1024×1024, RGB, **no alpha** — re-read 2026-09-11 | ✅ `verify-icons.mjs`                                             |
-| Privacy Manifest       | ✅ `PrivacyInfo.xcprivacy`                           | ⬜ validated at first upload                                      |
-| App Transport Security | ✅ HTTPS only (localhost exception)                  | ✅ CI Release compile                                             |
-| Non-exempt encryption  | ✅ `ITSAppUsesNonExemptEncryption = false`           | ⬜ validated at first upload                                      |
-| Custom URL scheme      | ✅ `dripplex://`                                     | ⬜ needs a device                                                 |
-| Deployment target      | ✅ 15.0 — Xcode 26 floor                             | ⬜ needs Xcode 26                                                 |
-| **Universal Links**    | ✅ entitlement wired 2026-09-11                      | ⬜ **needs a signed build + the real Team ID in the hosted AASA** |
-| **Push (APNs)**        | ✅ `UIBackgroundModes` + entitlement (`production`)  | ⬜ **needs a signed build + an APNs key**                         |
+**Updated 2026-09-17 — a Mac has now built this project.** The signing path is no
+longer unproven: the app compiled, archived, passed Apple's validation and was
+uploaded to App Store Connect as 1.0.0 (1000100). See "First archive" below.
+Rows still marked ⬜ are the ones that genuinely need a device or a key, not the
+ones that were merely waiting for a Mac.
+
+| Item                   | Present                                              | Proven                                                               |
+| ---------------------- | ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Bundle identifier      | ✅ `com.dripplex.customer`                           | ✅ CI Release compile                                                |
+| Launch screen          | ✅ `LaunchScreen.storyboard`                         | ✅ CI Release compile                                                |
+| App icons              | ✅ 1024×1024, RGB, **no alpha** — re-read 2026-09-11 | ✅ `verify-icons.mjs`                                                |
+| Privacy Manifest       | ✅ `PrivacyInfo.xcprivacy`                           | ✅ Apple validation, 2026-09-17                                      |
+| App Transport Security | ✅ HTTPS only (localhost exception)                  | ✅ CI Release compile                                                |
+| Non-exempt encryption  | ✅ `ITSAppUsesNonExemptEncryption = false`           | ✅ Apple validation, 2026-09-17 — no export-compliance prompt        |
+| Custom URL scheme      | ✅ `dripplex://`                                     | ⬜ needs a device                                                    |
+| Deployment target      | ✅ 15.0 — Xcode 26 floor                             | ✅ archived with Xcode 26.6 / iOS 26.5 SDK, 2026-09-17               |
+| **Universal Links**    | ✅ entitlement wired 2026-09-11                      | ⬜ **needs a device** — signed build ✅, hosted AASA ✅ (see below)  |
+| **Push (APNs)**        | ✅ `UIBackgroundModes` + entitlement (`production`)  | ⬜ **needs an APNs key** — signed build ✅, entitlement validated ✅ |
 
 The app icon was re-read on 2026-09-11 rather than trusted: single-size
 `universal` 1024×1024 entry, PNG colour type 2 (RGB, no alpha channel). Apple
@@ -120,10 +196,10 @@ it.
 
 | Blocker                                | Note                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **No macOS**                           | `xcodebuild archive` cannot run on Linux. CI validates the iOS scaffold only (the "iOS project preflight" job). Reaching a `.ipa` needs Mac hardware, MacStadium or Xcode Cloud — a purchase decision, not a code change.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ~~**No macOS**~~                       | **Removed 2026-09-17.** A MacinCloud/RDP Mac running Xcode 26.6 archived, validated and uploaded the app. CI still validates the iOS scaffold only (the "iOS project preflight" job runs on `ubuntu-latest` and greps files — it has never compiled iOS), so the Mac remains the only place a real build happens.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ~~App icons~~                          | **Not a blocker — this row was wrong when written.** The iOS asset catalog holds the real DrippleX mark at 1024×1024 RGB, and `verify-icons.mjs` passes all 32 native brand assets. Founder decision 2026-08-29: ship the current mark (D + speed lines, no X). The X lives on the driver bubble; the icon is modernised once the business is stable.                                                                                                                                                                                                                                                                                                                                                                                       |
 | ~~`aps-environment` is `development`~~ | **Fixed 2026-09-11, and it was worse than this row said.** `App.entitlements` was never wired into the build: no `CODE_SIGN_ENTITLEMENTS` in either configuration, and no `.xcconfig` setting one. The file existed, read correctly, and was applied to nothing — so push and Universal Links would both have been absent from any build, and flipping the one value would have changed nothing. Both configurations now reference an entitlements file: Release uses `App.entitlements` (`production`, required by the App Store and by TestFlight), Debug uses the new `AppDebug.entitlements` (`development`), because a debug build signed against a development profile while declaring `production` fails on an entitlement mismatch. |
-| **Signing team unset**                 | `CODE_SIGN_STYLE = Automatic`; the team is configured in Xcode, which needs the enrolled account.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ~~**Signing team unset**~~             | **Set 2026-09-17.** `DEVELOPMENT_TEAM = X9MCF93WB7` (AFNAN HOMES LTD) on both configurations, `CODE_SIGN_STYLE = Automatic`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 Nothing here blocks Android, which is what the launch runs on.
 
@@ -184,12 +260,13 @@ files, which is why nothing is changed here:
 | B — replace `serve` with nginx in the runner stage                                                             | Swaps the web server for a live app                                                  |
 | C — front `app.dripplex.com` with a Cloudflare Worker                                                          | Changes routing for the live app                                                     |
 
-**Blocked on one value either way:** the AASA content needs the real Apple Team
-ID (`TEAMID.com.dripplex.customer` is still a placeholder in
-`resources/deep-linking/README.md`). The Team ID is not a secret — it is
-published in the AASA of every app using Universal Links — unlike the Apple
-account password, 2FA codes, or an App Store Connect API key, none of which are
-needed here.
+**No longer blocked. Resolved 2026-09-17:** the Apple Team ID is **`X9MCF93WB7`**
+(AFNAN HOMES LTD), confirmed from the account itself — Xcode wrote
+`DEVELOPMENT_TEAM = X9MCF93WB7` into both configurations of `project.pbxproj`
+when the team was selected. The hosted AASA already carried that exact value, so
+it needed no change and **must not be changed**. The Team ID is not a secret — it
+is published in the AASA of every app using Universal Links — unlike the Apple
+account password, 2FA codes, or an App Store Connect API key.
 
 ## Audit findings left unchanged — settle these on the Mac
 
@@ -197,13 +274,13 @@ Found 2026-09-11 by reading the project on Linux. Each is a real observation; no
 is changed here, because none can be _verified_ without Xcode, and guessing at
 signing configuration is how you get a build that fails differently.
 
-| Finding                                                                                                                                        | Where                                           | Why it is left alone                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CODE_SIGN_IDENTITY = "iPhone Developer"` is set at **project** level for **both** Debug and Release, and the App target does not override it. | `project.pbxproj:267` (Debug), `:324` (Release) | `"iPhone Developer"` is the legacy name for _Apple Development_ — a development identity, on the configuration used to archive. With `CODE_SIGN_STYLE = Automatic`, Xcode's distribution flow usually re-signs at export and this never surfaces; it is also the stock Capacitor template value, which is why thousands of apps ship with it. Whether it bites depends on the export path chosen on the Mac. Check it at the first archive; do not pre-emptively hardcode `Apple Distribution`. |
-| `UIRequiredDeviceCapabilities` declares `armv7`.                                                                                               | `Info.plist`                                    | 32-bit ARM; no device that runs iOS 15 supports it. It is the stock Capacitor/Cordova value and shipping apps carry it, so it appears to be tolerated rather than validated. `arm64` would be the accurate declaration. Low confidence either way — flag at the first upload, when App Store Connect's validator gives a real answer.                                                                                                                                                           |
-| **No `Podfile.lock` is committed.**                                                                                                            | `ios/App/`                                      | Every `pod install` re-resolves. All Capacitor pods are local `:path` references pinned by the pnpm lockfile, so the blast radius is small today — but it means the Mac build is not byte-reproducible against CI. Commit the lock once a Mac has generated a real one.                                                                                                                                                                                                                         |
-| The Podfile hardcodes pnpm content-addressed paths (`node_modules/.pnpm/@capacitor+ios@7.6.8_@capacitor+core@7.6.8/...`).                      | `ios/App/Podfile`                               | Correct today and regenerated by `cap sync`. It will silently go stale against a hand-edited Podfile after any Capacitor version bump. Prefer re-running `cap sync ios` over editing it.                                                                                                                                                                                                                                                                                                        |
-| The AASA template names `"appID": "TEAMID.com.dripplex.customer"`.                                                                             | `resources/deep-linking/README.md:69`           | `TEAMID` is a genuine placeholder — the real Team ID does not exist until enrolment completes. Universal Links stay dead until the file hosted at `app.dripplex.com/.well-known/apple-app-site-association` carries the real value. This is a dependency, not an omission.                                                                                                                                                                                                                      |
+| Finding                                                                                                                   | Where                                           | Why it is left alone                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ~~`CODE_SIGN_IDENTITY = "iPhone Developer"` is set at **project** level for **both** Debug and Release.~~                 | `project.pbxproj:267` (Debug), `:324` (Release) | **Answered 2026-09-17 at the first archive: this was never the problem, and it was not changed.** Under `CODE_SIGN_STYLE = Automatic` an archive is _meant_ to build with a development identity and be re-signed with the distribution certificate at export, so the legacy name is harmless. Setting it to `Apple Distribution` by hand actively breaks the build — Xcode refuses a manually specified identity while automatic signing is on, and fails with "App has conflicting provisioning settings". Leave this alone. |
+| `UIRequiredDeviceCapabilities` declares `armv7`.                                                                          | `Info.plist`                                    | 32-bit ARM; no device that runs iOS 15 supports it. It is the stock Capacitor/Cordova value and shipping apps carry it, so it appears to be tolerated rather than validated. `arm64` would be the accurate declaration. Low confidence either way — flag at the first upload, when App Store Connect's validator gives a real answer.                                                                                                                                                                                          |
+| **No `Podfile.lock` is committed.**                                                                                       | `ios/App/`                                      | **A Mac generated a real one on 2026-09-17.** Per this row's own instruction, commit it — it is untracked, not ignored, and without it every `pod install` re-resolves and the Mac build is not reproducible against CI.                                                                                                                                                                                                                                                                                                       |
+| The Podfile hardcodes pnpm content-addressed paths (`node_modules/.pnpm/@capacitor+ios@7.6.8_@capacitor+core@7.6.8/...`). | `ios/App/Podfile`                               | Correct today and regenerated by `cap sync`. It will silently go stale against a hand-edited Podfile after any Capacitor version bump. Prefer re-running `cap sync ios` over editing it.                                                                                                                                                                                                                                                                                                                                       |
+| ~~The AASA template names `"appID": "TEAMID.com.dripplex.customer"`.~~                                                    | `resources/deep-linking/README.md`              | **This row was already stale when written here.** That README carries the real value, `X9MCF93WB7.com.dripplex.customer`, and says in as many words that it is no longer a template. The hosted file at `apps/super-app/public/.well-known/apple-app-site-association` carries the same. Nothing is placeholdered.                                                                                                                                                                                                             |
 
 **On the bundle identifier.** iOS is `com.dripplex.customer`; Capacitor's
 `appId` is `com.dripplex.app` because Play forced the Android rename. The
