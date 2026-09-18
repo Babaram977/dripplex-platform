@@ -81,7 +81,7 @@ P4 is chosen.
 
 ---
 
-## 4 · The four production counts (read-only, not yet run)
+## 4 · The production counts — ✅ RUN 2026-09-15, all six zero
 
 P4 depends on these, and they are deliberately gated. They are aggregate counts only — no
 credential hashes, plaintext secrets, or merchant-identifying values are selected by any of them.
@@ -95,13 +95,38 @@ The agreed mechanism is that an authorized operator runs the four statements and
 four integers — no new production code, no new privileged endpoint, no exposed database
 credentials, no Operations Console change, no deployment and no migration.
 
-**The statement is now written, and verified against the real schema, in
-`docs/ops/DPX-MKT-INT-001-P1-POS-P4-INVENTORY-RUNBOOK.md`.** It has been executed only against a
-local database migrated to the same schema and seeded to make each predicate prove itself — which
-establishes that it is schema-correct and that its filters discriminate, and establishes **nothing
-whatever about production's contents**. P4 stays open until an authorized operator runs it there.
-No tooling available to an engineering session can reach the production database, and the routes
-that would create such access are the ones this mechanism rules out.
+**The statement is in `docs/ops/DPX-MKT-INT-001-P1-POS-P4-INVENTORY-RUNBOOK.md`, and it was run
+against production on 2026-09-15** by the founder acting as authorized operator, through the
+Railway dashboard Console on the backend service — inside the existing container, with no
+credential exposed, no proxy opened, no endpoint added and nothing deployed.
+
+```
+c1_http_webhooks            = 0
+c2a_active_incoming_api_key = 0
+c2b_active_outgoing_api_key = 0
+c3_out_of_vocabulary_scopes = 0
+c4_no_expiry                = 0
+c5_legacy_short_lifetime    = 0    as of 2026-09-15T13:23:26.969Z
+```
+
+**P4 is answered. The correct reading is "no integration credentials exist in production", not
+"the population is compliant."** `c2a = 0` means there is no live `INCOMING_API_KEY` at all.
+
+That satisfies P4's purpose — _do not invalidate credentials that currently work_ — by
+**emptiness** rather than by a population found safe. The distinction is load-bearing for anyone
+reading this later: credentials provisioned after 2026-09-15 are outside this inventory entirely.
+
+Two consequences land elsewhere and are recorded there rather than inferred here:
+
+- **R5's dead `OUTGOING_API_KEY` population is empty** (`c2b = 0`), so whether recovery-and-rehash
+  was worth attempting is closed on size — there is nothing to recover.
+- **The legacy-credential migration has a blast radius of zero** — its dry run returned
+  `WILL EXTEND = 0` in the same session, reconciling with `c5`. `--apply` is now vacuous rather
+  than merely unauthorized. See `ops/DPX-CREDENTIAL-LEGACY-EXTENSION-001.md` §0.
+
+**Count 1 is also answered: `c1 = 0`.** PR #398's grandfathering clause for existing `http://`
+webhook rows is therefore **inert** — there are none. Both workstreams that waited on this count
+are released.
 
 **Count 1 has since acquired a second consumer.** PR #398 enforces HTTPS on every webhook write
 path while grandfathering existing `http://` rows, and recorded that those rows must be migrated
@@ -112,12 +137,12 @@ arriving from the other direction.
 
 ## 5 · What is still open
 
-| Item                | Nature                            | Blocked on                                                                                                                                     |
-| ------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| **R6**              | ✅ Closed                         | — Implemented, merged `681f74db`, deployed `c6a668c5` on 2026-09-14.                                                                           |
-| **R7**              | ✅ Ruled · implementation pending | Engineering work only: the ruling sets 500/60 s, the code still enforces **100**. Threshold and keying are settled and should not be reopened. |
-| **P4**              | Decision taken, input missing     | The production inventory in §4. **Five output values** — see §4. Requires an authorized operator; unreachable from an engineering session.     |
-| **P3 → superseded** | ✅ **Ruled 2026-09-14**           | Superseded by the 99-year lifetime — see §6. Implemented in PR #406. **Existing credentials remain an open decision.**                         |
+| Item                | Nature                   | Blocked on                                                                                                                             |
+| ------------------- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **R6**              | ✅ Closed                | — Implemented, merged `681f74db`, deployed `c6a668c5` on 2026-09-14.                                                                   |
+| **R7**              | ✅ **Closed 2026-09-15** | Implemented, merged `0df72812`, deployed `bf2ca901`. 500/60 s, client-IP keyed, proven over HTTP and mutation-verified.                |
+| **P4**              | ✅ **Closed 2026-09-15** | Inventory run against production: **all six values `0`** — see §4. Answered by an empty credential population, not by a compliant one. |
+| **P3 → superseded** | ✅ **Ruled 2026-09-14**  | Superseded by the 99-year lifetime — see §6. Implemented in PR #406. **Existing credentials remain an open decision.**                 |
 
 ---
 
