@@ -63,6 +63,22 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type InspectionCentreDto,
+  type OperationsStaffMemberDto,
+  type OperationsPayoutRequestDto,
+  type OperationsPayoutStatus,
+  type PayoutQueueSummary,
+  type PayoutRequesterType,
+  type PayoutRequestKind,
+  type DispatchPerformanceAnalyticsDto,
+  type DriverUtilizationAnalyticsDto,
+  type GeographicDemandAnalyticsDto,
+  type OperationsResponseAnalyticsDto,
+  type RideOperationsAnalyticsDto,
+  type ShiftAnalyticsDto,
+  type CommissionCampaignDto,
+  type CommissionCampaignStatus,
+  type CommissionScope,
   type OrderExceptionDto,
   type OrderExceptionStatus,
 } from '../lib/api';
@@ -127,6 +143,9 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'inspectioncentres'
+  | 'payoutqueue'
+  | 'commissioncampaigns'
   | 'stalledorders'
   | 'recovery'
   | 'incidents'
@@ -652,6 +671,26 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   // Read-only visibility over the 24-hour automatic recovery backstop. Gated
   // on the same permission its endpoint is gated on, so the menu cannot offer
   // a page whose only possible answer for this account is 403.
+  // Gated on MANAGE, not a read permission: the server has no read-only
+  // tier for centres — listing them requires admin:inspection-centres:manage.
+  {
+    page: 'inspectioncentres',
+    icon: '🏢',
+    label: 'Inspection Centres',
+    requires: 'admin:inspection-centres:manage',
+  },
+  // Who is waiting to be paid. Read-only: approving a payout is a separate
+  // capability behind separate permissions and is not offered here.
+  { page: 'payoutqueue', icon: '💸', label: 'Payout Queue', requires: 'operations:finance:read' },
+  // "Commission Campaigns", never "Campaigns": Referral Campaigns is a
+  // different desk and this file already records what two similarly-named
+  // menu entries cost an operator once.
+  {
+    page: 'commissioncampaigns',
+    icon: '🏷️',
+    label: 'Commission Campaigns',
+    requires: 'admin:commission-campaign:read',
+  },
   // The two order-exception desks, adjacent because they are two views of
   // one situation: what has stalled, and whether the platform will act on it
   // by itself. Both read-only, both on the permission their endpoints enforce.
@@ -858,6 +897,9 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  inspectioncentres: 'Inspection Centres',
+  payoutqueue: 'Payout Queue',
+  commissioncampaigns: 'Commission Campaigns',
   stalledorders: 'Stalled Orders',
   recovery: 'Automatic Recovery',
   incidents: 'Incidents',
@@ -3843,6 +3885,354 @@ const LIVE_RIDE_STATUS_LABEL: Record<AdminLiveRideDto['status'], string> = {
   IN_PROGRESS: 'in progress',
 };
 
+// ─── Ride detail (operator) ───────────────────────────────────────────────────
+/**
+ * DPX-RIDE-201 — one ride, from the operator's side.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Ride Detail is the PARENT surface; allocation, tracking and dispatch
+ * candidates are sections within it, not four unrelated screens, because they
+ * are four questions about one ride and an operator arrives having already
+ * picked the ride.
+ *
+ * It opens from the "View" button that was already on every Trips row. That
+ * button existed and did nothing useful — it echoed back the row you clicked.
+ * Filling it is the port; adding a fifth navigation entry would not have been.
+ *
+ * FOUR DISTINCT CONTRACTS, FOUR SEPARATE LOADS. Each tab calls its own
+ * endpoint and holds its own state, so one slow or failing answer cannot hide
+ * the other three, and a reader can always tell WHICH question went
+ * unanswered.
+ *
+ * ALL READ-ONLY, and proven so rather than assumed:
+ * apps/backend/src/operations/operations-rides-read-only.spec.ts builds each
+ * service with a Prisma stub whose write verbs throw and catches a
+ * deliberately injected `rideOffer.create` by name. Nothing here allocates,
+ * reassigns, offers or dispatches, and nothing here may be made to. The
+ * existing Cancel control stays where it was, on the Trips row — this panel
+ * adds no action of its own.
+ */
+type RidePanelTab = 'detail' | 'allocation' | 'tracking' | 'candidates';
+
+type Loaded<T> =
+  | { kind: 'loading' }
+  | { kind: 'notfound' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: T };
+
+/**
+ * A 404 is a different fact from a failed request, and both differ from an
+ * empty result. "Ride not found" means the platform answered; "couldn't load"
+ * means it did not.
+ */
+function classifyRideError(e: unknown): Loaded<never> {
+  const status = (e as { status?: number }).status;
+  const message = (e as { message?: string }).message ?? '';
+  if (status === 404 || /not found/i.test(message)) {
+    return { kind: 'notfound' };
+  }
+  return { kind: 'error', message: message === '' ? 'Could not load that ride.' : message };
+}
+
+function useRideSection<T>(
+  rideId: string | null,
+  tab: RidePanelTab,
+  active: RidePanelTab,
+  fetcher: (id: string) => Promise<T>,
+): Loaded<T> {
+  const [state, setState] = useState<Loaded<T>>({ kind: 'loading' });
+  useEffect(() => {
+    // Only the visible section loads. Four endpoints fired at once for a panel
+    // an operator may only glance at is four times the load on a live ride.
+    if (rideId === null || tab !== active) return;
+    let cancelled = false;
+    setState({ kind: 'loading' });
+    void (async () => {
+      try {
+        const data = await fetcher(rideId);
+        if (!cancelled) setState({ kind: 'ok', data });
+      } catch (e: unknown) {
+        if (!cancelled) setState(classifyRideError(e) as Loaded<T>);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rideId, tab, active, fetcher]);
+  return state;
+}
+
+function RideSectionState({ state, empty }: { state: Loaded<unknown>; empty?: string }) {
+  if (state.kind === 'loading') {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Loading…</div>
+    );
+  }
+  if (state.kind === 'notfound') {
+    return (
+      <div style={{ fontSize: 12.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+        Ride not found. It may have been removed, or the link is stale.
+      </div>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          style={{ fontSize: 12.5, color: C_ERR, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}
+        >
+          Couldn&rsquo;t load this section
+        </div>
+        {/* Not an empty result. Saying "no offers" or "no candidates" when the
+            request failed would be an operator reading a fact nobody fetched. */}
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {state.message} — this is not the same as there being none.
+        </div>
+      </div>
+    );
+  }
+  if (empty !== undefined) {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>{empty}</div>
+    );
+  }
+  return null;
+}
+
+function RideKv({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, fontFamily: 'Inter, sans-serif' }}>
+      <span style={{ fontSize: 11, color: MUTED, minWidth: 120 }}>{label}</span>
+      <span style={{ fontSize: 11.5, color: WHITE }}>{value}</span>
+    </div>
+  );
+}
+
+function metresLabel(m: number): string {
+  return m < 1000 ? `${String(Math.round(m))} m` : `${String(Math.round(m / 100) / 10)} km`;
+}
+
+function secondsLabel(s: number): string {
+  if (s < 60) return `${String(Math.round(s))}s`;
+  return `${String(Math.round(s / 60))} min`;
+}
+
+function RideDetailPanel({ rideId, onClose }: { rideId: string; onClose: () => void }) {
+  const [tab, setTab] = useState<RidePanelTab>('detail');
+
+  const detail = useRideSection(rideId, 'detail', tab, api.admin.getOperationsRideDetail);
+  const allocation = useRideSection(
+    rideId,
+    'allocation',
+    tab,
+    api.admin.getOperationsRideAllocation,
+  );
+  const tracking = useRideSection(rideId, 'tracking', tab, api.admin.getOperationsRideTracking);
+  const candidates = useRideSection(
+    rideId,
+    'candidates',
+    tab,
+    api.admin.getOperationsDispatchCandidates,
+  );
+
+  const tabs: { value: RidePanelTab; label: string }[] = [
+    { value: 'detail', label: 'Detail' },
+    { value: 'allocation', label: 'Allocation' },
+    { value: 'tracking', label: 'Tracking' },
+    { value: 'candidates', label: 'Dispatch Candidates' },
+  ];
+
+  return (
+    <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <SectionHeader
+        title={`Ride ${rideId.slice(0, 8)}`}
+        action={<Btn label="Close" small outline color={MUTED} onClick={onClose} />}
+      />
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            className="dx-btn dx-tab"
+            onClick={() => setTab(t.value)}
+            style={{
+              background: tab === t.value ? G2 : 'rgba(255,255,255,.05)',
+              color: tab === t.value ? NAVY_DEEP : MUTED,
+              border: `1px solid ${tab === t.value ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: tab === t.value ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'detail' &&
+        (detail.kind === 'ok' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <RideKv label="Status" value={detail.data.status} />
+            <RideKv label="Type" value={detail.data.rideType} />
+            <RideKv
+              label="Customer"
+              value={`${detail.data.customerName}${detail.data.customerPhone === null ? '' : ` · ${detail.data.customerPhone}`}`}
+            />
+            <RideKv
+              label="Driver"
+              value={
+                detail.data.driverName === null
+                  ? 'Not assigned'
+                  : `${detail.data.driverName}${detail.data.driverPhone === null ? '' : ` · ${detail.data.driverPhone}`}`
+              }
+            />
+            <RideKv label="Pickup" value={detail.data.pickupAddress ?? '—'} />
+            <RideKv label="Drop-off" value={detail.data.dropoffAddress ?? '—'} />
+            <RideKv label="Fare" value={`₦${Math.round(detail.data.totalFare).toLocaleString()}`} />
+            <RideKv label="Payment" value={detail.data.paymentStatus} />
+            <RideKv label="Requested" value={formatCaseTime(detail.data.requestedAt)} />
+            {detail.data.noDriversFound && (
+              <div style={{ fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+                No drivers were found for this ride.
+              </div>
+            )}
+            {detail.data.hasOpenSos && (
+              <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+                An SOS alert on this ride is still open.
+              </div>
+            )}
+          </div>
+        ) : (
+          <RideSectionState state={detail} />
+        ))}
+
+      {tab === 'allocation' &&
+        (allocation.kind === 'ok' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <RideKv
+              label="Current driver"
+              value={allocation.data.currentDriverName ?? 'Not assigned'}
+            />
+            {allocation.data.offers.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No offers have been made for this ride yet.
+              </div>
+            ) : (
+              allocation.data.offers.map((o) => (
+                <div
+                  key={o.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 0',
+                    borderTop: `1px solid ${BORDER}`,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: WHITE }}>{o.driverName}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      Offered {formatCaseTime(o.offeredAt)}
+                      {o.respondedAt !== null && ` · responded ${formatCaseTime(o.respondedAt)}`}
+                    </div>
+                  </div>
+                  <Chip label={o.status} color={MUTED} />
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <RideSectionState state={allocation} />
+        ))}
+
+      {tab === 'tracking' &&
+        (tracking.kind === 'ok' ? (
+          tracking.data.points.length === 0 ? (
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              No tracking points recorded for this ride.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {tracking.data.points.length.toLocaleString('en-NG')} point
+                {tracking.data.points.length === 1 ? '' : 's'}, oldest first.
+              </div>
+              {tracking.data.points.slice(-12).map((p) => (
+                <RideKv
+                  key={p.at}
+                  label={formatCaseTime(p.at)}
+                  value={`${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}${
+                    p.speed === null ? '' : ` · ${String(Math.round(p.speed))} km/h`
+                  }`}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          <RideSectionState state={tracking} />
+        ))}
+
+      {tab === 'candidates' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* DECISION SUPPORT, NOT AN ALLOCATION CONTROL. The DTO says as much
+              in the shared contract: it "backs a 'here are the best available
+              drivers' display, never an assignment action". Said here too,
+              on the screen, because an operator looking at a ranked list of
+              nearby drivers will reasonably wonder whether they can act on
+              it, and the honest answer is no. */}
+          <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Decision support only. This is who dispatch could reach right now — reading it assigns
+            nobody, and nothing on this panel can allocate a ride.
+          </div>
+          {candidates.kind === 'ok' ? (
+            candidates.data.candidates.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No available drivers within range of the pickup.
+              </div>
+            ) : (
+              candidates.data.candidates.map((c) => (
+                <div
+                  key={c.driverId}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 0',
+                    borderTop: `1px solid ${BORDER}`,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: WHITE }}>
+                      {c.driverName}
+                      {c.vehiclePlateNumber !== null && ` · ${c.vehiclePlateNumber}`}
+                    </div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      {metresLabel(c.distanceMeters)} away ·{' '}
+                      {/* NEVER presented as a routed duration. `isEstimate` is
+                          always true and exists precisely so a console cannot
+                          imply traffic awareness it does not have. */}
+                      {secondsLabel(c.etaSeconds)} straight-line estimate
+                      {c.averageRating !== null &&
+                        ` · ${c.averageRating.toFixed(1)}★ (${String(c.ratingCount)})`}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )
+          ) : (
+            <RideSectionState state={candidates} />
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageTrips() {
   const statuses = [
     'All',
@@ -3862,6 +4252,10 @@ function PageTrips() {
   // are typing. Cancelling is never one click — ending someone else's trip
   // gets a confirmation step and a written reason, both of which are shown
   // back to the passenger and the driver.
+  // The ride whose operator detail panel is open. "View" on a row used to set
+  // a one-line summary of the row you had just clicked; it now opens the real
+  // detail, allocation, tracking and dispatch-candidate reads.
+  const [viewing, setViewing] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<AdminLiveRideDto | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -4027,6 +4421,15 @@ function PageTrips() {
           )}
         </Card>
       )}
+      {viewing !== null && (
+        <RideDetailPanel
+          rideId={viewing}
+          onClose={() => {
+            setViewing(null);
+          }}
+        />
+      )}
+
       {/* Table */}
       <Card style={{ padding: '14px 16px' }}>
         <table
@@ -4101,11 +4504,10 @@ function PageTrips() {
                         small
                         outline
                         color={G3}
-                        onClick={() =>
-                          setRowMsg(
-                            `Ride ${t.rideId.slice(0, 8)} · ${t.customerName}${t.driverName ? ` ↔ ${t.driverName}` : ''} · ${LIVE_RIDE_STATUS_LABEL[t.status]}`,
-                          )
-                        }
+                        onClick={() => {
+                          setRowMsg(null);
+                          setViewing(t.rideId);
+                        }}
                       />
                       <Btn
                         label="Cancel"
@@ -10118,6 +10520,1216 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Inspection Centres ─────────────────────────────────────────────────
+/**
+ * Where DrippleX tells a driver to take their vehicle.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Same three endpoints, same admin:inspection-centres:manage permission — note
+ * there is NO read-only tier on the server, so listing requires manage too and
+ * the nav entry is gated on manage rather than on a read permission that does
+ * not exist.
+ *
+ * THERE IS NO DELETE, and this page must never offer one. Inspections point at
+ * centres; removing one would orphan the record of where a vehicle was
+ * actually inspected. A centre is retired by switching it off.
+ * apps/backend/src/drivers/inspection-centres-surface.spec.ts asserts the
+ * service's method list exhaustively — including its `private` members,
+ * because TypeScript visibility is a compile-time fiction — so a delete cannot
+ * appear on the server unnoticed either.
+ *
+ * DEACTIVATION DOES NOT CASCADE, and the operator is told so rather than
+ * finding out from a driver. The active check runs only when an inspection is
+ * BOOKED (inspections.service.ts:51); inspections already scheduled at a
+ * centre keep pointing at it after it is switched off. Nothing cancels or
+ * moves them. That is plausibly intended — a centre winding down honouring its
+ * appointments — so it is stated, not "fixed" by inventing a cascade here.
+ *
+ * ADDRESS IS OPTIONAL. The backend DTO's own reason: "a placeholder street
+ * line would read to a driver as a real one". The form does not require it and
+ * must not start to.
+ */
+type CentresView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; centres: InspectionCentreDto[] };
+
+/** Trimmed name and city are the server's two required fields. Mirrors
+ *  CreateInspectionCentreDto's @MinLength(2) on both; never looser. */
+export function canCreateInspectionCentre(name: string, city: string): boolean {
+  return name.trim().length >= 2 && city.trim().length >= 2;
+}
+
+function PageInspectionCentres() {
+  const [view, setView] = useState<CentresView>({ kind: 'loading' });
+  const [name, setName] = useState('');
+  const [city, setCity] = useState('');
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setView({ kind: 'loading' });
+    try {
+      setView({ kind: 'ok', centres: await api.admin.getInspectionCentres() });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load inspection centres.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    void (async () => {
+      try {
+        await fn();
+        setMsg(okMsg);
+        await load();
+      } catch (e: unknown) {
+        setErr((e as { message?: string }).message ?? 'That did not save.');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const create = () => {
+    if (!canCreateInspectionCentre(name, city)) {
+      setErr('A centre needs a name and a city, each at least two characters.');
+      return;
+    }
+    run(
+      async () =>
+        await api.admin.createInspectionCentre({
+          name: name.trim(),
+          city: city.trim(),
+          // Omitted when blank rather than sent as an empty string: the server
+          // treats absent as "no published address" and renders the city
+          // alone. An empty string would be a 400 on @MinLength(5).
+          ...(address.trim() === '' ? {} : { address: address.trim() }),
+        }),
+      `${name.trim()} added.`,
+    );
+    setName('');
+    setCity('');
+    setAddress('');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Inspection centres" />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Where drivers are sent to have a vehicle inspected. A centre can be switched off, never
+          deleted — inspections point at these records, and removing one would erase where a vehicle
+          was actually inspected.
+        </div>
+
+        {msg !== null && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: G3, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </div>
+        )}
+        {err !== null && (
+          <div
+            style={{ marginTop: 8, fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {err}
+          </div>
+        )}
+
+        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            className="dx-input"
+            style={{ flex: 1, minWidth: 140 }}
+            placeholder="Centre name"
+            aria-label="Centre name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="dx-input"
+            style={{ flex: 1, minWidth: 120 }}
+            placeholder="City"
+            aria-label="City"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+          />
+          {/* OPTIONAL. Left blank the server records no published address and
+              the city shows alone — which is the founder decision, not a
+              shortcoming to be papered over with a placeholder. */}
+          <input
+            className="dx-input"
+            style={{ flex: 2, minWidth: 180 }}
+            placeholder="Street address (optional)"
+            aria-label="Street address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+          <Btn
+            label="Add centre"
+            small
+            color={G3}
+            disabled={busy || !canCreateInspectionCentre(name, city)}
+            onClick={create}
+          />
+        </div>
+      </Card>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load inspection centres
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as there being none — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.centres.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No inspection centres yet. Drivers cannot book an inspection until one exists.
+          </div>
+        ) : (
+          view.centres.map((c, i) => (
+            <InspectionCentreRow
+              key={c.id}
+              centre={c}
+              first={i === 0}
+              busy={busy}
+              onToggle={(next) =>
+                run(
+                  async () => await api.admin.updateInspectionCentre(c.id, { isActive: next }),
+                  next
+                    ? `${c.name} is open for bookings.`
+                    : `${c.name} is closed to new bookings. Inspections already booked there are unchanged.`,
+                )
+              }
+            />
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function InspectionCentreRow({
+  centre,
+  first,
+  busy,
+  onToggle,
+}: {
+  centre: InspectionCentreDto;
+  first: boolean;
+  busy: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>{centre.name}</div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {/* City alone when there is no published address — the founder
+              decision of 2026-08-17, not a blank line. */}
+          {centre.address === null ? centre.city : `${centre.address}, ${centre.city}`}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Chip label={centre.isActive ? 'Open' : 'Closed'} color={centre.isActive ? G3 : MUTED} />
+        {/* Switch off / on. Never "Delete" — see the page comment. */}
+        <Btn
+          label={centre.isActive ? 'Close to bookings' : 'Reopen'}
+          small
+          outline
+          color={centre.isActive ? C_WARN : G3}
+          disabled={busy}
+          onClick={() => onToggle(!centre.isActive)}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Page: Payout Queue ───────────────────────────────────────────────────────
+/**
+ * DPX-OPS finance — who is waiting to be paid, and how much is outstanding.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Same two endpoints, same FINANCE_READ permission, no new backend.
+ *
+ * READ ONLY, AND THAT IS PARITY, NOT AN UNDER-PORT. `actionPath` on each row
+ * names the endpoint where that request is approved — but approval is a
+ * separate capability behind separate permissions, and the standalone console
+ * renders the same field as monospace text with no approve or reject control
+ * anywhere on its page. Checked before deciding, not assumed.
+ *
+ * So `actionPath` renders as TEXT here too. It must never become a link, a
+ * button, or the target of a fetch: this is the one payload in the migration
+ * whose own field points at a mutation, and a console that turned it into an
+ * affordance would be shipping money-movement by accident.
+ *
+ * The queue is COMPOSED from two sources and the difference matters: a
+ * WALLET_PAYOUT is a withdrawal from someone's DX Wallet, a FLEET_RECEIVABLE
+ * is a fleet settlement. They are approved through different endpoints, so a
+ * single undifferentiated list would be lying about what an operator is
+ * looking at.
+ *
+ * Summary and list load INDEPENDENTLY. "₦0 outstanding" and "we could not ask"
+ * are different facts, and the headline figure failing must not blank the rows
+ * underneath it.
+ */
+type PayoutView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: OperationsPayoutRequestDto[]; total: number };
+
+type SummaryView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: PayoutQueueSummary };
+
+const PAYOUT_KIND_LABEL: Record<PayoutRequestKind, string> = {
+  WALLET_PAYOUT: 'Wallet payout',
+  FLEET_RECEIVABLE: 'Fleet settlement',
+};
+
+const PAYOUT_STATUS_COLOR: Record<OperationsPayoutStatus, string> = {
+  PENDING: C_WARN,
+  APPROVED: C_INFO,
+  PAID: G3,
+  REJECTED: MUTED,
+  FAILED: C_ERR,
+};
+
+const PAYOUT_REQUESTER_LABEL: Record<PayoutRequesterType, string> = {
+  CUSTOMER: 'Customer',
+  DRIVER: 'Driver',
+  RIDER: 'Rider',
+  MERCHANT: 'Merchant',
+  FLEET_OWNER: 'Fleet owner',
+};
+
+/** How long someone has been waiting. The queue's whole point is that this
+ *  number grows while nobody looks at it. */
+export function payoutWaitingFor(requestedAt: string, now = Date.now()): string {
+  const then = new Date(requestedAt).getTime();
+  if (Number.isNaN(then)) return '—';
+  const minutes = Math.max(0, Math.round((now - then) / 60000));
+  if (minutes < 60) return `${String(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${String(hours)}h`;
+  const days = Math.floor(hours / 24);
+  return `${String(days)}d`;
+}
+
+function PagePayoutQueue() {
+  const [status, setStatus] = useState<OperationsPayoutStatus | 'ALL'>('PENDING');
+  const [list, setList] = useState<PayoutView>({ kind: 'loading' });
+  const [summary, setSummary] = useState<SummaryView>({ kind: 'loading' });
+
+  const loadList = useCallback(async (next: OperationsPayoutStatus | 'ALL') => {
+    setList({ kind: 'loading' });
+    try {
+      const page = await api.admin.getPayoutRequests({
+        ...(next === 'ALL' ? {} : { status: next }),
+        pageSize: 50,
+      });
+      setList({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setList({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load the payout queue.',
+      });
+    }
+  }, []);
+
+  const loadSummary = useCallback(async () => {
+    setSummary({ kind: 'loading' });
+    try {
+      setSummary({ kind: 'ok', data: await api.admin.getPayoutSummary() });
+    } catch (e: unknown) {
+      setSummary({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load the outstanding total.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadList(status);
+  }, [loadList, status]);
+
+  useEffect(() => {
+    void loadSummary();
+  }, [loadSummary]);
+
+  const tabs: (OperationsPayoutStatus | 'ALL')[] = ['PENDING', 'APPROVED', 'PAID', 'FAILED', 'ALL'];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Payout queue" />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Everyone waiting to be paid — wallet withdrawals and fleet settlements in one queue. This
+          desk reports; approving a payout happens elsewhere and is not available here.
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          {summary.kind === 'ok' ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 8 }}>
+              <AnalyticsLikeStat
+                label="Pending"
+                value={summary.data.pendingCount.toLocaleString('en-NG')}
+              />
+              <AnalyticsLikeStat
+                label="Outstanding"
+                value={`₦${Math.round(summary.data.pendingAmount).toLocaleString()}`}
+              />
+              {summary.data.pendingByRequester.map((row) => (
+                <AnalyticsLikeStat
+                  key={row.requesterType}
+                  label={PAYOUT_REQUESTER_LABEL[row.requesterType]}
+                  value={`${row.count.toLocaleString('en-NG')} · ₦${Math.round(row.amount).toLocaleString()}`}
+                />
+              ))}
+            </div>
+          ) : summary.kind === 'loading' ? (
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              Loading the outstanding total…
+            </div>
+          ) : (
+            // NOT ₦0. A headline figure of zero for a request that failed says
+            // nobody is owed anything, which is the most reassuring possible
+            // way to be wrong about money.
+            <div style={{ fontSize: 12, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+              Couldn&rsquo;t load the outstanding total — this is not ₦0. {summary.message}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t}
+            className="dx-btn dx-tab"
+            onClick={() => setStatus(t)}
+            style={{
+              background: status === t ? G2 : 'rgba(255,255,255,.05)',
+              color: status === t ? NAVY_DEEP : MUTED,
+              border: `1px solid ${status === t ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: status === t ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t === 'ALL' ? 'All' : t.charAt(0) + t.slice(1).toLowerCase()}
+          </button>
+        ))}
+      </div>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {list.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load the payout queue
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as nobody waiting to be paid — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {list.message}
+            </div>
+          </div>
+        ) : list.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : list.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {status === 'PENDING'
+              ? 'Nobody is waiting to be paid.'
+              : 'No payout requests with that status.'}
+          </div>
+        ) : (
+          list.items.map((r, i) => <PayoutRow key={r.id} r={r} first={i === 0} />)
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/** Same shape as the analytics stat, kept local so this page does not depend
+ *  on a component that lives on another branch of the migration. */
+function AnalyticsLikeStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 130, fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ fontSize: 10.5, color: MUTED }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: WHITE, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function PayoutRow({ r, first }: { r: OperationsPayoutRequestDto; first: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+          {r.requesterName} · ₦{Math.round(r.amount).toLocaleString()}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {PAYOUT_REQUESTER_LABEL[r.requesterType]} · {PAYOUT_KIND_LABEL[r.kind]}
+          {r.requesterReference !== null && ` · ${r.requesterReference}`}
+          {r.status === 'PENDING'
+            ? ` · waiting ${payoutWaitingFor(r.requestedAt)}`
+            : r.resolvedAt !== null && ` · resolved ${formatCaseTime(r.resolvedAt)}`}
+        </div>
+        {r.note !== null && r.note !== '' && (
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{r.note}</div>
+        )}
+        {/* TEXT, NEVER A CONTROL. This names the endpoint where the request is
+            approved. Approval is a different capability behind different
+            permissions and is not offered here — the standalone console
+            renders it the same way. Do not make it a link or a button. */}
+        <div
+          style={{
+            fontSize: 10.5,
+            color: MUTED,
+            marginTop: 2,
+            fontFamily: 'ui-monospace, monospace',
+          }}
+        >
+          {r.actionPath}
+        </div>
+      </div>
+      <Chip label={r.status} color={PAYOUT_STATUS_COLOR[r.status]} />
+    </div>
+  );
+}
+
+// ─── Page: Commission Campaigns ───────────────────────────────────────────────
+/**
+ * DPX-COMMISSION-001 — what the platform is currently charging, and why.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * "Commission Campaigns", never "Campaigns": the menu already carries
+ * "Referral Campaigns" for a different desk, and this file already records
+ * what two similarly-named entries cost an operator once.
+ *
+ * FULL CAPABILITY — the five mutations were released on the founder ruling of
+ * 2026-09-18. They were held on 2026-09-17 while a maximum campaign duration
+ * was proposed; the ruling is that there is no maximum. Campaign duration is an
+ * OPS-CONTROLLED PARAMETER, flexible by design, bounded only by
+ * `endsAt > startsAt`. See docs/DPX-COMMISSION-002-CAMPAIGN-DURATION.md.
+ *
+ * WHAT THAT PUTS ON THIS PAGE. A campaign rate is valid at 0, a campaign with
+ * no rules applies platform-wide within its scope, and there is no duration
+ * ceiling — so a permanent platform-wide zero-commission campaign is creatable
+ * from this screen. The founder accepted that deliberately. The controls are
+ * permission, audit and reversibility, and this page's job is the fourth thing
+ * that makes them work: VISIBILITY. An operator must not be able to reach that
+ * state without having been told, in words, what they are about to do.
+ *
+ * Hence: the platform-wide scope is stated before the campaign is created, not
+ * after; a zero rate is called out as charging nothing at all; and the window
+ * is rendered in days and years rather than as two dates that look alike.
+ *
+ * DO NOT ADD A CLIENT-SIDE DURATION CAP. It would not be a boundary — the
+ * server accepts what the server accepts — and it would contradict the ruling.
+ *
+ * THERE IS NO DELETE, and there must not be. Settled transactions snapshot the
+ * rate that was in force; the campaign row is the record of what that rate was.
+ * Archiving is how a campaign leaves the list.
+ */
+type CampaignsView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; items: CommissionCampaignDto[]; total: number };
+
+const CAMPAIGN_SCOPE_LABEL: Record<CommissionScope, string> = {
+  MERCHANT_ORDER: 'Merchant orders',
+  DELIVERY: 'Delivery fees',
+  RIDE: 'Ride fares',
+  FLEET: 'Fleet trading',
+};
+
+const CAMPAIGN_STATUS_COLOR: Record<CommissionCampaignStatus, string> = {
+  DRAFT: MUTED,
+  SCHEDULED: C_INFO,
+  ACTIVE: G3,
+  PAUSED: C_WARN,
+  EXPIRED: MUTED,
+  ARCHIVED: MUTED,
+};
+
+/** The permission the server enforces on all five mutations. */
+const CAMPAIGN_MANAGE_PERMISSION = 'admin:commission-campaign:manage';
+
+/** The stored fraction as a percentage. 0.07 → "7%". */
+export function campaignRatePercent(rate: number): string {
+  const percent = rate * 100;
+  return `${Number.isInteger(percent) ? percent.toFixed(0) : percent.toFixed(2)}%`;
+}
+
+/**
+ * A percentage typed by an operator, as the fraction the server stores.
+ *
+ * THE MOST DANGEROUS CONVERSION ON THIS PAGE. The column is a fraction —
+ * `commissionRate` 0.07 is 7% — and the operator thinks in percent. Sending 7
+ * where 0.07 was meant would charge a hundred times the intended rate, and the
+ * server would accept nothing above 0.9999, so the failure would be a confusing
+ * rejection at best and a 99.99% campaign at worst. Returns null rather than a
+ * guess for anything it cannot read.
+ */
+export function campaignRateFromPercent(input: string): number | null {
+  const trimmed = input.trim().replace(/%$/, '').trim();
+  if (trimmed === '') return null;
+  const percent = Number(trimmed);
+  if (!Number.isFinite(percent)) return null;
+  if (percent < 0 || percent > 99.99) return null;
+  // Rounded to four decimals because the column is Decimal(5,4); an unrounded
+  // division leaves values like 0.07000000000000001 that fail @Max silently.
+  return Math.round(percent * 100) / 10_000;
+}
+
+/**
+ * How long a window runs, in words an operator can judge.
+ *
+ * Exists because `endsAt` alone does not read as a commitment. "Ends 12 Mar
+ * 2099" and "Ends 12 Mar 2027" look alike in a table; "runs for 26,842 days"
+ * does not. With duration now an ops-controlled parameter, stating its length
+ * plainly is the console's half of the bargain.
+ */
+export function campaignWindowLength(startsAt: string, endsAt: string): string {
+  const from = new Date(startsAt).getTime();
+  const to = new Date(endsAt).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return 'an invalid window';
+  const days = Math.round((to - from) / 86_400_000);
+  if (days < 1) return 'under a day';
+  if (days === 1) return '1 day';
+  if (days < 365) return `${String(days)} days`;
+  const years = Math.round((days / 365) * 10) / 10;
+  return `${String(days)} days (~${String(years)} years)`;
+}
+
+/** The server's rule, mirrored so the operator is told before the round trip. */
+export function campaignWindowValid(startsAt: string, endsAt: string): boolean {
+  const from = new Date(startsAt).getTime();
+  const to = new Date(endsAt).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to)) return false;
+  return to > from;
+}
+
+/** Only a scheduled or active campaign can be paused — mirrors the service. */
+export function canPauseCampaign(status: CommissionCampaignStatus): boolean {
+  return status === 'ACTIVE' || status === 'SCHEDULED';
+}
+
+/** Only a paused campaign can be resumed — mirrors the service. */
+export function canResumeCampaign(status: CommissionCampaignStatus): boolean {
+  return status === 'PAUSED';
+}
+
+/** A campaign with no rules applies to every partner in its scope. */
+export function campaignAppliesPlatformWide(rules: unknown | null): boolean {
+  return rules === null || rules === undefined;
+}
+
+function PageCommissionCampaigns() {
+  const [view, setView] = useState<CampaignsView>({ kind: 'loading' });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const canManage = hasPerm(CAMPAIGN_MANAGE_PERMISSION);
+
+  const load = useCallback(async () => {
+    setView({ kind: 'loading' });
+    try {
+      const page = await api.admin.getCommissionCampaigns({ pageSize: 50 });
+      setView({ kind: 'ok', items: page.items, total: page.meta.total });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load commission campaigns.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    void (async () => {
+      try {
+        await fn();
+        setMsg(okMsg);
+        await load();
+      } catch (e: unknown) {
+        setErr((e as { message?: string }).message ?? 'That did not save.');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader
+          title="Commission Campaigns"
+          action={
+            <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.kind === 'ok'
+                ? `${view.total.toLocaleString('en-NG')} ${
+                    view.total === 1 ? 'campaign' : 'campaigns'
+                  }`
+                : ''}
+            </span>
+          }
+        />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Promotional pricing that overrides a standing commission rate for its window. Precedence
+          is Campaign → Negotiated rate → Platform rate; when a campaign ends, resolution returns to
+          the agreement automatically.
+        </div>
+
+        {msg !== null && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: G3, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </div>
+        )}
+        {err !== null && (
+          <div
+            style={{ marginTop: 8, fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {err}
+          </div>
+        )}
+
+        {!canManage ? (
+          <div
+            style={{ marginTop: 8, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}
+          >
+            You can see what is being charged but not change it. Creating, editing, pausing and
+            archiving campaigns need the commission-campaign manage permission.
+          </div>
+        ) : (
+          <div style={{ marginTop: 10 }}>
+            <Btn
+              label={creating ? 'Cancel' : '+ New campaign'}
+              small
+              outline={creating}
+              color={creating ? MUTED : G3}
+              disabled={busy}
+              onClick={() => setCreating((c) => !c)}
+            />
+          </div>
+        )}
+      </Card>
+
+      {canManage && creating && (
+        <NewCampaignForm
+          busy={busy}
+          onCancel={() => setCreating(false)}
+          onCreate={(body, label) => {
+            run(async () => await api.admin.createCommissionCampaign(body), label);
+            setCreating(false);
+          }}
+        />
+      )}
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load commission campaigns
+            </div>
+            {/* NOT "no campaigns". An empty desk says nothing is overriding
+                the standing rates; a failed load says nobody asked. */}
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as there being none — the platform could not be asked, so no
+              conclusion about what is currently being charged follows from this screen.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.items.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No commission campaigns. Every partner is on their standing rate.
+          </div>
+        ) : (
+          view.items.map((c, i) => (
+            <CampaignRow
+              key={c.id}
+              c={c}
+              first={i === 0}
+              canManage={canManage}
+              busy={busy}
+              onPause={() =>
+                run(
+                  async () => await api.admin.pauseCommissionCampaign(c.id),
+                  `${c.name} paused. It stops applying from the next settlement; already-settled transactions keep the rate they were charged.`,
+                )
+              }
+              onResume={() =>
+                run(
+                  async () => await api.admin.resumeCommissionCampaign(c.id),
+                  `${c.name} resumed. It returns to scheduled, and applies again only if its window is still open.`,
+                )
+              }
+              onArchive={() =>
+                run(
+                  async () => await api.admin.archiveCommissionCampaign(c.id),
+                  `${c.name} archived. The record is kept — settled transactions reference the rate it charged.`,
+                )
+              }
+              onEndNow={() =>
+                run(
+                  async () =>
+                    await api.admin.updateCommissionCampaign(c.id, {
+                      endsAt: new Date().toISOString(),
+                    }),
+                  `${c.name} now ends immediately.`,
+                )
+              }
+            />
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * Creating a campaign.
+ *
+ * The form's real job is not collecting six fields — it is making the two
+ * consequential choices impossible to make by accident: a rate of zero, and a
+ * campaign with no rules, which applies to every partner in its scope. Both are
+ * legitimate and both are stated before the button can be pressed.
+ */
+function NewCampaignForm({
+  busy,
+  onCancel,
+  onCreate,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onCreate: (
+    body: {
+      name: string;
+      scope: CommissionScope;
+      commissionRate: number;
+      startsAt: string;
+      endsAt: string;
+      priority?: number;
+      description?: string;
+      announce?: boolean;
+    },
+    label: string,
+  ) => void;
+}) {
+  const [name, setName] = useState('');
+  const [scope, setScope] = useState<CommissionScope>('MERCHANT_ORDER');
+  const [percent, setPercent] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [announce, setAnnounce] = useState(true);
+  const [acknowledged, setAcknowledged] = useState(false);
+
+  const rate = campaignRateFromPercent(percent);
+  const windowOk = startsAt !== '' && endsAt !== '' && campaignWindowValid(startsAt, endsAt);
+  const nameOk = name.trim().length > 0 && name.trim().length <= 150;
+  const ready = nameOk && rate !== null && windowOk && acknowledged;
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <SectionHeader title="New commission campaign" />
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        <input
+          className="dx-input"
+          style={{ flex: 2, minWidth: 180 }}
+          placeholder="Campaign name"
+          aria-label="Campaign name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <select
+          className="dx-input"
+          style={{ flex: 1, minWidth: 150 }}
+          aria-label="Scope"
+          value={scope}
+          onChange={(e) => setScope(e.target.value as CommissionScope)}
+        >
+          {(Object.keys(CAMPAIGN_SCOPE_LABEL) as CommissionScope[]).map((sc) => (
+            <option key={sc} value={sc}>
+              {CAMPAIGN_SCOPE_LABEL[sc]}
+            </option>
+          ))}
+        </select>
+        <input
+          className="dx-input"
+          style={{ flex: 1, minWidth: 110 }}
+          placeholder="Rate %"
+          aria-label="Commission rate percent"
+          value={percent}
+          onChange={(e) => setPercent(e.target.value)}
+        />
+      </div>
+
+      {/* Scope is set once. The server has no scope field on update, so an
+          edit control here would be a control that silently does nothing. */}
+      <div style={{ marginTop: 6, fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        Scope is fixed when the campaign is created — changing what a campaign applies to means a
+        new campaign.
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+        <label
+          style={{
+            flex: 1,
+            minWidth: 190,
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          Starts
+          <input
+            className="dx-input"
+            style={{ width: '100%', marginTop: 4 }}
+            type="datetime-local"
+            aria-label="Starts at"
+            value={startsAt}
+            onChange={(e) => setStartsAt(e.target.value)}
+          />
+        </label>
+        <label
+          style={{
+            flex: 1,
+            minWidth: 190,
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          Ends
+          <input
+            className="dx-input"
+            style={{ width: '100%', marginTop: 4 }}
+            type="datetime-local"
+            aria-label="Ends at"
+            value={endsAt}
+            onChange={(e) => setEndsAt(e.target.value)}
+          />
+        </label>
+      </div>
+
+      {/* Duration is ops-controlled and uncapped — so its length is stated
+          back, in days and years, before the campaign exists. */}
+      {startsAt !== '' && endsAt !== '' && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11.5,
+            color: windowOk ? WHITE : C_ERR,
+            fontFamily: 'Inter, sans-serif',
+          }}
+        >
+          {windowOk
+            ? `This campaign will run for ${campaignWindowLength(
+                new Date(startsAt).toISOString(),
+                new Date(endsAt).toISOString(),
+              )}.`
+            : 'A campaign must end after it starts.'}
+        </div>
+      )}
+
+      {percent.trim() !== '' && rate === null && (
+        <div
+          style={{ marginTop: 6, fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+        >
+          Enter the rate as a percentage between 0 and 99.99 — for example 7 for 7%.
+        </div>
+      )}
+
+      {rate === 0 && (
+        <div
+          style={{ marginTop: 6, fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}
+        >
+          At 0% DrippleX charges no commission at all for everything this campaign covers, for its
+          whole window.
+        </div>
+      )}
+
+      <label
+        style={{
+          marginTop: 10,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'flex-start',
+          fontSize: 11.5,
+          color: MUTED,
+          fontFamily: 'Inter, sans-serif',
+          lineHeight: 1.5,
+        }}
+      >
+        <input
+          type="checkbox"
+          aria-label="Acknowledge platform-wide scope"
+          checked={acknowledged}
+          onChange={(e) => setAcknowledged(e.target.checked)}
+        />
+        <span>
+          I understand this applies to <strong style={{ color: WHITE }}>every partner</strong> in{' '}
+          {CAMPAIGN_SCOPE_LABEL[scope].toLowerCase()} for the whole window. Eligibility rules cannot
+          be set from this console yet, so a campaign created here is platform-wide within its
+          scope.
+        </span>
+      </label>
+
+      <label
+        style={{
+          marginTop: 8,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          fontSize: 11.5,
+          color: MUTED,
+          fontFamily: 'Inter, sans-serif',
+        }}
+      >
+        <input
+          type="checkbox"
+          aria-label="Announce to partners"
+          checked={announce}
+          onChange={(e) => setAnnounce(e.target.checked)}
+        />
+        Tell affected partners when this goes live
+      </label>
+
+      <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+        <Btn
+          label="Create campaign"
+          small
+          color={G3}
+          disabled={busy || !ready}
+          onClick={() => {
+            if (rate === null) return;
+            onCreate(
+              {
+                name: name.trim(),
+                scope,
+                commissionRate: rate,
+                startsAt: new Date(startsAt).toISOString(),
+                endsAt: new Date(endsAt).toISOString(),
+                announce,
+              },
+              `${name.trim()} created at ${campaignRatePercent(rate)}.`,
+            );
+          }}
+        />
+        <Btn label="Cancel" small outline color={MUTED} disabled={busy} onClick={onCancel} />
+      </div>
+    </Card>
+  );
+}
+
+function CampaignRow({
+  c,
+  first,
+  canManage,
+  busy,
+  onPause,
+  onResume,
+  onArchive,
+  onEndNow,
+}: {
+  c: CommissionCampaignDto;
+  first: boolean;
+  canManage: boolean;
+  busy: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onArchive: () => void;
+  onEndNow: () => void;
+}) {
+  const live = c.status === 'ACTIVE';
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>
+          {c.name} · {campaignRatePercent(c.commissionRate)}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {CAMPAIGN_SCOPE_LABEL[c.scope]} · {new Date(c.startsAt).toLocaleDateString('en-NG')} →{' '}
+          {new Date(c.endsAt).toLocaleDateString('en-NG')} ·{' '}
+          {campaignWindowLength(c.startsAt, c.endsAt)}
+          {c.priority > 0 && ` · priority ${String(c.priority)}`}
+        </div>
+        {/* A zero-rate campaign is charging nothing at all. It is a legitimate
+            instrument — the negotiated rate refuses zero precisely because
+            this is where it belongs — but it should never be something an
+            operator has to compute from "0%" in a list. */}
+        {c.commissionRate === 0 && (
+          <div style={{ fontSize: 11, color: C_WARN, marginTop: 2 }}>
+            Charging no commission at all while this runs.
+          </div>
+        )}
+        {campaignAppliesPlatformWide(c.rules) && live && (
+          <div style={{ fontSize: 11, color: C_WARN, marginTop: 2 }}>
+            Applies to every partner in this scope — no eligibility rules.
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Chip label={c.status} color={CAMPAIGN_STATUS_COLOR[c.status]} />
+        {canManage && canPauseCampaign(c.status) && (
+          <Btn label="Pause" small outline color={C_WARN} disabled={busy} onClick={onPause} />
+        )}
+        {canManage && canResumeCampaign(c.status) && (
+          <Btn label="Resume" small outline color={G3} disabled={busy} onClick={onResume} />
+        )}
+        {/* Ending a running campaign early is the control that matters most
+            now duration has no ceiling: the answer to a campaign running too
+            long is that Ops can stop it. */}
+        {canManage && live && (
+          <Btn label="End now" small outline color={C_WARN} disabled={busy} onClick={onEndNow} />
+        )}
+        {canManage && c.status !== 'ARCHIVED' && (
+          <Btn label="Archive" small outline color={MUTED} disabled={busy} onClick={onArchive} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page: Stalled Orders ─────────────────────────────────────────────────────
 /**
  * DPX-ORDER-8D-C ops visibility — the stalled-order queue.
@@ -10496,6 +12108,251 @@ function PageRecoveryActivation() {
   );
 }
 
+// ─── Case assignment ──────────────────────────────────────────────────────────
+/**
+ * Give an operations case to a named operator or supervisor.
+ *
+ * Ported from apps/operations-console's `case-controls.tsx` on the 2026-09-16
+ * ruling. ops.dripplex.com already SHOWED `Assigned: <name> | Unassigned` on a
+ * case and offered no way to change it; this is the control that was missing,
+ * rendered in the console's own language rather than the standalone's.
+ *
+ * Everything below is pinned by
+ * apps/backend/src/operations/operations-staff-assignment-surface.spec.ts.
+ * Four of its findings shape this component and must survive any edit:
+ *
+ * 1. TWO PERMISSIONS, NOT ONE. GET /operations/staff is behind
+ *    `operations:queues:read`; the PATCH that actually assigns is behind
+ *    `operations:queues:manage`. An account with read alone can load the pool
+ *    perfectly well and would be handed a 403 by the only thing the pool is
+ *    for — so the control is gated on MANAGE, and a read-only operator is told
+ *    who holds the case rather than offered a button that cannot work.
+ *
+ * 2. THE ROLE IS SENT, ALWAYS. Omitting `assignedToRole` does not mean
+ *    "unchanged" and does not mean "look it up" — the server defaults it to
+ *    OPERATOR, so a supervisor assigned by id alone is recorded as an operator
+ *    in the row and in the timeline, with no error. The role always comes from
+ *    the pool entry the operator picked.
+ *
+ * 3. THE SERVER DOES NOT CHECK THE ASSIGNEE IS ASSIGNABLE. `assignedToId`
+ *    carries `@IsUUID()` and nothing else, so a well-formed id belonging to a
+ *    customer — or to nobody — would be written without complaint. This select
+ *    is the only guard there is. It must never become a free-text field, and
+ *    it must never offer anything that did not come from /operations/staff.
+ *
+ * 4. UNASSIGNING DOES NOT REVERT THE STATUS. A case that went NEW → ASSIGNED
+ *    on being assigned stays ASSIGNED once unassigned — visibly handled, with
+ *    nobody handling it. Nothing in the service walks that back, and inventing
+ *    a second call here to do so would be this console making up a lifecycle
+ *    rule the platform does not have. It is said on screen instead.
+ */
+type StaffPool =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; staff: OperationsStaffMemberDto[] };
+
+/** How a pool member reads in the dropdown. Role is part of the label because
+ *  it is part of what is being recorded — see finding 2 above. */
+export function staffOptionLabel(member: OperationsStaffMemberDto): string {
+  const role = member.role === 'SUPERVISOR' ? 'Supervisor' : 'Operator';
+  return `${member.firstName} ${member.lastName} · ${role}`;
+}
+
+/**
+ * What unassigning will leave behind, or null when it leaves nothing behind.
+ * A case still sitting in NEW was never advanced by an assignment, so there is
+ * nothing to warn about; anything past NEW keeps the status it reached.
+ */
+export function unassignLeavesStatus(
+  status: AdminOperationsCaseDto['status'],
+): AdminOperationsCaseDto['status'] | null {
+  return status === 'NEW' ? null : status;
+}
+
+function CaseAssignmentPanel({
+  caseId,
+  version,
+  status,
+  assignedToId,
+  assignedToName,
+  assignedToRole,
+  onAssigned,
+}: {
+  caseId: string;
+  version: number;
+  status: AdminOperationsCaseDto['status'];
+  assignedToId: string | null;
+  assignedToName: string | null;
+  assignedToRole: AdminOperationsCaseDto['assignedToRole'];
+  /** Reload the queue — the case's version has moved on and every later
+   *  action needs the new one. */
+  onAssigned: () => void | Promise<void>;
+}) {
+  const [pool, setPool] = useState<StaffPool>({ kind: 'loading' });
+  const [choice, setChoice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const canManage = hasPerm('operations:queues:manage');
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const staff = await api.admin.getOperationsStaff();
+        if (live) setPool({ kind: 'ok', staff });
+      } catch (e: unknown) {
+        if (live)
+          setPool({
+            kind: 'error',
+            message: (e as { message?: string }).message ?? 'Could not load the operations staff.',
+          });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The selection belongs to the case on screen, not to the panel: switching
+  // to another case must not carry a half-made choice across to it.
+  useEffect(() => {
+    setChoice('');
+    setNote(null);
+  }, [caseId]);
+
+  const run = (body: Parameters<typeof api.admin.updateCase>[1], okNote: string) => {
+    setBusy(true);
+    setNote(null);
+    void (async () => {
+      try {
+        await api.admin.updateCase(caseId, body);
+        setNote(okNote);
+        setChoice('');
+        await onAssigned();
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message ?? 'That did not save.';
+        setNote(
+          /conflict|version/i.test(msg)
+            ? 'Someone else changed this case first — reloaded their version. Try again.'
+            : msg,
+        );
+        await onAssigned();
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const assign = () => {
+    if (pool.kind !== 'ok') return;
+    const member = pool.staff.find((m) => m.id === choice);
+    // Nothing outside the pool can be assigned from here — finding 3.
+    if (!member) return;
+    run(
+      { version, assignedToId: member.id, assignedToRole: member.role },
+      `Assigned to ${member.firstName} ${member.lastName}.`,
+    );
+  };
+
+  const unassign = () => {
+    const left = unassignLeavesStatus(status);
+    run(
+      { version, assignedToId: null },
+      left === null
+        ? 'Unassigned.'
+        : `Unassigned — the case stays ${lifecycleLabel(left)} with nobody on it. Change the status if that is wrong.`,
+    );
+  };
+
+  const roleLabel = assignedToRole === 'SUPERVISOR' ? 'supervisor' : 'operator';
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <SectionHeader
+        title="Assignment"
+        action={
+          <Chip
+            label={assignedToName === null ? 'Unassigned' : `${assignedToName} · ${roleLabel}`}
+            color={assignedToName === null ? C_WARN : G3}
+          />
+        }
+      />
+
+      {!canManage ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {assignedToName === null
+            ? 'Nobody is on this case. Assigning one needs the operations queue-manage permission.'
+            : `${assignedToName} holds this case. Changing that needs the operations queue-manage permission.`}
+        </div>
+      ) : pool.kind === 'error' ? (
+        <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+          Couldn&rsquo;t load the operations staff — {pool.message}. This is not the same as there
+          being nobody to assign.
+        </div>
+      ) : pool.kind === 'loading' ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading operations staff…
+        </div>
+      ) : pool.staff.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Nobody holds the operations queue-manage permission, so there is nobody to assign this to.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            className="dx-input"
+            aria-label="Assign to"
+            style={{ flex: 1, minWidth: 180 }}
+            value={choice}
+            disabled={busy}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            <option value="">Select an operator or supervisor…</option>
+            {pool.staff.map((m) => (
+              <option key={m.id} value={m.id}>
+                {staffOptionLabel(m)}
+              </option>
+            ))}
+          </select>
+          <Btn
+            label={busy ? 'Saving…' : 'Assign'}
+            small
+            color={G3}
+            disabled={busy || choice === ''}
+            onClick={assign}
+          />
+          {assignedToId !== null && (
+            <Btn label="Unassign" small outline color={C_WARN} disabled={busy} onClick={unassign} />
+          )}
+        </div>
+      )}
+
+      {canManage && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            lineHeight: 1.5,
+          }}
+        >
+          Assigning a new case also moves it out of the unhandled state and updates what the person
+          who raised it sees. Unassigning clears the name only — the status stays where it got to.
+        </div>
+      )}
+
+      {note !== null && (
+        <div
+          style={{ marginTop: 8, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {note}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageIncidents() {
   const [cases, setCases] = useState<AdminOperationsCaseDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -10790,6 +12647,17 @@ function PageIncidents() {
             ))}
           </Card>
         </div>
+        {/* The 'Assigned' row above used to be the end of the story — this is
+            the control that was only ever in the standalone console. */}
+        <CaseAssignmentPanel
+          caseId={inc.caseId}
+          version={inc.version}
+          status={inc.status}
+          assignedToId={inc.assignedToId}
+          assignedToName={inc.assignedToName}
+          assignedToRole={inc.assignedToRole}
+          onAssigned={load}
+        />
         {actionMsg && (
           <Card style={{ padding: '10px 14px' }}>
             <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
@@ -11130,6 +12998,21 @@ function PageSupport() {
                   />
                 </div>
               </div>
+              {/* Same control as Incidents. The standalone console shared its
+                  case-controls across all three case-detail screens; Incidents
+                  already merges SOS with incident reports, so Incidents plus
+                  Support is the whole of it. */}
+              <div style={{ padding: '10px 12px 0' }}>
+                <CaseAssignmentPanel
+                  caseId={selTicket.caseId}
+                  version={selTicket.version}
+                  status={selTicket.status}
+                  assignedToId={selTicket.assignedToId}
+                  assignedToName={selTicket.assignedToName}
+                  assignedToRole={selTicket.assignedToRole}
+                  onAssigned={load}
+                />
+              </div>
               {/* Messages — built from the real ticket body + admin response */}
               <div
                 className="dx-scroll"
@@ -11249,6 +13132,589 @@ interface PeakHourRow {
 
 const PEAK_HOURS: PeakHourRow[] = []; // mock cleared — no demand-series endpoint yet
 
+// ─── Operations analytics (six drill-downs) ───────────────────────────────────
+/**
+ * DPX-OPS analytics — the six operator drill-downs, ported from the standalone
+ * operations-console on the 2026-09-16 ruling.
+ *
+ * RANGE FIRST, AND NEVER INVENTED. `from` and `to` are required
+ * `@IsDateString` on the server; a request without them is a 400. So no panel
+ * fires on mount, nothing loads until the operator has chosen a period, and
+ * the range that is SENT is always the range that is SHOWN. The presets fill
+ * the visible fields rather than standing in for them — a picker that displays
+ * one period while quietly querying another is the regression this shape
+ * exists to prevent, and it is pinned by a test.
+ *
+ * LOAD ON OPEN. Six aggregate queries fired because a screen mounted is six
+ * expensive scans nobody asked for. Opening a panel loads that panel, with the
+ * range currently on screen.
+ *
+ * CHANGING THE RANGE DISCARDS WHAT WAS LOADED. Stale numbers under a new range
+ * are worse than no numbers: they answer a question the operator has stopped
+ * asking, and nothing on screen would say so.
+ *
+ * ISOLATED STATE. Each panel owns its loading/error/empty/data. One failing
+ * drill-down must not take down the other five, and a reader must be able to
+ * tell WHICH question went unanswered.
+ *
+ * READ ONLY, proven at the service layer by
+ * apps/backend/src/operations/operations-analytics-read-only.spec.ts and
+ * pinned again here: no control on this screen mutates anything, and none may
+ * be manufactured from whatever a response happens to contain.
+ */
+type AnalyticsPanelId =
+  'driver-utilization' | 'shifts' | 'rides' | 'dispatch' | 'response' | 'geography';
+
+type PanelState<T> =
+  | { kind: 'idle' }
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: T };
+
+/** A range is usable only when both ends parse and `to` is not before `from`. */
+export function isUsableAnalyticsRange(from: string, to: string): boolean {
+  if (from === '' || to === '') return false;
+  const f = new Date(from).getTime();
+  const t = new Date(to).getTime();
+  if (Number.isNaN(f) || Number.isNaN(t)) return false;
+  return t >= f;
+}
+
+/** `YYYY-MM-DD` as the date inputs produce it, for a preset N days back. */
+function daysAgoIso(days: number): string {
+  const d = new Date(Date.now() - days * 86_400_000);
+  return d.toISOString().slice(0, 10);
+}
+
+function secondsToHours(s: number): string {
+  return `${String(Math.round((s / 3600) * 10) / 10)} h`;
+}
+
+function ratePercent(rate: number | null): string {
+  return rate === null ? '—' : `${String(Math.round(rate * 1000) / 10)}%`;
+}
+
+function durationLabel(seconds: number | null): string {
+  if (seconds === null) return '—';
+  if (seconds < 60) return `${String(Math.round(seconds))}s`;
+  if (seconds < 3600) return `${String(Math.round(seconds / 60))} min`;
+  return secondsToHours(seconds);
+}
+
+function AnalyticsStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 130, fontFamily: 'Inter, sans-serif' }}>
+      <div style={{ fontSize: 10.5, color: MUTED }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700, color: WHITE, marginTop: 2 }}>{value}</div>
+    </div>
+  );
+}
+
+function AnalyticsStatRow({ children }: { children: React.ReactNode }) {
+  return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, rowGap: 10 }}>{children}</div>;
+}
+
+function AnalyticsPanelBody<T>({
+  state,
+  render,
+}: {
+  state: PanelState<T>;
+  render: (data: T) => React.ReactNode;
+}) {
+  if (state.kind === 'idle') {
+    return (
+      <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+        Choose a date range, then open this panel to load it.
+      </div>
+    );
+  }
+  if (state.kind === 'loading') {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Loading…</div>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          style={{ fontSize: 12.5, color: C_ERR, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}
+        >
+          Couldn&rsquo;t load this analysis
+        </div>
+        {/* Not zero. An analytics panel that renders 0 for a failed request is
+            reporting a measurement nobody took. */}
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {state.message} — these are not zeroes, they are unknowns.
+        </div>
+      </div>
+    );
+  }
+  return <>{render(state.data)}</>;
+}
+
+function PageOperationsAnalytics() {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [open, setOpen] = useState<AnalyticsPanelId | null>(null);
+
+  const [utilisation, setUtilisation] = useState<PanelState<DriverUtilizationAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [shifts, setShifts] = useState<PanelState<ShiftAnalyticsDto>>({ kind: 'idle' });
+  const [rides, setRides] = useState<PanelState<RideOperationsAnalyticsDto>>({ kind: 'idle' });
+  const [dispatch, setDispatch] = useState<PanelState<DispatchPerformanceAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [response, setResponse] = useState<PanelState<OperationsResponseAnalyticsDto>>({
+    kind: 'idle',
+  });
+  const [geography, setGeography] = useState<PanelState<GeographicDemandAnalyticsDto>>({
+    kind: 'idle',
+  });
+
+  const usable = isUsableAnalyticsRange(from, to);
+
+  /**
+   * Any change to the range discards every loaded answer.
+   *
+   * Not a refetch — a discard. Refetching only the open panel would leave the
+   * other five showing numbers for the previous period with nothing on screen
+   * saying so.
+   */
+  const resetAll = useCallback(() => {
+    setUtilisation({ kind: 'idle' });
+    setShifts({ kind: 'idle' });
+    setRides({ kind: 'idle' });
+    setDispatch({ kind: 'idle' });
+    setResponse({ kind: 'idle' });
+    setGeography({ kind: 'idle' });
+  }, []);
+
+  const changeFrom = (value: string) => {
+    setFrom(value);
+    rangeChanged({ from: value, to });
+  };
+  const changeTo = (value: string) => {
+    setTo(value);
+    rangeChanged({ from, to: value });
+  };
+  const applyPreset = (days: number) => {
+    // Fills the VISIBLE fields. The request always carries what is on screen.
+    const next = { from: daysAgoIso(days), to: daysAgoIso(0) };
+    setFrom(next.from);
+    setTo(next.to);
+    rangeChanged(next);
+  };
+
+  /**
+   * Takes the range EXPLICITLY rather than reading it from state.
+   *
+   * A range change has to reload the open panel with the value it is changing
+   * TO, and React has not committed that state yet at the moment the handler
+   * runs. Closing over `from`/`to` here would send the previous period while
+   * the picker showed the new one — the exact substitution this screen is
+   * built to make impossible.
+   */
+  const loadPanel = useCallback((panel: AnalyticsPanelId, range: { from: string; to: string }) => {
+    // The precondition, enforced here rather than discovered as a 400.
+    if (!isUsableAnalyticsRange(range.from, range.to)) return;
+
+    const run = async <T,>(
+      set: (s: PanelState<T>) => void,
+      fetcher: () => Promise<T>,
+    ): Promise<void> => {
+      set({ kind: 'loading' });
+      try {
+        set({ kind: 'ok', data: await fetcher() });
+      } catch (e: unknown) {
+        set({
+          kind: 'error',
+          message: (e as { message?: string }).message ?? 'Could not load this analysis.',
+        });
+      }
+    };
+
+    if (panel === 'driver-utilization') {
+      void run(setUtilisation, () => api.admin.getAnalyticsDriverUtilization(range));
+    } else if (panel === 'shifts') {
+      void run(setShifts, () => api.admin.getAnalyticsShifts(range));
+    } else if (panel === 'rides') {
+      void run(setRides, () => api.admin.getAnalyticsRides(range));
+    } else if (panel === 'dispatch') {
+      void run(setDispatch, () => api.admin.getAnalyticsDispatch(range));
+    } else if (panel === 'response') {
+      void run(setResponse, () => api.admin.getAnalyticsResponse(range));
+    } else {
+      // Geography is the only endpoint that accepts cellSizeDegrees, and it
+      // is passed only here. The server chooses its own default when it is
+      // omitted, which is the honest thing for the console to let it do.
+      void run(setGeography, () => api.admin.getAnalyticsGeography(range));
+    }
+  }, []);
+
+  const toggle = (panel: AnalyticsPanelId) => {
+    if (open === panel) {
+      setOpen(null);
+      return;
+    }
+    setOpen(panel);
+    loadPanel(panel, { from, to });
+  };
+
+  /**
+   * A range change discards every loaded answer and re-asks the open one.
+   *
+   * Discarding alone left a dead end: the panel stayed open showing "choose a
+   * range", and clicking it again TOGGLED IT SHUT rather than reloading, so
+   * the operator had to close and reopen to get their answer. Re-asking keeps
+   * the invariant that matters — nothing stale is ever on screen — without
+   * making the operator fight the panel.
+   */
+  const rangeChanged = (next: { from: string; to: string }) => {
+    resetAll();
+    if (open !== null) {
+      loadPanel(open, next);
+    }
+  };
+
+  const panelHeader = (panel: AnalyticsPanelId, label: string) => (
+    <button
+      className="dx-btn"
+      onClick={() => toggle(panel)}
+      disabled={!usable}
+      style={{
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        background: 'transparent',
+        border: 'none',
+        padding: 0,
+        cursor: usable ? 'pointer' : 'not-allowed',
+        opacity: usable ? 1 : 0.5,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <span style={{ fontSize: 13, fontWeight: 600, color: WHITE }}>{label}</span>
+      <span style={{ fontSize: 11, color: MUTED }}>{open === panel ? 'Hide' : 'Show'}</span>
+    </button>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Operations analytics" />
+        <div
+          style={{
+            fontSize: 12,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            marginBottom: 10,
+          }}
+        >
+          Pick a period, then open a question. Nothing loads until you do — each of these is an
+          aggregate scan, and six of them fired because a screen opened would cost the platform six
+          answers nobody asked for.
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input
+            className="dx-input"
+            type="date"
+            aria-label="From date"
+            value={from}
+            onChange={(e) => changeFrom(e.target.value)}
+            style={{ minWidth: 140 }}
+          />
+          <input
+            className="dx-input"
+            type="date"
+            aria-label="To date"
+            value={to}
+            onChange={(e) => changeTo(e.target.value)}
+            style={{ minWidth: 140 }}
+          />
+          <Btn label="Last 7 days" small outline color={G3} onClick={() => applyPreset(7)} />
+          <Btn label="Last 30 days" small outline color={G3} onClick={() => applyPreset(30)} />
+        </div>
+
+        {!usable && (
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 11.5,
+              color: C_WARN,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            {from === '' || to === ''
+              ? 'Choose both a start and an end date to load any analysis.'
+              : 'The end date is before the start date.'}
+          </div>
+        )}
+      </Card>
+
+      {/* Driver utilisation */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('driver-utilization', 'Driver utilisation')}
+        {open === 'driver-utilization' && (
+          <AnalyticsPanelBody
+            state={utilisation}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Drivers" value={d.driverCount.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Online" value={secondsToHours(d.totalOnlineSeconds)} />
+                  <AnalyticsStat label="On trip" value={secondsToHours(d.totalOnTripSeconds)} />
+                  <AnalyticsStat
+                    label="Utilisation"
+                    value={ratePercent(d.averageUtilizationRate)}
+                  />
+                  <AnalyticsStat
+                    label="Trips"
+                    value={d.totalTripsCompleted.toLocaleString('en-NG')}
+                  />
+                  <AnalyticsStat
+                    label="Earnings"
+                    value={`₦${Math.round(d.totalEarnings).toLocaleString()}`}
+                  />
+                </AnalyticsStatRow>
+                {d.topDrivers.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No driver activity in this period.
+                  </div>
+                ) : (
+                  d.topDrivers.map((row) => (
+                    <div
+                      key={row.driverId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        paddingTop: 8,
+                        borderTop: `1px solid ${BORDER}`,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: WHITE }}>{row.driverName}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {row.tripsCompleted.toLocaleString('en-NG')} trips ·{' '}
+                        {ratePercent(row.utilizationRate)} ·{' '}
+                        {`₦${Math.round(row.earnings).toLocaleString()}`}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Shifts */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('shifts', 'Shifts')}
+        {open === 'shifts' && (
+          <AnalyticsPanelBody
+            state={shifts}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Started" value={d.shiftsStarted.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Ended" value={d.shiftsEnded.toLocaleString('en-NG')} />
+                <AnalyticsStat
+                  label="Active now"
+                  value={d.activeShiftsNow.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="On break"
+                  value={d.onBreakShiftsNow.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Force-ended"
+                  value={d.forceEndedCount.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Avg shift"
+                  value={durationLabel(d.averageShiftDurationSeconds)}
+                />
+                <AnalyticsStat label="Avg break" value={durationLabel(d.averageBreakSeconds)} />
+                <AnalyticsStat
+                  label="Fatigue warnings"
+                  value={d.fatigueWarningCount.toLocaleString('en-NG')}
+                />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Rides */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('rides', 'Ride operations')}
+        {open === 'rides' && (
+          <AnalyticsPanelBody
+            state={rides}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Requested" value={d.requested.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Completed" value={d.completed.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Cancelled" value={d.cancelled.toLocaleString('en-NG')} />
+                <AnalyticsStat
+                  label="No driver found"
+                  value={d.noDriversFound.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat label="Completion" value={ratePercent(d.completionRate)} />
+                <AnalyticsStat label="Cancellation" value={ratePercent(d.cancellationRate)} />
+                <AnalyticsStat
+                  label="Cancelled by customer"
+                  value={d.cancelledByCustomer.toLocaleString('en-NG')}
+                />
+                <AnalyticsStat
+                  label="Cancelled by driver"
+                  value={d.cancelledByDriver.toLocaleString('en-NG')}
+                />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Dispatch */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('dispatch', 'Dispatch performance')}
+        {open === 'dispatch' && (
+          <AnalyticsPanelBody
+            state={dispatch}
+            render={(d) => (
+              <AnalyticsStatRow>
+                <AnalyticsStat label="Offers" value={d.totalOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Accepted" value={d.acceptedOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Declined" value={d.declinedOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Expired" value={d.expiredOffers.toLocaleString('en-NG')} />
+                <AnalyticsStat label="Acceptance" value={ratePercent(d.acceptanceRate)} />
+                <AnalyticsStat
+                  label="Time to accept"
+                  value={durationLabel(d.averageTimeToAcceptSeconds)}
+                />
+                <AnalyticsStat label="Repeat offers" value={ratePercent(d.repeatedOfferRate)} />
+              </AnalyticsStatRow>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Response */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('response', 'Operations response')}
+        {open === 'response' && (
+          <AnalyticsPanelBody
+            state={response}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Cases" value={d.totalCases.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Open" value={d.openCasesCount.toLocaleString('en-NG')} />
+                  <AnalyticsStat
+                    label="First response"
+                    value={durationLabel(d.averageTimeToFirstResponseSeconds)}
+                  />
+                  <AnalyticsStat
+                    label="Resolution"
+                    value={durationLabel(d.averageTimeToResolutionSeconds)}
+                  />
+                  <AnalyticsStat
+                    label="Closure"
+                    value={durationLabel(d.averageTimeToClosureSeconds)}
+                  />
+                </AnalyticsStatRow>
+                {d.byType.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No cases in this period.
+                  </div>
+                ) : (
+                  d.byType.map((row) => (
+                    <div
+                      key={row.caseType}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 8,
+                        paddingTop: 8,
+                        borderTop: `1px solid ${BORDER}`,
+                        fontFamily: 'Inter, sans-serif',
+                      }}
+                    >
+                      <span style={{ fontSize: 12, color: WHITE }}>{row.caseType}</span>
+                      <span style={{ fontSize: 11, color: MUTED }}>
+                        {row.totalCases.toLocaleString('en-NG')} ·{' '}
+                        {durationLabel(row.averageTimeToResolutionSeconds)} to resolve
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Geography */}
+      <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {panelHeader('geography', 'Geographic demand')}
+        {open === 'geography' && (
+          <AnalyticsPanelBody
+            state={geography}
+            render={(d) => (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <AnalyticsStatRow>
+                  <AnalyticsStat label="Pickups" value={d.totalPickups.toLocaleString('en-NG')} />
+                  <AnalyticsStat
+                    label="Drop-offs"
+                    value={d.totalDropoffs.toLocaleString('en-NG')}
+                  />
+                  <AnalyticsStat label="Cells" value={d.cells.length.toLocaleString('en-NG')} />
+                  <AnalyticsStat label="Cell size" value={`${String(d.cellSizeDegrees)}°`} />
+                </AnalyticsStatRow>
+                {d.cells.length === 0 ? (
+                  <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                    No demand recorded in this period.
+                  </div>
+                ) : (
+                  [...d.cells]
+                    .sort((a, b) => b.pickupCount - a.pickupCount)
+                    .slice(0, 12)
+                    .map((cell) => (
+                      <div
+                        key={`${String(cell.latitude)},${String(cell.longitude)}`}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          gap: 8,
+                          paddingTop: 8,
+                          borderTop: `1px solid ${BORDER}`,
+                          fontFamily: 'Inter, sans-serif',
+                        }}
+                      >
+                        <span style={{ fontSize: 11.5, color: WHITE }}>
+                          {cell.latitude.toFixed(3)}, {cell.longitude.toFixed(3)}
+                        </span>
+                        <span style={{ fontSize: 11, color: MUTED }}>
+                          {cell.pickupCount.toLocaleString('en-NG')} pickups ·{' '}
+                          {cell.dropoffCount.toLocaleString('en-NG')} drop-offs
+                        </span>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          />
+        )}
+      </Card>
+    </div>
+  );
+}
+
 function PageAnalytics() {
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -11257,12 +13723,15 @@ function PageAnalytics() {
   const heatVal = (_d: number, _h: number) => 0;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {/* The six operator drill-downs, ported from the standalone console. */}
+      <PageOperationsAnalytics />
+
       <Card style={{ padding: '10px 14px' }}>
         <span style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
-          These charts need day/hour/month time-series and a revenue feed. The Operations analytics
-          endpoints currently return KPI aggregates and ranked lists (surfaced on the Dashboard),
-          not chart-ready series — so these render empty until a series endpoint exists. See
-          docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
+          The KPI aggregates and ranked lists those endpoints return are now on this page, above.
+          The charts BELOW still need day/hour/month time-series and a revenue feed, which no
+          endpoint provides yet — so they render empty rather than synthetic until a series endpoint
+          exists. See docs/reference/DPX-OPS-PREVIEW-WIRING-STATUS.md.
         </span>
       </Card>
       <div className="dx-split-row" style={{ display: 'flex', gap: 12 }}>
@@ -14236,6 +16705,12 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'inspectioncentres':
+      return <PageInspectionCentres />;
+    case 'payoutqueue':
+      return <PagePayoutQueue />;
+    case 'commissioncampaigns':
+      return <PageCommissionCampaigns />;
     case 'stalledorders':
       return <PageStalledOrders />;
     case 'recovery':

@@ -16,10 +16,21 @@ import type {
   FleetOverviewDto,
   FleetPeriodDto,
   InitiatedCallDto,
+  OperationsStaffMemberDto,
+  SosAlertDto,
+  DispatchPerformanceAnalyticsDto,
+  DriverUtilizationAnalyticsDto,
+  GeographicDemandAnalyticsDto,
+  OperationsResponseAnalyticsDto,
+  RideOperationsAnalyticsDto,
+  ShiftAnalyticsDto,
+  DispatchSupportDto,
+  OperationsRideAllocationDto,
+  OperationsRideDetailDto,
+  OperationsRideTrackingDto,
   MerchantNegotiatedRateDto,
   OrderExceptionDto,
   OrderExceptionStatus,
-  SosAlertDto,
 } from '@dripplex/types';
 
 /**
@@ -30,9 +41,7 @@ import type {
  * apply.
  */
 export type {
-  MerchantNegotiatedRateDto,
-  OrderExceptionDto,
-  OrderExceptionStatus,
+  OperationsStaffMemberDto,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -49,6 +58,19 @@ export type {
   OrderHistoryDto,
   RideHistoryDto,
   UtilityPurchaseHistoryDto,
+  DispatchPerformanceAnalyticsDto,
+  DriverUtilizationAnalyticsDto,
+  GeographicDemandAnalyticsDto,
+  OperationsResponseAnalyticsDto,
+  RideOperationsAnalyticsDto,
+  ShiftAnalyticsDto,
+  DispatchSupportDto,
+  OperationsRideAllocationDto,
+  OperationsRideDetailDto,
+  OperationsRideTrackingDto,
+  MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
 } from '@dripplex/types';
 
 import { auth, DxUser } from './auth';
@@ -231,6 +253,38 @@ export interface RegistrationResponse {
   onboardingId?: string;
 }
 
+/**
+ * A commission campaign — DPX-COMMISSION-001. Exceptional promotional pricing
+ * that overrides a standing rate for its eligible window.
+ *
+ * Declared here rather than imported: the backend exports this type from its
+ * own service, not from @dripplex/types, so there is no shared contract to
+ * re-export yet. Kept field-for-field with `CommissionCampaignDto` in
+ * apps/backend/src/commercial/commission-campaign.service.ts.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** A FRACTION, not a percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: unknown | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
@@ -249,6 +303,81 @@ export interface PaginatedResult<T> {
  * change. New code should use this one. Recorded so the discrepancy is a known
  * thing rather than a trap the next person rediscovers.
  */
+/**
+ * One person or business waiting to be paid — DPX-OPS finance.
+ *
+ * Declared here rather than imported: the backend exports this from its own
+ * service, not from @dripplex/types. Kept field-for-field with
+ * `PayoutRequestDto` in apps/backend/src/operations/operations-payouts.service.ts.
+ *
+ * NAMED `Operations…` BECAUSE `PayoutRequestDto` IS ALREADY TAKEN in this file
+ * by a different thing: the WALLET payout a customer raises
+ * (`{ status: PENDING | COMPLETED | FAILED | CANCELLED, bankAccountId, ... }`,
+ * above). The operations QUEUE row has a different status union, different
+ * fields, and spans two sources. The compiler caught the collision; the names
+ * are kept apart so a future reader does not have to.
+ *
+ * The queue is COMPOSED from two sources, so `kind` is not cosmetic: a
+ * WALLET_PAYOUT is a withdrawal from a DX Wallet, a FLEET_RECEIVABLE is a
+ * fleet settlement. They are approved through different endpoints.
+ */
+export type PayoutRequesterType = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+export type PayoutRequestKind = 'WALLET_PAYOUT' | 'FLEET_RECEIVABLE';
+/** The QUEUE row's status. Not the wallet PayoutRequestDto's status above,
+ *  which is a different union for a different object. */
+export type OperationsPayoutStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID' | 'FAILED';
+
+export interface OperationsPayoutRequestDto {
+  id: string;
+  kind: PayoutRequestKind;
+  requesterType: PayoutRequesterType;
+  requesterUserId: string;
+  requesterName: string;
+  /** A fleet's DX number, so Operations can quote it back. Null otherwise. */
+  requesterReference: string | null;
+  amount: number;
+  currency: string;
+  status: OperationsPayoutStatus;
+  requestedAt: string;
+  resolvedAt: string | null;
+  /** Why a request was refused, or why a transfer failed. */
+  note: string | null;
+  /**
+   * The endpoint where this request is approved.
+   *
+   * INFORMATION, NOT AN AFFORDANCE. Approval is a different capability behind
+   * different permissions and is NOT part of this port — the standalone
+   * console renders this as monospace text and offers no approve or reject
+   * control either, so a read-only surface is parity rather than an
+   * under-port. Render it as text. Do not make it a link, a button, or the
+   * target of a fetch.
+   */
+  actionPath: string;
+}
+
+export interface PayoutQueueSummary {
+  pendingCount: number;
+  pendingAmount: number;
+  pendingByRequester: { requesterType: PayoutRequesterType; count: number; amount: number }[];
+}
+
+/**
+ * The period an analytics question is asked about.
+ *
+ * Both fields are REQUIRED because the server requires them
+ * (AnalyticsRangeQueryDto: `from` and `to` are @IsDateString with no
+ * @IsOptional). Typed as required here so a caller that has not got a range
+ * yet cannot compile, rather than discovering it as a 400.
+ *
+ * Deliberately does NOT carry cellSizeDegrees: only the geography endpoint
+ * accepts it, and putting it here would leak it into the other five the first
+ * time somebody spread this object into a request.
+ */
+export interface AnalyticsRange {
+  from: string;
+  to: string;
+}
+
 export interface ApiPage<T> {
   items: T[];
   meta: { page: number; limit: number; total: number; totalPages: number };
@@ -1771,6 +1900,13 @@ export interface DriverInspectionDto {
   updatedAt: string;
 }
 
+/**
+ * Kept as a local declaration rather than re-exported from @dripplex/types:
+ * the two are already field-for-field identical, comment included, and one
+ * declaration in this file is better than an import that shadows it. Checked
+ * against packages/types/src/driver/index.ts when the admin centre endpoints
+ * were wired, 2026-09-17.
+ */
 export interface InspectionCentreDto {
   id: string;
   name: string;
@@ -4185,6 +4321,287 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Operations staff ─────────────────────────────────────────────────
+    // Who can be assigned an operations case. GET /operations/staff behind
+    // OPERATIONS_PERMISSIONS.QUEUES_READ. A read; there is no create, edit or
+    // deactivate endpoint for staff on this path, and none is invented here.
+    getOperationsStaff: () => dx<OperationsStaffMemberDto[]>('GET', '/operations/staff'),
+
+    // ── Inspection centres ───────────────────────────────────────────────
+    // Where DrippleX tells a driver to take their vehicle.
+    //
+    // THE WHOLE SURFACE IS LIST, CREATE AND UPDATE. There is no delete, on
+    // the server or here, and one must not be added: inspections point at
+    // centres, so removing one orphans the record of where a vehicle was
+    // actually inspected. A centre is retired by setting isActive false, and
+    // apps/backend/src/drivers/inspection-centres-surface.spec.ts asserts the
+    // service's method list exhaustively so a delete cannot appear unnoticed.
+    //
+    // ONE PERMISSION FOR ALL THREE: admin:inspection-centres:manage. There is
+    // no read-only tier — listing centres requires manage as well, so the nav
+    // entry is gated on manage rather than on a read permission that does not
+    // exist.
+    //
+    // `address` IS OPTIONAL, deliberately. The DTO's own words: "a placeholder
+    // street line would read to a driver as a real one". Do not make it
+    // required in a form; the founder decision of 2026-08-17 is to render the
+    // city alone rather than a blank line.
+    //
+    // `isActive` IS UPDATE-ONLY. A centre is born active; switching one off is
+    // a separate deliberate act. NOTE THAT IT DOES NOT CASCADE — the active
+    // check runs only when an inspection is BOOKED, so inspections already
+    // scheduled at a centre keep pointing at it after it is switched off.
+    // Nothing cancels or moves them. The UI says so.
+    getInspectionCentres: () => dx<InspectionCentreDto[]>('GET', '/admin/inspection-centres'),
+
+    createInspectionCentre: (body: {
+      name: string;
+      city: string;
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+    }) => dx<InspectionCentreDto>('POST', '/admin/inspection-centres', body),
+
+    updateInspectionCentre: (
+      centreId: string,
+      body: {
+        name?: string;
+        city?: string;
+        address?: string;
+        latitude?: number;
+        longitude?: number;
+        isActive?: boolean;
+      },
+    ) => dx<InspectionCentreDto>('PATCH', `/admin/inspection-centres/${centreId}`, body),
+
+    // ── Payout queue (read only) ─────────────────────────────────────────
+    // GET /operations/finance/payout-requests and .../summary, both behind
+    // OPERATIONS_PERMISSIONS.FINANCE_READ.
+    //
+    // PROVEN READ-ONLY, not assumed: see
+    // apps/backend/src/operations/operations-payouts-read-only.spec.ts, which
+    // runs both methods against a Prisma stub whose write verbs throw and
+    // catches an auto-approval injected into the SUMMARY read by name.
+    //
+    // There is deliberately no approve/reject method here. PayoutRequestDto
+    // carries `actionPath` — the endpoint where a request is approved — but
+    // approval is a separate capability behind separate permissions, and the
+    // standalone console does not offer it either. A client method for it
+    // would invite a control to be built against money leaving the platform.
+    getPayoutRequests: (params?: {
+      requesterType?: PayoutRequesterType;
+      status?: OperationsPayoutStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<OperationsPayoutRequestDto>>(
+        'GET',
+        '/operations/finance/payout-requests',
+        undefined,
+        params,
+      ),
+
+    getPayoutSummary: () =>
+      dx<PayoutQueueSummary>('GET', '/operations/finance/payout-requests/summary'),
+
+    // ── Operations analytics (six drill-downs) ───────────────────────────
+    // GET /operations/analytics/{driver-utilization,shifts,rides,dispatch,
+    // response,geography}, all behind OPERATIONS_PERMISSIONS.ANALYTICS_READ.
+    // `overview` is deliberately absent: getAnalyticsOverview already covers
+    // it, and a second method for the same endpoint is how two callers start
+    // disagreeing about one contract.
+    //
+    // `from` and `to` are REQUIRED @IsDateString on the server, not optional.
+    // A call without them is a 400, so `AnalyticsRange` is a required
+    // parameter here rather than a defaulted one — there is no sensible
+    // default for "which period is the operator asking about", and inventing
+    // one would answer a question nobody asked.
+    //
+    // PROVEN READ-ONLY, not assumed: see
+    // apps/backend/src/operations/operations-analytics-read-only.spec.ts,
+    // which runs every method against a Prisma stub whose write verbs throw
+    // and catches an injected roll-up cache write by name. No mutating
+    // method belongs in this block.
+    getAnalyticsDriverUtilization: (range: AnalyticsRange) =>
+      dx<DriverUtilizationAnalyticsDto>(
+        'GET',
+        '/operations/analytics/driver-utilization',
+        undefined,
+        {
+          ...range,
+        },
+      ),
+
+    getAnalyticsShifts: (range: AnalyticsRange) =>
+      dx<ShiftAnalyticsDto>('GET', '/operations/analytics/shifts', undefined, { ...range }),
+
+    getAnalyticsRides: (range: AnalyticsRange) =>
+      dx<RideOperationsAnalyticsDto>('GET', '/operations/analytics/rides', undefined, {
+        ...range,
+      }),
+
+    getAnalyticsDispatch: (range: AnalyticsRange) =>
+      dx<DispatchPerformanceAnalyticsDto>('GET', '/operations/analytics/dispatch', undefined, {
+        ...range,
+      }),
+
+    getAnalyticsResponse: (range: AnalyticsRange) =>
+      dx<OperationsResponseAnalyticsDto>('GET', '/operations/analytics/response', undefined, {
+        ...range,
+      }),
+
+    // The ONLY one that takes cellSizeDegrees. The server accepts it here and
+    // nowhere else, so it is a parameter of this method alone rather than of
+    // AnalyticsRange — a shared optional field would leak into the other five
+    // requests the first time someone spread the range object.
+    getAnalyticsGeography: (range: AnalyticsRange, cellSizeDegrees?: number) =>
+      dx<GeographicDemandAnalyticsDto>('GET', '/operations/analytics/geography', undefined, {
+        ...range,
+        ...(cellSizeDegrees === undefined ? {} : { cellSizeDegrees }),
+      }),
+    // ── Ride & dispatch (operator reads) ─────────────────────────────────
+    // Four DISTINCT endpoint contracts behind one operator surface. They are
+    // deliberately four calls, not one aggregate: each answers a different
+    // question, each can fail on its own, and collapsing them would make one
+    // slow or broken answer hide the other three.
+    //
+    // ALL FOUR ARE READS, and that is proven rather than assumed — see
+    // apps/backend/src/operations/operations-rides-read-only.spec.ts, which
+    // builds each service with a Prisma stub whose write verbs throw, and
+    // which catches a deliberately injected rideOffer.create by name. There
+    // is no allocate, reassign, offer or dispatch method here, and none may
+    // be added: the ranked candidate list is decision support, and the DTO
+    // itself says it "backs a 'here are the best available drivers' display,
+    // never an assignment action".
+    getOperationsRideDetail: (rideId: string) =>
+      dx<OperationsRideDetailDto>('GET', `/operations/rides/${rideId}`),
+
+    getOperationsRideAllocation: (rideId: string) =>
+      dx<OperationsRideAllocationDto>('GET', `/operations/rides/${rideId}/allocation`),
+
+    getOperationsRideTracking: (rideId: string) =>
+      dx<OperationsRideTrackingDto>('GET', `/operations/rides/${rideId}/tracking`),
+
+    // `etaSeconds` on each candidate is a constant-speed STRAIGHT-LINE
+    // estimate, and `isEstimate` is always true so a console can never
+    // present it as a routed, traffic-aware duration. Render it as an
+    // estimate or not at all.
+    getOperationsDispatchCandidates: (rideId: string) =>
+      dx<DispatchSupportDto>('GET', `/operations/rides/${rideId}/dispatch-candidates`),
+    // ── Commission campaigns ─────────────────────────────────────────────
+    // DPX-COMMISSION-001. Exceptional promotional pricing that overrides a
+    // standing rate for its eligible window: Campaign → Negotiated → Platform.
+    //
+    // FULL CAPABILITY, released on the founder ruling of 2026-09-18.
+    //
+    // The five mutations below were held on 2026-09-17 while a maximum campaign
+    // duration was proposed. The ruling was that there is no maximum: campaign
+    // duration is an OPS-CONTROLLED PARAMETER, flexible by design, bounded only
+    // by `endsAt > startsAt`. See docs/DPX-COMMISSION-002-CAMPAIGN-DURATION.md.
+    //
+    // WHAT THAT MEANS FOR THIS CLIENT. A campaign rate is valid at 0 and a
+    // campaign with no `rules` applies platform-wide within its scope, so a
+    // permanent platform-wide zero-commission campaign is expressible here. The
+    // founder accepted that deliberately. The controls are PERMISSION (all five
+    // need admin:commission-campaigns:manage, enforced by the server), AUDIT
+    // (every mutation records one) and REVERSIBILITY (pause and a shortened
+    // endsAt both stop a campaign at any time).
+    //
+    // DO NOT add a client-side duration cap here. It would not be a boundary —
+    // the server accepts what the server accepts — and it would contradict the
+    // ruling. If a bound is ever wanted it belongs in assertWindow.
+    //
+    // `scope` is set at creation and is NOT updatable: UpdateCommissionCampaignDto
+    // has no scope field. Changing what a campaign applies to is a new campaign.
+    getCommissionCampaigns: (params?: {
+      scope?: CommissionScope;
+      status?: CommissionCampaignStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<CommissionCampaignDto>>(
+        'GET',
+        '/admin/commercial/commission-campaigns',
+        undefined,
+        params,
+      ),
+
+    /** One campaign by id — used after a mutation to show the server's answer. */
+    getCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>('GET', `/admin/commercial/commission-campaigns/${campaignId}`),
+
+    /**
+     * Create a campaign. `commissionRate` is a FRACTION (0.07 is 7%), bounded
+     * 0 <= rate <= 0.9999 by the server — zero is legal and intended, since the
+     * negotiated merchant rate refuses it and the locked precedence names the
+     * campaign as the instrument for expressing it.
+     *
+     * Omitting `rules` means the campaign applies PLATFORM-WIDE within its
+     * scope. That is the single most consequential choice on this call and the
+     * UI says so before it is sent.
+     */
+    createCommissionCampaign: (body: {
+      name: string;
+      description?: string;
+      scope: CommissionScope;
+      commissionRate: number;
+      priority?: number;
+      startsAt: string;
+      endsAt: string;
+      rules?: unknown;
+      announce?: boolean;
+    }) => dx<CommissionCampaignDto>('POST', '/admin/commercial/commission-campaigns', body),
+
+    /**
+     * Edit a campaign. Every field is optional; only what is sent changes.
+     * There is deliberately no `scope` — the server cannot change it, so
+     * offering it here would be a control that silently does nothing.
+     */
+    updateCommissionCampaign: (
+      campaignId: string,
+      body: {
+        name?: string;
+        description?: string;
+        commissionRate?: number;
+        priority?: number;
+        startsAt?: string;
+        endsAt?: string;
+        rules?: unknown;
+        announce?: boolean;
+      },
+    ) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}`,
+        body,
+      ),
+
+    /** Stop a campaign applying, without ending it. Reversible via resume. */
+    pauseCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/pause`,
+      ),
+
+    /** Put a paused campaign back in force for the remainder of its window. */
+    resumeCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/resume`,
+      ),
+
+    /**
+     * Retire a campaign. Archiving is how a campaign leaves the list — there is
+     * no delete, and there must not be one: settled transactions snapshot the
+     * rate that was in force, and the campaign row is the record of what that
+     * rate was and why.
+     */
+    archiveCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/archive`,
+      ),
+
     // ── Stalled orders ───────────────────────────────────────────────────
     // Confirmed DELIVERY orders a merchant has not advanced for 30 minutes.
     // DrippleX owns these; the merchant has already been warned automatically.
