@@ -29,6 +29,12 @@ const PROGRAMME_LABELS: Record<ReferralRefereeType, string> = {
   CUSTOMER: 'Referring a customer',
   MERCHANT: 'Referring a merchant',
   FLEET: 'Referring a fleet',
+  // DRIVER joined ReferralRefereeType on the founder ruling of 2026-09-18.
+  // These three maps are exhaustive Records, so the type demanded an entry —
+  // which is the type doing its job. Added to keep this app compiling; the
+  // driver programme's operator surface is ops.dripplex.com, per the locked
+  // ruling that this console is being retired rather than extended.
+  DRIVER: 'Referring a driver',
 };
 
 const MILESTONES: Record<ReferralRefereeType, string> = {
@@ -37,12 +43,14 @@ const MILESTONES: Record<ReferralRefereeType, string> = {
     'Pays once the referred merchant is verified, has a bank account on file, and completes their first order.',
   FLEET:
     'Pays once the referred fleet is activated by DrippleX, has a bank account, and has at least one active rider or driver.',
+  DRIVER: 'Pays once the referred driver is approved by DrippleX and completes their first trip.',
 };
 
 const INTAKE: Record<ReferralRefereeType, string> = {
   CUSTOMER: 'Code entered at customer sign-up.',
   MERCHANT: 'Code entered at merchant sign-up.',
   FLEET: 'Code entered when the owner registers their company.',
+  DRIVER: 'Code entered at driver sign-up.',
 };
 
 function naira(value: number): string {

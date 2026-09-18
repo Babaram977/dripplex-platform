@@ -2559,9 +2559,13 @@ export interface AddCampaignPromoterRequest {
 // same authority.
 
 export type ReferralPersona = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
-/** Who was referred. Narrower than ReferralPersona: only these three have a
- *  standing referral programme with reward amounts attached. */
-export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET';
+/** Who was referred. Narrower than ReferralPersona: these are the personas with
+ *  a standing referral programme and reward amounts attached.
+ *
+ *  DRIVER joined on the founder ruling of 2026-09-18. RIDER is still absent, and
+ *  that absence is real rather than an oversight — no programme row exists for
+ *  it, so the page would show a persona nobody can price. */
+export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET' | 'DRIVER';
 export type LoyaltyEarnerPersona = 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
 
 export interface ReferralPersonaPerformanceDto {

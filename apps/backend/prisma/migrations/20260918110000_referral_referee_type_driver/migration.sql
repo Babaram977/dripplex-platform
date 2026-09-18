@@ -1,0 +1,12 @@
+-- DRIVER joins ReferralRefereeType. Founder ruling, 2026-09-18: drivers belong
+-- on the Referral Programmes desk alongside customers, merchants and fleets.
+--
+-- SEPARATE MIGRATION FROM THE ROW IT ENABLES, and not for tidiness. PostgreSQL
+-- will not let a new enum value be USED in the same transaction that adds it,
+-- and Prisma runs each migration file in its own transaction. Adding the value
+-- and inserting a row labelled with it therefore cannot share a file: the
+-- insert would fail with "unsafe use of new value of enum type". The programme
+-- row is created by 20260918110100.
+--
+-- IF NOT EXISTS so a re-run is a no-op rather than an error.
+ALTER TYPE "ReferralRefereeType" ADD VALUE IF NOT EXISTS 'DRIVER';
