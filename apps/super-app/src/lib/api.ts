@@ -15,10 +15,12 @@ import type {
   FleetRegistrationDto,
   FleetOverviewDto,
   FleetPeriodDto,
+  InitiatedCallDto,
+  OperationsStaffMemberDto,
+  SosAlertDto,
   DispatchPerformanceAnalyticsDto,
   DriverUtilizationAnalyticsDto,
   GeographicDemandAnalyticsDto,
-  InitiatedCallDto,
   OperationsResponseAnalyticsDto,
   RideOperationsAnalyticsDto,
   ShiftAnalyticsDto,
@@ -29,7 +31,6 @@ import type {
   MerchantNegotiatedRateDto,
   OrderExceptionDto,
   OrderExceptionStatus,
-  SosAlertDto,
 } from '@dripplex/types';
 
 /**
@@ -40,19 +41,7 @@ import type {
  * apply.
  */
 export type {
-  DispatchPerformanceAnalyticsDto,
-  DriverUtilizationAnalyticsDto,
-  GeographicDemandAnalyticsDto,
-  OperationsResponseAnalyticsDto,
-  RideOperationsAnalyticsDto,
-  ShiftAnalyticsDto,
-  DispatchSupportDto,
-  OperationsRideAllocationDto,
-  OperationsRideDetailDto,
-  OperationsRideTrackingDto,
-  MerchantNegotiatedRateDto,
-  OrderExceptionDto,
-  OrderExceptionStatus,
+  OperationsStaffMemberDto,
   FleetOverviewDto,
   FleetMemberDto,
   FleetJobDto,
@@ -69,6 +58,19 @@ export type {
   OrderHistoryDto,
   RideHistoryDto,
   UtilityPurchaseHistoryDto,
+  DispatchPerformanceAnalyticsDto,
+  DriverUtilizationAnalyticsDto,
+  GeographicDemandAnalyticsDto,
+  OperationsResponseAnalyticsDto,
+  RideOperationsAnalyticsDto,
+  ShiftAnalyticsDto,
+  DispatchSupportDto,
+  OperationsRideAllocationDto,
+  OperationsRideDetailDto,
+  OperationsRideTrackingDto,
+  MerchantNegotiatedRateDto,
+  OrderExceptionDto,
+  OrderExceptionStatus,
 } from '@dripplex/types';
 
 import { auth, DxUser } from './auth';
@@ -1898,6 +1900,13 @@ export interface DriverInspectionDto {
   updatedAt: string;
 }
 
+/**
+ * Kept as a local declaration rather than re-exported from @dripplex/types:
+ * the two are already field-for-field identical, comment included, and one
+ * declaration in this file is better than an import that shadows it. Checked
+ * against packages/types/src/driver/index.ts when the admin centre endpoints
+ * were wired, 2026-09-17.
+ */
 export interface InspectionCentreDto {
   id: string;
   name: string;
@@ -4288,6 +4297,59 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Operations staff ─────────────────────────────────────────────────
+    // Who can be assigned an operations case. GET /operations/staff behind
+    // OPERATIONS_PERMISSIONS.QUEUES_READ. A read; there is no create, edit or
+    // deactivate endpoint for staff on this path, and none is invented here.
+    getOperationsStaff: () => dx<OperationsStaffMemberDto[]>('GET', '/operations/staff'),
+
+    // ── Inspection centres ───────────────────────────────────────────────
+    // Where DrippleX tells a driver to take their vehicle.
+    //
+    // THE WHOLE SURFACE IS LIST, CREATE AND UPDATE. There is no delete, on
+    // the server or here, and one must not be added: inspections point at
+    // centres, so removing one orphans the record of where a vehicle was
+    // actually inspected. A centre is retired by setting isActive false, and
+    // apps/backend/src/drivers/inspection-centres-surface.spec.ts asserts the
+    // service's method list exhaustively so a delete cannot appear unnoticed.
+    //
+    // ONE PERMISSION FOR ALL THREE: admin:inspection-centres:manage. There is
+    // no read-only tier — listing centres requires manage as well, so the nav
+    // entry is gated on manage rather than on a read permission that does not
+    // exist.
+    //
+    // `address` IS OPTIONAL, deliberately. The DTO's own words: "a placeholder
+    // street line would read to a driver as a real one". Do not make it
+    // required in a form; the founder decision of 2026-08-17 is to render the
+    // city alone rather than a blank line.
+    //
+    // `isActive` IS UPDATE-ONLY. A centre is born active; switching one off is
+    // a separate deliberate act. NOTE THAT IT DOES NOT CASCADE — the active
+    // check runs only when an inspection is BOOKED, so inspections already
+    // scheduled at a centre keep pointing at it after it is switched off.
+    // Nothing cancels or moves them. The UI says so.
+    getInspectionCentres: () => dx<InspectionCentreDto[]>('GET', '/admin/inspection-centres'),
+
+    createInspectionCentre: (body: {
+      name: string;
+      city: string;
+      address?: string;
+      latitude?: number;
+      longitude?: number;
+    }) => dx<InspectionCentreDto>('POST', '/admin/inspection-centres', body),
+
+    updateInspectionCentre: (
+      centreId: string,
+      body: {
+        name?: string;
+        city?: string;
+        address?: string;
+        latitude?: number;
+        longitude?: number;
+        isActive?: boolean;
+      },
+    ) => dx<InspectionCentreDto>('PATCH', `/admin/inspection-centres/${centreId}`, body),
+
     // ── Payout queue (read only) ─────────────────────────────────────────
     // GET /operations/finance/payout-requests and .../summary, both behind
     // OPERATIONS_PERMISSIONS.FINANCE_READ.

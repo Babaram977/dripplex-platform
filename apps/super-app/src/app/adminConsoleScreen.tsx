@@ -62,6 +62,8 @@ import {
   type DispatchEligibilityDto,
   MERCHANT_CATEGORY_LABEL,
   type MerchantCategory,
+  type InspectionCentreDto,
+  type OperationsStaffMemberDto,
   type OperationsPayoutRequestDto,
   type OperationsPayoutStatus,
   type PayoutQueueSummary,
@@ -140,6 +142,7 @@ export type AdminPage =
   | 'referralprogrammes'
   | 'dxpoints'
   | 'billpayments'
+  | 'inspectioncentres'
   | 'payoutqueue'
   | 'commissioncampaigns'
   | 'stalledorders'
@@ -667,6 +670,14 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   // Read-only visibility over the 24-hour automatic recovery backstop. Gated
   // on the same permission its endpoint is gated on, so the menu cannot offer
   // a page whose only possible answer for this account is 403.
+  // Gated on MANAGE, not a read permission: the server has no read-only
+  // tier for centres — listing them requires admin:inspection-centres:manage.
+  {
+    page: 'inspectioncentres',
+    icon: '🏢',
+    label: 'Inspection Centres',
+    requires: 'admin:inspection-centres:manage',
+  },
   // Who is waiting to be paid. Read-only: approving a payout is a separate
   // capability behind separate permissions and is not offered here.
   { page: 'payoutqueue', icon: '💸', label: 'Payout Queue', requires: 'operations:finance:read' },
@@ -885,6 +896,7 @@ const PAGE_LABELS: Record<AdminPage, string> = {
   referralprogrammes: 'Referral Programmes',
   dxpoints: 'DX Points Earning',
   billpayments: 'Bill Payments',
+  inspectioncentres: 'Inspection Centres',
   payoutqueue: 'Payout Queue',
   commissioncampaigns: 'Commission Campaigns',
   stalledorders: 'Stalled Orders',
@@ -10452,6 +10464,284 @@ function formatCaseTime(iso: string): string {
   });
 }
 
+// ─── Page: Inspection Centres ─────────────────────────────────────────────────
+/**
+ * Where DrippleX tells a driver to take their vehicle.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Same three endpoints, same admin:inspection-centres:manage permission — note
+ * there is NO read-only tier on the server, so listing requires manage too and
+ * the nav entry is gated on manage rather than on a read permission that does
+ * not exist.
+ *
+ * THERE IS NO DELETE, and this page must never offer one. Inspections point at
+ * centres; removing one would orphan the record of where a vehicle was
+ * actually inspected. A centre is retired by switching it off.
+ * apps/backend/src/drivers/inspection-centres-surface.spec.ts asserts the
+ * service's method list exhaustively — including its `private` members,
+ * because TypeScript visibility is a compile-time fiction — so a delete cannot
+ * appear on the server unnoticed either.
+ *
+ * DEACTIVATION DOES NOT CASCADE, and the operator is told so rather than
+ * finding out from a driver. The active check runs only when an inspection is
+ * BOOKED (inspections.service.ts:51); inspections already scheduled at a
+ * centre keep pointing at it after it is switched off. Nothing cancels or
+ * moves them. That is plausibly intended — a centre winding down honouring its
+ * appointments — so it is stated, not "fixed" by inventing a cascade here.
+ *
+ * ADDRESS IS OPTIONAL. The backend DTO's own reason: "a placeholder street
+ * line would read to a driver as a real one". The form does not require it and
+ * must not start to.
+ */
+type CentresView =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; centres: InspectionCentreDto[] };
+
+/** Trimmed name and city are the server's two required fields. Mirrors
+ *  CreateInspectionCentreDto's @MinLength(2) on both; never looser. */
+export function canCreateInspectionCentre(name: string, city: string): boolean {
+  return name.trim().length >= 2 && city.trim().length >= 2;
+}
+
+function PageInspectionCentres() {
+  const [view, setView] = useState<CentresView>({ kind: 'loading' });
+  const [name, setName] = useState('');
+  const [city, setCity] = useState('');
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setView({ kind: 'loading' });
+    try {
+      setView({ kind: 'ok', centres: await api.admin.getInspectionCentres() });
+    } catch (e: unknown) {
+      setView({
+        kind: 'error',
+        message: (e as { message?: string }).message ?? 'Could not load inspection centres.',
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const run = (fn: () => Promise<unknown>, okMsg: string) => {
+    setBusy(true);
+    setErr(null);
+    setMsg(null);
+    void (async () => {
+      try {
+        await fn();
+        setMsg(okMsg);
+        await load();
+      } catch (e: unknown) {
+        setErr((e as { message?: string }).message ?? 'That did not save.');
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const create = () => {
+    if (!canCreateInspectionCentre(name, city)) {
+      setErr('A centre needs a name and a city, each at least two characters.');
+      return;
+    }
+    run(
+      async () =>
+        await api.admin.createInspectionCentre({
+          name: name.trim(),
+          city: city.trim(),
+          // Omitted when blank rather than sent as an empty string: the server
+          // treats absent as "no published address" and renders the city
+          // alone. An empty string would be a 400 on @MinLength(5).
+          ...(address.trim() === '' ? {} : { address: address.trim() }),
+        }),
+      `${name.trim()} added.`,
+    );
+    setName('');
+    setCity('');
+    setAddress('');
+  };
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Card style={{ padding: '14px 16px' }}>
+        <SectionHeader title="Inspection centres" />
+        <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Where drivers are sent to have a vehicle inspected. A centre can be switched off, never
+          deleted — inspections point at these records, and removing one would erase where a vehicle
+          was actually inspected.
+        </div>
+
+        {msg !== null && (
+          <div style={{ marginTop: 8, fontSize: 11.5, color: G3, fontFamily: 'Inter, sans-serif' }}>
+            {msg}
+          </div>
+        )}
+        {err !== null && (
+          <div
+            style={{ marginTop: 8, fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}
+          >
+            {err}
+          </div>
+        )}
+
+        <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            className="dx-input"
+            style={{ flex: 1, minWidth: 140 }}
+            placeholder="Centre name"
+            aria-label="Centre name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="dx-input"
+            style={{ flex: 1, minWidth: 120 }}
+            placeholder="City"
+            aria-label="City"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+          />
+          {/* OPTIONAL. Left blank the server records no published address and
+              the city shows alone — which is the founder decision, not a
+              shortcoming to be papered over with a placeholder. */}
+          <input
+            className="dx-input"
+            style={{ flex: 2, minWidth: 180 }}
+            placeholder="Street address (optional)"
+            aria-label="Street address"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+          />
+          <Btn
+            label="Add centre"
+            small
+            color={G3}
+            disabled={busy || !canCreateInspectionCentre(name, city)}
+            onClick={create}
+          />
+        </div>
+      </Card>
+
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        {view.kind === 'error' ? (
+          <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: C_ERR,
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Couldn&rsquo;t load inspection centres
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              This is not the same as there being none — the platform could not be asked.
+            </div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              {view.message}
+            </div>
+          </div>
+        ) : view.kind === 'loading' ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            Loading…
+          </div>
+        ) : view.centres.length === 0 ? (
+          <div
+            style={{
+              padding: '14px 16px',
+              fontSize: 12.5,
+              color: MUTED,
+              fontFamily: 'Inter, sans-serif',
+            }}
+          >
+            No inspection centres yet. Drivers cannot book an inspection until one exists.
+          </div>
+        ) : (
+          view.centres.map((c, i) => (
+            <InspectionCentreRow
+              key={c.id}
+              centre={c}
+              first={i === 0}
+              busy={busy}
+              onToggle={(next) =>
+                run(
+                  async () => await api.admin.updateInspectionCentre(c.id, { isActive: next }),
+                  next
+                    ? `${c.name} is open for bookings.`
+                    : `${c.name} is closed to new bookings. Inspections already booked there are unchanged.`,
+                )
+              }
+            />
+          ))
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function InspectionCentreRow({
+  centre,
+  first,
+  busy,
+  onToggle,
+}: {
+  centre: InspectionCentreDto;
+  first: boolean;
+  busy: boolean;
+  onToggle: (next: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '12px 16px',
+        borderTop: first ? 'none' : `1px solid ${BORDER}`,
+        fontFamily: 'Inter, sans-serif',
+      }}
+    >
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 600, color: WHITE }}>{centre.name}</div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+          {/* City alone when there is no published address — the founder
+              decision of 2026-08-17, not a blank line. */}
+          {centre.address === null ? centre.city : `${centre.address}, ${centre.city}`}
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Chip label={centre.isActive ? 'Open' : 'Closed'} color={centre.isActive ? G3 : MUTED} />
+        {/* Switch off / on. Never "Delete" — see the page comment. */}
+        <Btn
+          label={centre.isActive ? 'Close to bookings' : 'Reopen'}
+          small
+          outline
+          color={centre.isActive ? C_WARN : G3}
+          disabled={busy}
+          onClick={() => onToggle(!centre.isActive)}
+        />
+      </div>
+    </div>
+  );
+}
+
 // ─── Page: Payout Queue ───────────────────────────────────────────────────────
 /**
  * DPX-OPS finance — who is waiting to be paid, and how much is outstanding.
@@ -11762,6 +12052,251 @@ function PageRecoveryActivation() {
   );
 }
 
+// ─── Case assignment ──────────────────────────────────────────────────────────
+/**
+ * Give an operations case to a named operator or supervisor.
+ *
+ * Ported from apps/operations-console's `case-controls.tsx` on the 2026-09-16
+ * ruling. ops.dripplex.com already SHOWED `Assigned: <name> | Unassigned` on a
+ * case and offered no way to change it; this is the control that was missing,
+ * rendered in the console's own language rather than the standalone's.
+ *
+ * Everything below is pinned by
+ * apps/backend/src/operations/operations-staff-assignment-surface.spec.ts.
+ * Four of its findings shape this component and must survive any edit:
+ *
+ * 1. TWO PERMISSIONS, NOT ONE. GET /operations/staff is behind
+ *    `operations:queues:read`; the PATCH that actually assigns is behind
+ *    `operations:queues:manage`. An account with read alone can load the pool
+ *    perfectly well and would be handed a 403 by the only thing the pool is
+ *    for — so the control is gated on MANAGE, and a read-only operator is told
+ *    who holds the case rather than offered a button that cannot work.
+ *
+ * 2. THE ROLE IS SENT, ALWAYS. Omitting `assignedToRole` does not mean
+ *    "unchanged" and does not mean "look it up" — the server defaults it to
+ *    OPERATOR, so a supervisor assigned by id alone is recorded as an operator
+ *    in the row and in the timeline, with no error. The role always comes from
+ *    the pool entry the operator picked.
+ *
+ * 3. THE SERVER DOES NOT CHECK THE ASSIGNEE IS ASSIGNABLE. `assignedToId`
+ *    carries `@IsUUID()` and nothing else, so a well-formed id belonging to a
+ *    customer — or to nobody — would be written without complaint. This select
+ *    is the only guard there is. It must never become a free-text field, and
+ *    it must never offer anything that did not come from /operations/staff.
+ *
+ * 4. UNASSIGNING DOES NOT REVERT THE STATUS. A case that went NEW → ASSIGNED
+ *    on being assigned stays ASSIGNED once unassigned — visibly handled, with
+ *    nobody handling it. Nothing in the service walks that back, and inventing
+ *    a second call here to do so would be this console making up a lifecycle
+ *    rule the platform does not have. It is said on screen instead.
+ */
+type StaffPool =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; staff: OperationsStaffMemberDto[] };
+
+/** How a pool member reads in the dropdown. Role is part of the label because
+ *  it is part of what is being recorded — see finding 2 above. */
+export function staffOptionLabel(member: OperationsStaffMemberDto): string {
+  const role = member.role === 'SUPERVISOR' ? 'Supervisor' : 'Operator';
+  return `${member.firstName} ${member.lastName} · ${role}`;
+}
+
+/**
+ * What unassigning will leave behind, or null when it leaves nothing behind.
+ * A case still sitting in NEW was never advanced by an assignment, so there is
+ * nothing to warn about; anything past NEW keeps the status it reached.
+ */
+export function unassignLeavesStatus(
+  status: AdminOperationsCaseDto['status'],
+): AdminOperationsCaseDto['status'] | null {
+  return status === 'NEW' ? null : status;
+}
+
+function CaseAssignmentPanel({
+  caseId,
+  version,
+  status,
+  assignedToId,
+  assignedToName,
+  assignedToRole,
+  onAssigned,
+}: {
+  caseId: string;
+  version: number;
+  status: AdminOperationsCaseDto['status'];
+  assignedToId: string | null;
+  assignedToName: string | null;
+  assignedToRole: AdminOperationsCaseDto['assignedToRole'];
+  /** Reload the queue — the case's version has moved on and every later
+   *  action needs the new one. */
+  onAssigned: () => void | Promise<void>;
+}) {
+  const [pool, setPool] = useState<StaffPool>({ kind: 'loading' });
+  const [choice, setChoice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const canManage = hasPerm('operations:queues:manage');
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const staff = await api.admin.getOperationsStaff();
+        if (live) setPool({ kind: 'ok', staff });
+      } catch (e: unknown) {
+        if (live)
+          setPool({
+            kind: 'error',
+            message: (e as { message?: string }).message ?? 'Could not load the operations staff.',
+          });
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // The selection belongs to the case on screen, not to the panel: switching
+  // to another case must not carry a half-made choice across to it.
+  useEffect(() => {
+    setChoice('');
+    setNote(null);
+  }, [caseId]);
+
+  const run = (body: Parameters<typeof api.admin.updateCase>[1], okNote: string) => {
+    setBusy(true);
+    setNote(null);
+    void (async () => {
+      try {
+        await api.admin.updateCase(caseId, body);
+        setNote(okNote);
+        setChoice('');
+        await onAssigned();
+      } catch (e: unknown) {
+        const msg = (e as { message?: string }).message ?? 'That did not save.';
+        setNote(
+          /conflict|version/i.test(msg)
+            ? 'Someone else changed this case first — reloaded their version. Try again.'
+            : msg,
+        );
+        await onAssigned();
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  const assign = () => {
+    if (pool.kind !== 'ok') return;
+    const member = pool.staff.find((m) => m.id === choice);
+    // Nothing outside the pool can be assigned from here — finding 3.
+    if (!member) return;
+    run(
+      { version, assignedToId: member.id, assignedToRole: member.role },
+      `Assigned to ${member.firstName} ${member.lastName}.`,
+    );
+  };
+
+  const unassign = () => {
+    const left = unassignLeavesStatus(status);
+    run(
+      { version, assignedToId: null },
+      left === null
+        ? 'Unassigned.'
+        : `Unassigned — the case stays ${lifecycleLabel(left)} with nobody on it. Change the status if that is wrong.`,
+    );
+  };
+
+  const roleLabel = assignedToRole === 'SUPERVISOR' ? 'supervisor' : 'operator';
+
+  return (
+    <Card style={{ padding: '14px 16px' }}>
+      <SectionHeader
+        title="Assignment"
+        action={
+          <Chip
+            label={assignedToName === null ? 'Unassigned' : `${assignedToName} · ${roleLabel}`}
+            color={assignedToName === null ? C_WARN : G3}
+          />
+        }
+      />
+
+      {!canManage ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {assignedToName === null
+            ? 'Nobody is on this case. Assigning one needs the operations queue-manage permission.'
+            : `${assignedToName} holds this case. Changing that needs the operations queue-manage permission.`}
+        </div>
+      ) : pool.kind === 'error' ? (
+        <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+          Couldn&rsquo;t load the operations staff — {pool.message}. This is not the same as there
+          being nobody to assign.
+        </div>
+      ) : pool.kind === 'loading' ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Loading operations staff…
+        </div>
+      ) : pool.staff.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          Nobody holds the operations queue-manage permission, so there is nobody to assign this to.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select
+            className="dx-input"
+            aria-label="Assign to"
+            style={{ flex: 1, minWidth: 180 }}
+            value={choice}
+            disabled={busy}
+            onChange={(e) => setChoice(e.target.value)}
+          >
+            <option value="">Select an operator or supervisor…</option>
+            {pool.staff.map((m) => (
+              <option key={m.id} value={m.id}>
+                {staffOptionLabel(m)}
+              </option>
+            ))}
+          </select>
+          <Btn
+            label={busy ? 'Saving…' : 'Assign'}
+            small
+            color={G3}
+            disabled={busy || choice === ''}
+            onClick={assign}
+          />
+          {assignedToId !== null && (
+            <Btn label="Unassign" small outline color={C_WARN} disabled={busy} onClick={unassign} />
+          )}
+        </div>
+      )}
+
+      {canManage && (
+        <div
+          style={{
+            marginTop: 8,
+            fontSize: 11,
+            color: MUTED,
+            fontFamily: 'Inter, sans-serif',
+            lineHeight: 1.5,
+          }}
+        >
+          Assigning a new case also moves it out of the unhandled state and updates what the person
+          who raised it sees. Unassigning clears the name only — the status stays where it got to.
+        </div>
+      )}
+
+      {note !== null && (
+        <div
+          style={{ marginTop: 8, fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}
+        >
+          {note}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageIncidents() {
   const [cases, setCases] = useState<AdminOperationsCaseDto[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -12056,6 +12591,17 @@ function PageIncidents() {
             ))}
           </Card>
         </div>
+        {/* The 'Assigned' row above used to be the end of the story — this is
+            the control that was only ever in the standalone console. */}
+        <CaseAssignmentPanel
+          caseId={inc.caseId}
+          version={inc.version}
+          status={inc.status}
+          assignedToId={inc.assignedToId}
+          assignedToName={inc.assignedToName}
+          assignedToRole={inc.assignedToRole}
+          onAssigned={load}
+        />
         {actionMsg && (
           <Card style={{ padding: '10px 14px' }}>
             <span style={{ fontSize: 11.5, color: WHITE, fontFamily: 'Inter, sans-serif' }}>
@@ -12395,6 +12941,21 @@ function PageSupport() {
                     }
                   />
                 </div>
+              </div>
+              {/* Same control as Incidents. The standalone console shared its
+                  case-controls across all three case-detail screens; Incidents
+                  already merges SOS with incident reports, so Incidents plus
+                  Support is the whole of it. */}
+              <div style={{ padding: '10px 12px 0' }}>
+                <CaseAssignmentPanel
+                  caseId={selTicket.caseId}
+                  version={selTicket.version}
+                  status={selTicket.status}
+                  assignedToId={selTicket.assignedToId}
+                  assignedToName={selTicket.assignedToName}
+                  assignedToRole={selTicket.assignedToRole}
+                  onAssigned={load}
+                />
               </div>
               {/* Messages — built from the real ticket body + admin response */}
               <div
@@ -16088,6 +16649,8 @@ function renderPage(page: AdminPage) {
       return <PageDxPoints />;
     case 'billpayments':
       return <PageBillPayments />;
+    case 'inspectioncentres':
+      return <PageInspectionCentres />;
     case 'payoutqueue':
       return <PagePayoutQueue />;
     case 'commissioncampaigns':
