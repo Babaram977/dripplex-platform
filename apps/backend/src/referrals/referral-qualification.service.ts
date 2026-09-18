@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   BusinessVerificationStatus,
   CustomerKycStatus,
+  DriverStatus,
   FleetMemberStatus,
   FleetStatus,
   KycVerificationStatus,
@@ -43,6 +44,7 @@ function pending(outstanding: string): ReferralQualification {
  * | Customer | A first qualifying paid transaction                           |
  * | Merchant | Verification, a bank account on file, and a first order       |
  * | Fleet    | Riders attached, a bank account on file, and activation       |
+ * | Driver   | Approved by DrippleX, and a first completed trip              |
  *
  * Each of them is the point at which the referral has produced something
  * DrippleX earns from, which is what the reward is being paid out of. Signup is
@@ -71,6 +73,8 @@ export class ReferralQualificationService {
         return await this.evaluateMerchant(refereeUserId, programme);
       case ReferralRefereeType.FLEET:
         return await this.evaluateFleet(refereeUserId, programme);
+      case ReferralRefereeType.DRIVER:
+        return await this.evaluateDriver(refereeUserId, programme);
     }
   }
 
@@ -206,6 +210,58 @@ export class ReferralQualificationService {
     });
     if (members === 0) {
       return pending('the referred fleet has no active riders or drivers attached');
+    }
+    return QUALIFIED;
+  }
+
+  /**
+   * DrippleX having approved them, and a first completed trip.
+   *
+   * The same shape as the other three, for the same reason: signing up as a
+   * driver proves nothing. Anyone can start an application, and an application
+   * that stalls at PENDING costs DrippleX the reward and returns nothing.
+   * `DriverStatus.APPROVED` is DrippleX deciding this person may drive, and the
+   * first COMPLETED ride is the first fare the platform earned from — which is
+   * what the reward is paid out of.
+   *
+   * Approval alone is deliberately not enough. A driver can be approved and
+   * never switch on, and that is the exact case the hold and the milestone
+   * exist to keep off the payroll.
+   *
+   * Rides are counted by `driverId` on COMPLETED rides only — a cancelled or
+   * abandoned trip is not a fare. `requireKycVerified` reads `DriverKyc`, never
+   * `CustomerKyc`: they are separate models by founder decision and a driver who
+   * verified as a customer has not verified as a driver.
+   */
+  private async evaluateDriver(
+    refereeUserId: string,
+    programme: ReferralProgramme,
+  ): Promise<ReferralQualification> {
+    const profile = await this.prisma.driverProfile.findUnique({
+      where: { userId: refereeUserId },
+      select: { status: true },
+    });
+    if (profile === null) {
+      return pending('the referred driver has not started a driver application');
+    }
+    if (profile.status !== DriverStatus.APPROVED) {
+      return pending('the referred driver has not been approved by DrippleX');
+    }
+
+    if (programme.requireKycVerified) {
+      const verified = await this.prisma.driverKyc.count({
+        where: { driverId: refereeUserId, verificationStatus: KycVerificationStatus.VERIFIED },
+      });
+      if (verified === 0) {
+        return pending('the referred driver has no verified KYC document');
+      }
+    }
+
+    const trips = await this.prisma.ride.count({
+      where: { driverId: refereeUserId, status: RideStatus.COMPLETED },
+    });
+    if (trips === 0) {
+      return pending('the referred driver has not completed their first trip');
     }
     return QUALIFIED;
   }

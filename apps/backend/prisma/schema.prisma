@@ -5065,6 +5065,19 @@ enum ReferralRefereeType {
   CUSTOMER
   MERCHANT
   FLEET
+  /// Founder ruling 2026-09-18: drivers belong on the Referral Programmes desk
+  /// alongside the other three.
+  ///
+  /// This is NOT the driver referral CAMPAIGN (`ReferralCampaign`), which is a
+  /// tiered, trip-counted, time-boxed promotion Operations runs. This is the
+  /// standing programme: one agreed amount for referring somebody who becomes a
+  /// working driver, paid on the same lifecycle as the other three.
+  ///
+  /// Its amounts are deliberately NOT chosen here. The founder's instruction was
+  /// to give it adjustable values rather than specify them, so the row is seeded
+  /// INACTIVE and Operations sets the two amounts and switches it on from the
+  /// console. Nothing pays until they do.
+  DRIVER
 }
 
 /// Whose referral code this is, and therefore which wallet their reward is

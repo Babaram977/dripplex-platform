@@ -623,7 +623,16 @@ export interface PromotionLeaderboardEntryDto {
 export type ReferralRedemptionStatus =
   'PENDING' | 'QUALIFIED' | 'APPROVED' | 'PAID' | 'REJECTED' | 'REVERSED' | 'EXPIRED';
 
-export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET';
+/**
+ * What the referred party signed up as, and therefore which programme row
+ * prices the referral.
+ *
+ * DRIVER joined on the founder ruling of 2026-09-18. It is NOT the driver
+ * referral campaign (`ReferralCampaign`) — that is a tiered, trip-counted
+ * promotion Operations runs for a period. This is the standing programme, on
+ * the same lifecycle as the other three, with amounts Operations sets.
+ */
+export type ReferralRefereeType = 'CUSTOMER' | 'MERCHANT' | 'FLEET' | 'DRIVER';
 
 export type ReferralRejectionReason =
   | 'SELF_REFERRAL'
