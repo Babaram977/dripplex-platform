@@ -397,18 +397,23 @@ describe('one campaign at a time', () => {
     );
   }, 60_000);
 
-  it('reinstates a removed promoter on the same campaign, at the new rate', async () => {
+  it('lets somebody removed from a campaign be enrolled on it again', async () => {
     if (!guard()) return;
     const promoter = await makeUser();
-    const id = await makeCampaign(`Reinstate ${randomUUID().slice(0, 6)}`);
-    await enrol(id, promoter);
-    await prisma.campaignPromoter.updateMany({
-      where: { promotionId: id, userId: promoter },
-      data: { status: CampaignPromoterStatus.REMOVED },
-    });
+    const id = await makeCampaign(`Re-enrol ${randomUUID().slice(0, 6)}`);
+    const first = await enrol(id, promoter);
+    // Removal deletes the participation now (founder ruling, 2026-09-18), so
+    // this deletes rather than setting REMOVED — the state this test used to
+    // construct can no longer exist.
+    await prisma.campaignPromoter.deleteMany({ where: { promotionId: id, userId: promoter } });
 
-    // Their own removed participation must not block them from the campaign
-    // they are being put back on.
-    await expect(enrol(id, promoter)).resolves.toBeDefined();
+    // Nothing of theirs blocks them from the campaign they are being put back
+    // on. They get a NEW participation, not their old one back.
+    const again = await enrol(id, promoter);
+    expect(again).toBeDefined();
+    // `enrol` is typed Promise<unknown> here deliberately — this suite is about
+    // rates, not promoter shapes — so the one field this assertion needs is
+    // narrowed rather than the helper's type widened for one test.
+    expect((again as { id: string }).id).not.toBe((first as { id: string }).id);
   }, 60_000);
 });

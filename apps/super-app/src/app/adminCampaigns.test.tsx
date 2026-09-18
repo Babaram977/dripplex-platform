@@ -23,7 +23,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
  *    an aggregate reports double what the grant actually cost.
  *  - a null conversion rate is "—", not "0.0%".
  *  - a promoter's token is a credential. Masked until asked for.
- *  - a removed promoter keeps their earnings but must never render as active.
+ *  - a removed promoter is GONE. Founder ruling, 2026-09-18, reversing soft
+ *    removal: removal deletes the participation, so there is no removed list
+ *    and no copy explaining why removed rows are kept.
  *  - manage controls are absent without the permission. That is a courtesy;
  *    the server's 403 is the boundary.
  */
@@ -741,15 +743,29 @@ describe('Referral Campaigns — promoters', () => {
     expect(document.body.textContent).not.toContain('CAMPAIGNTOKEN');
   });
 
-  it('never renders a removed promoter as active or offers to remove them', async () => {
+  it('does not render a removed promoter at all', async () => {
+    // Founder ruling, 2026-09-18: "No soft removal in any campaign, removal
+    // should be completely." This test previously asserted the OPPOSITE — that a
+    // REMOVED promoter still appeared, under copy saying they were kept because
+    // their attributions and earnings stand. That is the behaviour the ruling
+    // reversed, and it is why this assertion is inverted rather than deleted.
+    //
+    // A server that has had this change cannot send a REMOVED promoter; the row
+    // is gone. One is fed in anyway, because the guarantee worth holding is that
+    // this page never shows a removed promoter as a participant even if
+    // something upstream sends one.
     permissions = [READ, MANAGE];
     getCampaignPromotion.mockResolvedValue(
       detail({ promoters: [promoter({ id: 'p2', name: 'Gone Promoter', status: 'REMOVED' })] }),
     );
     await renderPage();
     await openCampaign();
-    await waitFor(() => expect(screen.getByText('Gone Promoter')).toBeTruthy());
-    expect(screen.getByText('No active promoters on this campaign.')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByText('No active promoters on this campaign.')).toBeTruthy(),
+    );
+    expect(screen.queryByText('Gone Promoter')).toBeNull();
+    // And none of the copy that used to justify keeping them.
+    expect(document.body.textContent).not.toMatch(/attributions and earnings stand/i);
     expect(screen.queryByText('Remove')).toBeNull();
   });
 });
@@ -829,11 +845,14 @@ describe('Referral Campaigns — manage flows send exactly what the operator typ
     );
   });
 
-  it('removes a promoter through the API and reports the returned status', async () => {
+  it('removes a promoter through the API and reports what the removal cost', async () => {
+    // No status to report any more — the row is deleted. What an operator
+    // cannot see for themselves is how many past acquisitions just lost their
+    // link to this participation, so that is what the confirmation says.
     removeCampaignPromoter.mockResolvedValue({
       id: 'p1',
-      status: 'REMOVED',
-      removedAt: '2026-09-13T00:00:00.000Z',
+      promotionId: 'c1',
+      detachedRedemptions: 3,
     });
     await renderPage();
     await openCampaign();
@@ -842,7 +861,30 @@ describe('Referral Campaigns — manage flows send exactly what the operator typ
     fireEvent.click(screen.getByText('Remove'));
     await waitFor(() => expect(removeCampaignPromoter).toHaveBeenCalledWith('p1'));
     await waitFor(() =>
-      expect(screen.getByText('Promoter removed. Their status is now REMOVED.')).toBeTruthy(),
+      expect(
+        screen.getByText(
+          'Promoter removed from the campaign. 3 past acquisitions kept, no longer linked to this participation.',
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
+  it('says plainly when a removed promoter had attributed nothing', async () => {
+    // The exact rows the founder reported: promoters showing 0/0 and ₦0. There
+    // is nothing to warn about, so the confirmation does not manufacture a
+    // consequence.
+    removeCampaignPromoter.mockResolvedValue({
+      id: 'p1',
+      promotionId: 'c1',
+      detachedRedemptions: 0,
+    });
+    await renderPage();
+    await openCampaign();
+    await waitFor(() => expect(screen.getByText('Remove')).toBeTruthy());
+
+    fireEvent.click(screen.getByText('Remove'));
+    await waitFor(() =>
+      expect(screen.getByText('Promoter removed from the campaign.')).toBeTruthy(),
     );
   });
 });

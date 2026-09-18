@@ -312,14 +312,16 @@ describe('OperationsPromotionsService', () => {
     });
     const removed = await ops.removePromoter(promoter.id, ADMIN, ctx);
 
-    expect(removed.status).toBe(CampaignPromoterStatus.REMOVED);
-    const after = await prisma.campaignPromoter.findUniqueOrThrow({ where: { id: promoter.id } });
-    // The token is kept, not cleared: historical acquisitions were attributed
-    // through it and have to stay explainable.
-    expect(after.token).toBe(before.token);
+    // Founder ruling, 2026-09-18: removal is complete. The participation is
+    // gone from the campaign — token, rate and class with it.
+    expect(removed.detachedRedemptions).toBe(1);
+    expect(await prisma.campaignPromoter.findUnique({ where: { id: promoter.id } })).toBeNull();
+    expect(before.token).not.toBe('');
+    // The acquisition it attributed survives, detached. Deleting it would erase
+    // a record of money that moved.
     expect(
       await prisma.referralRedemption.count({ where: { campaignPromoterId: promoter.id } }),
-    ).toBe(1);
+    ).toBe(0);
     expect(audited.map((a) => a.action)).toContain('campaign.promoter.removed');
   });
 

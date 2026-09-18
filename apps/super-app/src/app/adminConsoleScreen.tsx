@@ -15391,18 +15391,26 @@ function PromoterTable({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
 
-  // A removed promoter keeps their attributions and their earnings, so they
-  // stay on the page — but never in the active list, and never with controls
-  // that imply they are still running.
+  // There is no removed list any more. Founder ruling, 2026-09-18: "No soft
+  // removal in any campaign, removal should be completely, ops have total
+  // control." A promoter this page shows is a promoter on the campaign.
   const active = detail.promoters.filter((p) => p.status === 'ACTIVE');
-  const removed = detail.promoters.filter((p) => p.status !== 'ACTIVE');
 
   const remove = async (promoterId: string) => {
     setRowError(null);
     setBusyId(promoterId);
     try {
       const result = await api.admin.removeCampaignPromoter(promoterId);
-      onChanged(`Promoter removed. Their status is now ${result.status}.`);
+      // What the removal cost, not a status. There is no row left to have one,
+      // and the count is the one thing an operator cannot see for themselves:
+      // how many past acquisitions just lost their link to this participation.
+      onChanged(
+        result.detachedRedemptions === 0
+          ? 'Promoter removed from the campaign.'
+          : `Promoter removed from the campaign. ${String(result.detachedRedemptions)} past ${
+              result.detachedRedemptions === 1 ? 'acquisition' : 'acquisitions'
+            } kept, no longer linked to this participation.`,
+      );
     } catch (e: unknown) {
       setRowError((e as { message?: string }).message ?? 'Could not remove that promoter.');
     } finally {
@@ -15477,15 +15485,6 @@ function PromoterTable({
         <div style={{ fontSize: 12.5, color: MUTED }}>No active promoters on this campaign.</div>
       ) : (
         active.map(row)
-      )}
-
-      {removed.length > 0 && (
-        <>
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-            Removed — kept because their attributions and earnings stand
-          </div>
-          {removed.map(row)}
-        </>
       )}
 
       {canManage && (

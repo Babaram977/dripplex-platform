@@ -328,7 +328,7 @@ describe('CampaignPromoterService', () => {
     expect(await prisma.campaignPromoter.count({ where: { promotionId, userId } })).toBe(1);
   });
 
-  it('removal stops future participation and destroys nothing', async () => {
+  it('removal deletes the participation and detaches — never deletes — the money record', async () => {
     if (!databaseAvailable) return;
     const [promotionId, userId, refereeId] = [await aCampaign(), await aUser(), await aUser()];
     const promoter = await service.addPromoter(
@@ -356,18 +356,26 @@ describe('CampaignPromoterService', () => {
 
     const removed = await service.removePromoter(promoter.id, ADMIN);
 
-    expect(removed.status).toBe(CampaignPromoterStatus.REMOVED);
-    expect(removed.removedAt).not.toBeNull();
-    // The token is kept on purpose: historical rows were attributed through it.
-    expect(removed.token).toBe(promoter.token);
-    const kept = await prisma.referralRedemption.findFirstOrThrow({
-      where: { campaignPromoterId: promoter.id },
+    // THE ROW IS GONE. Founder ruling, 2026-09-18, reversing soft removal:
+    // "No soft removal in any campaign, removal should be completely."
+    expect(await prisma.campaignPromoter.findUnique({ where: { id: promoter.id } })).toBeNull();
+    expect(removed.detachedRedemptions).toBe(1);
+
+    // THE MONEY RECORD IS NOT. This redemption is PAID — the wallet ledger holds
+    // the matching credit — so deleting it would leave money that moved with
+    // nothing saying why. It is detached, not destroyed, and keeps its
+    // snapshotted amounts and the referral that names who earned them.
+    const survivor = await prisma.referralRedemption.findFirstOrThrow({
+      where: { refereeUserId: refereeId },
     });
-    expect(Number(kept.referrerRewardAmount)).toBe(350);
-    expect(kept.pointsPerNairaAtGrant).toBe(100);
+    expect(survivor.campaignPromoterId).toBeNull();
+    expect(survivor.status).toBe(ReferralRedemptionStatus.PAID);
+    expect(Number(survivor.referrerRewardAmount)).toBe(350);
+    expect(survivor.pointsPerNairaAtGrant).toBe(100);
+    expect(survivor.referralId).toBe(referral.id);
   });
 
-  it('reinstates a removed promoter on their original token, keeping one history', async () => {
+  it('re-adding somebody removed gives them a NEW participation and a NEW token', async () => {
     if (!databaseAvailable) return;
     const [promotionId, userId] = [await aCampaign(), await aUser()];
     const input = {
@@ -381,10 +389,18 @@ describe('CampaignPromoterService', () => {
 
     const again = await service.addPromoter(input, ADMIN);
 
-    expect(again.id).toBe(first.id);
-    expect(again.token).toBe(first.token);
+    // This is the cost of total removal, pinned rather than hidden. Soft removal
+    // used to reinstate the SAME row on the SAME token, so a promoter's links
+    // kept working across a gap. A deleted participation cannot be reinstated,
+    // so their old token is dead and anything already shared under it stops
+    // attributing. Founder ruling, 2026-09-18 — ops have total control, and
+    // this is what total means.
+    expect(again.id).not.toBe(first.id);
+    expect(again.token).not.toBe(first.token);
     expect(again.status).toBe(CampaignPromoterStatus.ACTIVE);
     expect(again.removedAt).toBeNull();
+    // And exactly one participation, not two.
+    expect(await prisma.campaignPromoter.count({ where: { promotionId, userId } })).toBe(1);
   });
 
   it('refuses to enrol anyone on a campaign that can never attribute', async () => {
