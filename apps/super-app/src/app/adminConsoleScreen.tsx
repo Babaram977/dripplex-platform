@@ -619,6 +619,30 @@ const AUDIT_LOGS: AuditLogRow[] = []; // mock cleared — no ops audit-log feed 
  * page exactly as it was rather than inventing a permission map for screens
  * nobody reported a problem with.
  */
+/**
+ * The operator menu, ordered by what things ARE rather than by when they were
+ * built.
+ *
+ * Founder instruction, 2026-09-18, after reporting that migrated capability was
+ * "still missing" from ops.dripplex.com. It was not missing — every one of it
+ * was here. It was APPENDED. Each capability ported from the standalone console
+ * went on the end of this list in the order the migration happened to reach it,
+ * so Inspection Centres sat thirteen rows from Inspections, Payout Queue
+ * thirteen from Settlements, and Commission Campaigns nine from Commissions.
+ * An operator scanning for them where they belong did not find them and
+ * concluded they had never been ported. A menu that hides a page it contains
+ * has the same cost as not having the page.
+ *
+ * ORDER ONLY. No entry was added, removed, relabelled, re-iconed or
+ * re-permissioned by this change, and nothing about the way the menu renders
+ * was touched — the founder's standing instruction is to keep this console's
+ * look. adminConsoleNavOrder.test.ts pins both halves of that: the pairs that
+ * must stay adjacent, and the exact set of entries with their permissions.
+ *
+ * Stalled Orders and Automatic Recovery were deliberately NOT moved. They are
+ * order-exception desks, so their siblings are Incidents and Support, which is
+ * where they already sat.
+ */
 const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: string }[] = [
   { page: 'dashboard', icon: '⬛', label: 'Dashboard' },
   { page: 'livemap', icon: '🗺️', label: 'Live Map' },
@@ -629,12 +653,36 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   { page: 'drvkyc', icon: '🪪', label: 'Driver KYC' },
   { page: 'vehicles', icon: '🔑', label: 'Vehicles' },
   { page: 'inspections', icon: '🔧', label: 'Inspections' },
+  // Beside Inspections, because a centre is where an inspection happens.
+  // Gated on MANAGE, not a read permission: the server has no read-only tier
+  // for centres — listing them requires admin:inspection-centres:manage.
+  {
+    page: 'inspectioncentres',
+    icon: '🏢',
+    label: 'Inspection Centres',
+    requires: 'admin:inspection-centres:manage',
+  },
   { page: 'settlements', icon: '💰', label: 'Settlements' },
+  // Beside Settlements: both answer "who is owed money and has it gone out?".
+  // Read-only — approving a payout is a separate capability behind separate
+  // permissions and is not offered here.
+  { page: 'payoutqueue', icon: '💸', label: 'Payout Queue', requires: 'operations:finance:read' },
   { page: 'merchants', icon: '🏪', label: 'Merchants' },
   { page: 'riders', icon: '🛵', label: 'Riders' },
   { page: 'customers', icon: '👥', label: 'Customers' },
   { page: 'pricing', icon: '💲', label: 'Pricing' },
   { page: 'commissions', icon: '🧾', label: 'Commissions' },
+  // Beside Commissions, because a campaign is what overrides one. "Commission
+  // Campaigns", never "Campaigns": Referral Campaigns is a different desk and
+  // this file already records what two similarly-named menu entries cost an
+  // operator once. Adjacent to Commissions rather than to Referral Campaigns
+  // for that same reason — the neighbour explains which one this is.
+  {
+    page: 'commissioncampaigns',
+    icon: '🏷️',
+    label: 'Commission Campaigns',
+    requires: 'admin:commission-campaign:read',
+  },
   // "Referral Campaigns", not "Promotions": the Pricing page already carries a
   // promotions editor for marketing promos, and two menu entries called the
   // same thing would send an operator to the wrong desk.
@@ -668,32 +716,11 @@ const NAV_ITEMS: { page: AdminPage; icon: string; label: string; requires?: stri
   },
   { page: 'dxpoints', icon: '⭐', label: 'DX Points Earning', requires: 'admin:loyalty:manage' },
   { page: 'billpayments', icon: '📱', label: 'Bill Payments' },
-  // Read-only visibility over the 24-hour automatic recovery backstop. Gated
-  // on the same permission its endpoint is gated on, so the menu cannot offer
-  // a page whose only possible answer for this account is 403.
-  // Gated on MANAGE, not a read permission: the server has no read-only
-  // tier for centres — listing them requires admin:inspection-centres:manage.
-  {
-    page: 'inspectioncentres',
-    icon: '🏢',
-    label: 'Inspection Centres',
-    requires: 'admin:inspection-centres:manage',
-  },
-  // Who is waiting to be paid. Read-only: approving a payout is a separate
-  // capability behind separate permissions and is not offered here.
-  { page: 'payoutqueue', icon: '💸', label: 'Payout Queue', requires: 'operations:finance:read' },
-  // "Commission Campaigns", never "Campaigns": Referral Campaigns is a
-  // different desk and this file already records what two similarly-named
-  // menu entries cost an operator once.
-  {
-    page: 'commissioncampaigns',
-    icon: '🏷️',
-    label: 'Commission Campaigns',
-    requires: 'admin:commission-campaign:read',
-  },
   // The two order-exception desks, adjacent because they are two views of
   // one situation: what has stalled, and whether the platform will act on it
   // by itself. Both read-only, both on the permission their endpoints enforce.
+  // They sit here, ahead of Incidents and Support, because all four are
+  // queues of things waiting on somebody.
   { page: 'stalledorders', icon: '⏳', label: 'Stalled Orders', requires: 'admin:orders:read' },
   { page: 'recovery', icon: '🛟', label: 'Automatic Recovery', requires: 'admin:orders:read' },
   { page: 'incidents', icon: '⚠️', label: 'Incidents' },
