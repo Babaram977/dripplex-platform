@@ -45,7 +45,7 @@ lists the blockers the D-U-N-S does not remove (no macOS build host,
 | ----------------------- | ------------------------------------ | --------------------------------------------------------------------- |
 | **Name**                | **DrippleX**                         | ✅ verified — `Info.plist` `CFBundleDisplayName`                      |
 | **Subtitle** (30 chars) | life, Simplified                     | draft                                                                 |
-| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj` `PRODUCT_BUNDLE_IDENTIFIER`; see note |
+| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj`, and registered with Apple (see note) |
 | **SKU**                 | `dripplex-customer-ios`              | draft — free text, App Store Connect only                             |
 | **Marketing version**   | `1.0.0`                              | ✅ verified — `MARKETING_VERSION`                                     |
 | **Build**               | `1000100`                            | ✅ verified — `CURRENT_PROJECT_VERSION`                               |
@@ -60,10 +60,18 @@ already carries it correctly. The doc was the only place still flat.
 
 **On the bundle ID.** iOS keeps `com.dripplex.customer`; Android moved to
 `com.dripplex.app` after the original Play package name was spent by a deleted
-app (`docs/store/GOOGLE-PLAY.md`). The two stores have independent namespaces
-and `com.dripplex.customer` was never registered with Apple, so the divergence
-is harmless — but do not "fix" it to match Android, and do not assume the
-Android rename applies here.
+app (`docs/store/GOOGLE-PLAY.md`). The two stores have independent namespaces, so
+the divergence is harmless — but do not "fix" it to match Android, and do not
+assume the Android rename applies here. **Reaffirmed by the founder 2026-09-17**
+after exactly that was proposed.
+
+This paragraph used to end "and `com.dripplex.customer` was never registered with
+Apple". That is no longer true and was the specific sentence that made the
+identifier look free to change: the App ID **is** registered, the App Store
+Connect record exists as _DrippleX · iOS 1.0 Prepare for Submission_, and build
+1.0.0 (1000100) has been uploaded against it. A Play package name being burned
+says nothing about Apple's namespace — the two are independent, which is the
+whole reason the divergence is fine.
 
 **On the category.** Google Play was set to **Travel & Local** (founder-selected
 2026-09-06). This page still says Shopping. Different stores may legitimately
@@ -284,11 +292,19 @@ in-app account deletion path (`DELETE /auth/me`, live and returning 401
 unauthenticated), the app icon at 1024×1024 alpha-free, the splash assets, and
 the three store URLs.
 
-**Cannot be established from this repository — requires App Store Connect or the
-Apple Developer account:** whether enrolment has completed, the Team ID, whether
-an app record exists, whether `com.dripplex.customer` is free on Apple, which
-certificates and profiles exist, and whether any build was ever uploaded. Nothing
-on this page should be read as an answer to those.
+**Established from the Apple account, 2026-09-17** — these were open questions on
+this page and are now answered: enrolment is complete as **AFNAN HOMES LTD**; the
+Team ID is **`X9MCF93WB7`** (read from `DEVELOPMENT_TEAM` after Xcode wrote it,
+and matching the value already served in the hosted AASA); the app record
+**exists**, as _DrippleX · iOS 1.0 Prepare for Submission_; `com.dripplex.customer`
+is registered as an App ID with Push Notifications and Associated Domains enabled
+— Apple's validation of the entitlements proves both; an Apple Distribution
+certificate and an App Store provisioning profile exist; and **build 1.0.0
+(1000100) was uploaded** on 2026-09-17. See `docs/mobile/IOS.md` "First archive"
+for how it was done and what went wrong on the way.
+
+**Still not establishable from this repository:** whether an APNs key exists, the
+EU Digital Services Act trader status, and anything about review outcomes.
 
 ## TestFlight
 
