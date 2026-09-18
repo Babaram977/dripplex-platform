@@ -1,4 +1,4 @@
-import { UtilityPaymentMethod, UtilityServiceType } from '@prisma/client';
+import { UtilityPaymentMethod, UtilityPurchaseStatus, UtilityServiceType } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
   IsEnum,
@@ -204,9 +204,24 @@ export class UtilityPurchaseHistoryQueryDto {
 }
 
 export class AdminUtilityPurchaseQueryDto extends UtilityPurchaseHistoryQueryDto {
+  /**
+   * `@IsEnum`, not a hand-written list.
+   *
+   * This was `@IsIn(['PENDING', 'SUCCESSFUL', 'FAILED', 'REVERSED'])` — four of
+   * the enum's five members, silently missing `AWAITING_PAYMENT`. The operator
+   * console has offered an "Awaiting payment" filter since the desk was built,
+   * so pressing it sent a status the server refused: a 400 where an operator
+   * expected the queue of purchases that were paid for at the gateway but never
+   * settled here. The one tab that answers "did this customer's money leave?"
+   * was the one tab that could not be used.
+   *
+   * Restating the enum by hand is what let the two drift, so it is not restated
+   * here. `UtilityPurchaseStatus` is the list; a member added to it is filterable
+   * the day it exists, and cannot be forgotten in a second place.
+   */
   @IsOptional()
-  @IsIn(['PENDING', 'SUCCESSFUL', 'FAILED', 'REVERSED'])
-  public status?: 'PENDING' | 'SUCCESSFUL' | 'FAILED' | 'REVERSED';
+  @IsEnum(UtilityPurchaseStatus)
+  public status?: UtilityPurchaseStatus;
 }
 
 /**

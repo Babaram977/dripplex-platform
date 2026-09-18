@@ -2781,11 +2781,35 @@ export interface UtilityFloatStatusDto {
   kycStatus: string | null;
 }
 
+/**
+ * Who bought a utility purchase. Ops-only; never on a customer's receipt.
+ *
+ * Null when the customer record has gone — rendered as "unknown" rather than
+ * blanking the row, because an unidentifiable purchase is still one an
+ * operator has to decide about.
+ */
+export interface UtilityPurchaseCustomerDto {
+  id: string;
+  firstName: string;
+  lastName: string;
+  /** Primary identity — DrippleX has no username. */
+  phone: string | null;
+  email: string;
+}
+
 export interface AdminUtilityPurchaseDto extends UtilityPurchaseDto {
   /** Exactly what the provider replied. Ops-only — `failureReason` is the
    * customer's wording and says nothing about why a call failed. */
   providerResponse?: unknown;
   customerId: string;
+  /**
+   * WHO BOUGHT IT — not `customerIdentifier`, which is the number being topped
+   * up and is routinely somebody else's.
+   *
+   * Without this the desk could show six failed airtime attempts in full and
+   * still not say whose money they were. Founder, 2026-09-18.
+   */
+  customer: UtilityPurchaseCustomerDto | null;
   providerCost: number | null;
 }
 

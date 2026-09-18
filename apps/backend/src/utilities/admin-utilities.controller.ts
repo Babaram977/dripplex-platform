@@ -1,5 +1,4 @@
 import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Query, Req } from '@nestjs/common';
-import { UtilityPurchaseStatus } from '@prisma/client';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../common/decorators/permissions.decorator';
@@ -42,7 +41,7 @@ export class AdminUtilitiesController {
   ): Promise<ApiSuccessResponse<PaginatedResult<AdminUtilityPurchaseDto>>> {
     const data = await this.utilitiesService.listAllPurchases(query.page, query.pageSize, {
       ...(query.serviceType !== undefined ? { serviceType: query.serviceType } : {}),
-      ...(query.status !== undefined ? { status: UtilityPurchaseStatus[query.status] } : {}),
+      ...(query.status !== undefined ? { status: query.status } : {}),
     });
     return { success: true, data };
   }

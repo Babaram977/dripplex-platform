@@ -49,6 +49,7 @@ import {
   type AdminMerchantDto,
   type AdminUtilityPurchaseDto,
   type UtilityFloatStatusDto,
+  type UtilityPurchaseCustomerDto,
   type UtilityPurchaseStatus,
   type AdminInspectionDto,
   type SettlementReportDto,
@@ -9515,6 +9516,28 @@ function AccountVerification({ status }: { status: UtilityFloatStatusDto }): Rea
   );
 }
 
+/**
+ * How a purchase names the person who paid for it.
+ *
+ * Exported because this is the answer to "who is this?" and it has to hold for
+ * a customer with no phone on file (email is the fallback identity — the
+ * founder decision is phone primary, email optional, and a customer created
+ * through the web path can have only the email) and for a purchase whose
+ * customer record has gone.
+ */
+export function purchaseBuyerLabel(customer: UtilityPurchaseCustomerDto | null): string {
+  if (customer === null) return 'Unknown customer';
+  const name = `${customer.firstName} ${customer.lastName}`.trim();
+  return name === '' ? customer.email : name;
+}
+
+/** The reachable identity beneath the name. Phone first — it is the primary
+ * identity and the thing an operator rings. */
+export function purchaseBuyerContact(customer: UtilityPurchaseCustomerDto | null): string {
+  if (customer === null) return 'No customer record';
+  return customer.phone ?? customer.email;
+}
+
 interface DeliveryDraft {
   purchase: AdminUtilityPurchaseDto;
   token: string;
@@ -9655,20 +9678,25 @@ function PageBillPayments() {
           title="Purchases"
           action={
             <div style={{ display: 'flex', gap: 5 }}>
-              {(['ALL', 'AWAITING_PAYMENT', 'PENDING', 'SUCCESSFUL', 'REVERSED'] as const).map(
-                (status) => (
-                  <Btn
-                    key={status}
-                    label={status === 'ALL' ? 'All' : status.replace(/_/g, ' ')}
-                    small
-                    outline={statusFilter !== status}
-                    color={statusFilter === status ? G2 : MUTED}
-                    onClick={() => {
-                      setStatusFilter(status);
-                    }}
-                  />
-                ),
-              )}
+              {/* FAILED belongs here: the server has always accepted it as a
+                  filter and these are the purchases that outright failed, which
+                  is what an operator is looking for when a customer says "it
+                  keeps not working". Until now the only way to see them was to
+                  read every row under All. */}
+              {(
+                ['ALL', 'AWAITING_PAYMENT', 'PENDING', 'SUCCESSFUL', 'FAILED', 'REVERSED'] as const
+              ).map((status) => (
+                <Btn
+                  key={status}
+                  label={status === 'ALL' ? 'All' : status.replace(/_/g, ' ')}
+                  small
+                  outline={statusFilter !== status}
+                  color={statusFilter === status ? G2 : MUTED}
+                  onClick={() => {
+                    setStatusFilter(status);
+                  }}
+                />
+              ))}
             </div>
           }
         />
@@ -9677,7 +9705,16 @@ function PageBillPayments() {
         >
           <thead>
             <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-              {['Service', 'Number', 'Amount', 'Paid by', 'Status', 'When', 'Actions'].map((h) => (
+              {[
+                'Service',
+                'Customer',
+                'Number',
+                'Amount',
+                'Paid by',
+                'Status',
+                'When',
+                'Actions',
+              ].map((h) => (
                 <th
                   key={h}
                   style={{
@@ -9775,6 +9812,25 @@ function PageBillPayments() {
                         : 'No Peyflex reference — they returned none.'}
                     </p>
                   )}
+                </td>
+                {/* WHO PAID. The column beside it is the number being topped
+                    up, which is frequently somebody else's — a customer buying
+                    airtime for a relative, and for BETTING not a number at all.
+                    Six failed airtime attempts used to be readable in full
+                    without this, which is how a customer became unidentifiable
+                    on the one desk that exists to sort their money out. */}
+                <td style={{ padding: '8px 8px', fontSize: 12, color: WHITE }}>
+                  {purchaseBuyerLabel(p.customer)}
+                  <p
+                    style={{
+                      fontSize: 10.5,
+                      color: MUTED,
+                      margin: '2px 0 0',
+                      fontFamily: 'monospace',
+                    }}
+                  >
+                    {purchaseBuyerContact(p.customer)}
+                  </p>
                 </td>
                 <td
                   style={{
