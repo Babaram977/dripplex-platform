@@ -302,6 +302,64 @@ export interface PaginatedResult<T> {
  * thing rather than a trap the next person rediscovers.
  */
 /**
+ * One person or business waiting to be paid — DPX-OPS finance.
+ *
+ * Declared here rather than imported: the backend exports this from its own
+ * service, not from @dripplex/types. Kept field-for-field with
+ * `PayoutRequestDto` in apps/backend/src/operations/operations-payouts.service.ts.
+ *
+ * NAMED `Operations…` BECAUSE `PayoutRequestDto` IS ALREADY TAKEN in this file
+ * by a different thing: the WALLET payout a customer raises
+ * (`{ status: PENDING | COMPLETED | FAILED | CANCELLED, bankAccountId, ... }`,
+ * above). The operations QUEUE row has a different status union, different
+ * fields, and spans two sources. The compiler caught the collision; the names
+ * are kept apart so a future reader does not have to.
+ *
+ * The queue is COMPOSED from two sources, so `kind` is not cosmetic: a
+ * WALLET_PAYOUT is a withdrawal from a DX Wallet, a FLEET_RECEIVABLE is a
+ * fleet settlement. They are approved through different endpoints.
+ */
+export type PayoutRequesterType = 'CUSTOMER' | 'DRIVER' | 'RIDER' | 'MERCHANT' | 'FLEET_OWNER';
+export type PayoutRequestKind = 'WALLET_PAYOUT' | 'FLEET_RECEIVABLE';
+/** The QUEUE row's status. Not the wallet PayoutRequestDto's status above,
+ *  which is a different union for a different object. */
+export type OperationsPayoutStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'PAID' | 'FAILED';
+
+export interface OperationsPayoutRequestDto {
+  id: string;
+  kind: PayoutRequestKind;
+  requesterType: PayoutRequesterType;
+  requesterUserId: string;
+  requesterName: string;
+  /** A fleet's DX number, so Operations can quote it back. Null otherwise. */
+  requesterReference: string | null;
+  amount: number;
+  currency: string;
+  status: OperationsPayoutStatus;
+  requestedAt: string;
+  resolvedAt: string | null;
+  /** Why a request was refused, or why a transfer failed. */
+  note: string | null;
+  /**
+   * The endpoint where this request is approved.
+   *
+   * INFORMATION, NOT AN AFFORDANCE. Approval is a different capability behind
+   * different permissions and is NOT part of this port — the standalone
+   * console renders this as monospace text and offers no approve or reject
+   * control either, so a read-only surface is parity rather than an
+   * under-port. Render it as text. Do not make it a link, a button, or the
+   * target of a fetch.
+   */
+  actionPath: string;
+}
+
+export interface PayoutQueueSummary {
+  pendingCount: number;
+  pendingAmount: number;
+  pendingByRequester: { requesterType: PayoutRequesterType; count: number; amount: number }[];
+}
+
+/**
  * The period an analytics question is asked about.
  *
  * Both fields are REQUIRED because the server requires them
@@ -4230,6 +4288,36 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Payout queue (read only) ─────────────────────────────────────────
+    // GET /operations/finance/payout-requests and .../summary, both behind
+    // OPERATIONS_PERMISSIONS.FINANCE_READ.
+    //
+    // PROVEN READ-ONLY, not assumed: see
+    // apps/backend/src/operations/operations-payouts-read-only.spec.ts, which
+    // runs both methods against a Prisma stub whose write verbs throw and
+    // catches an auto-approval injected into the SUMMARY read by name.
+    //
+    // There is deliberately no approve/reject method here. PayoutRequestDto
+    // carries `actionPath` — the endpoint where a request is approved — but
+    // approval is a separate capability behind separate permissions, and the
+    // standalone console does not offer it either. A client method for it
+    // would invite a control to be built against money leaving the platform.
+    getPayoutRequests: (params?: {
+      requesterType?: PayoutRequesterType;
+      status?: OperationsPayoutStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<OperationsPayoutRequestDto>>(
+        'GET',
+        '/operations/finance/payout-requests',
+        undefined,
+        params,
+      ),
+
+    getPayoutSummary: () =>
+      dx<PayoutQueueSummary>('GET', '/operations/finance/payout-requests/summary'),
+
     // ── Operations analytics (six drill-downs) ───────────────────────────
     // GET /operations/analytics/{driver-utilization,shifts,rides,dispatch,
     // response,geography}, all behind OPERATIONS_PERMISSIONS.ANALYTICS_READ.
