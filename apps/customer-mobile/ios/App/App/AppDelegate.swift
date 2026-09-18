@@ -1,5 +1,7 @@
 import UIKit
 import Capacitor
+import FirebaseCore
+import FirebaseMessaging
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,7 +9,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Firebase is configured only when its config file is actually present.
+        //
+        // `FirebaseApp.configure()` traps if GoogleService-Info.plist is missing,
+        // which would turn a forgotten config file into a crash on launch for
+        // every user — strictly worse than the silence it replaces. The plist is
+        // gitignored (it is per-project client config that goes stale against the
+        // console), so a clean checkout legitimately does not have one.
+        //
+        // Push then reports a registration error rather than a token, which is
+        // the honest outcome: see didRegisterForRemoteNotificationsWithDeviceToken.
+        if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
+            FirebaseApp.configure()
+        }
         return true
     }
 
@@ -44,6 +58,69 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Feel free to add additional processing here, but if you want the App API to support
         // tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    }
+
+    // MARK: - Push registration
+    //
+    // THESE TWO METHODS DID NOT EXIST, AND THAT IS WHY iOS PUSH HAS NEVER WORKED.
+    //
+    // Capacitor's PushNotifications plugin does not implement the UIApplication
+    // delegate callbacks itself — it listens for them on NotificationCenter and
+    // relies on the host app to forward them. With neither present, calling
+    // `PushNotifications.register()` reached APNs, APNs answered, and the answer
+    // went nowhere: the plugin's `registration` event never fired, `registrationError`
+    // never fired either, and `obtainNativeTokenDetailed` resolved `timeout` after
+    // its window. Silence that looked like a network problem.
+    //
+    // WHAT IS FORWARDED IS THE FCM TOKEN, NOT THE APNs TOKEN. The backend sends
+    // through firebase-admin and stores what its own comment calls "classic FCM
+    // registration tokens" (firebase-push.provider.ts), so an APNs token here
+    // would be rejected by FCM as invalid — and the provider's error handling
+    // deactivates a device whose token FCM rejects. Registering the wrong kind of
+    // token is therefore worse than registering none: it unregisters the handset.
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        // APNs first: FCM cannot mint a token until it has been handed the APNs
+        // one for this install.
+        Messaging.messaging().apnsToken = deviceToken
+
+        Messaging.messaging().token { token, error in
+            if let token = token {
+                NotificationCenter.default.post(
+                    name: .capacitorDidRegisterForRemoteNotifications,
+                    object: token
+                )
+            } else {
+                // Includes the missing-plist case, where Firebase was never
+                // configured. Reported as a registration error rather than
+                // silence, so the JS layer says "registration-error" instead of
+                // "timeout" and whoever reads it knows which half failed.
+                NotificationCenter.default.post(
+                    name: .capacitorDidFailToRegisterForRemoteNotifications,
+                    object: error ?? NSError(
+                        domain: "com.dripplex.customer.push",
+                        code: -1,
+                        userInfo: [
+                            NSLocalizedDescriptionKey:
+                                "FCM returned no token. Is GoogleService-Info.plist bundled?"
+                        ]
+                    )
+                )
+            }
+        }
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
     }
 
 }

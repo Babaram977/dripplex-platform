@@ -11,3 +11,15 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Firebase client config (e.g. APIs or Cloud Messaging)
+#
+# Mirrors android/.gitignore's treatment of google-services.json, and for the
+# same reason: it is per-project client config rather than a credential, but a
+# checked-in copy goes stale against the Firebase console silently. It is
+# downloaded from Project settings -> Your apps -> iOS and dropped into
+# App/App/ beside Info.plist, then added to the Xcode target.
+#
+# `GoogleService-Info.plist.example` is unaffected: this pattern does not match
+# it, and the template stays tracked as the shape reference.
+GoogleService-Info.plist

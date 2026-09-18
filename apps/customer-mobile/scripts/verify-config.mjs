@@ -331,4 +331,101 @@ if (existsSync(privacyPath)) {
   }
 }
 
+// ─── iOS push wiring (DPX-MOBILE-001) ────────────────────────────────────────
+//
+// iOS push had never worked, and none of the three reasons was visible from a
+// build: AppDelegate implemented neither remote-notification callback, so
+// Capacitor's plugin — which listens on NotificationCenter rather than
+// implementing them itself — never received a token and reported `timeout`;
+// there was no Firebase SDK, so no FCM token could exist; and the backend
+// sends via firebase-admin and stores FCM registration tokens, so an APNs
+// token would have been rejected and the device DEACTIVATED as stale.
+//
+// Checked here rather than in a test because this package has no test runner
+// and CI already runs this script (scripts/mobile/verify-mobile.sh). A build
+// cannot catch any of it: every one of these states compiles and archives
+// perfectly, and fails only on a real device, silently.
+const appDelegatePath = join(root, 'ios/App/App/AppDelegate.swift');
+const googleServiceExamplePath = join(root, 'ios/App/App/GoogleService-Info.plist.example');
+
+if (existsSync(podfilePath)) {
+  const podfile = readFileSync(podfilePath, 'utf8');
+  if (!/^\s*pod 'FirebaseMessaging'/m.test(podfile)) {
+    fail(
+      'iOS Podfile does not declare FirebaseMessaging — push can only yield an APNs token, which FCM rejects',
+    );
+  } else ok('iOS Podfile declares FirebaseMessaging');
+
+  // Messaging only. Analytics would be a second SDK, a second privacy-manifest
+  // surface, and a tracking declaration the App Store listing currently answers
+  // with "tracking = false".
+  if (/^\s*pod 'FirebaseAnalytics'/m.test(podfile)) {
+    fail(
+      'iOS Podfile pulls in FirebaseAnalytics — not wanted; it changes the privacy manifest and the tracking answer',
+    );
+  }
+}
+
+if (existsSync(appDelegatePath)) {
+  const appDelegate = readFileSync(appDelegatePath, 'utf8');
+
+  // Without this, the token APNs returns reaches nothing.
+  //
+  // Matched on the SIGNATURE, not the name. A substring check passes for
+  // `didRegisterForRemoteNotificationsWithDeviceTokenXX` — proved by mutation,
+  // where renaming the method left this guard green.
+  if (!/didRegisterForRemoteNotificationsWithDeviceToken\s+deviceToken:\s*Data/.test(appDelegate)) {
+    fail(
+      'AppDelegate does not implement didRegisterForRemoteNotificationsWithDeviceToken — Capacitor never receives a token and push times out',
+    );
+  } else ok('AppDelegate forwards APNs registration');
+
+  if (!/didFailToRegisterForRemoteNotificationsWithError\s+error:\s*Error/.test(appDelegate)) {
+    fail(
+      'AppDelegate does not implement didFailToRegisterForRemoteNotificationsWithError — a refusal is indistinguishable from silence',
+    );
+  } else ok('AppDelegate forwards APNs registration failure');
+
+  // The point of the whole change: what gets forwarded must be the FCM token.
+  if (!appDelegate.includes('Messaging.messaging().apnsToken')) {
+    fail(
+      'AppDelegate never hands the APNs token to FCM — FCM cannot mint a registration token without it',
+    );
+  } else ok('AppDelegate hands the APNs token to FCM');
+
+  // Guards the specific regression that is easy to introduce and impossible to
+  // see: posting `deviceToken` forwards the raw APNs token, which the backend
+  // stores, FCM rejects, and the provider then deactivates the device over.
+  if (
+    /capacitorDidRegisterForRemoteNotifications,\s*\n?\s*object:\s*deviceToken/.test(appDelegate)
+  ) {
+    fail(
+      'AppDelegate posts the raw APNs deviceToken — the backend expects an FCM token and deactivates devices whose token FCM rejects',
+    );
+  } else ok('AppDelegate posts an FCM token, not the raw APNs token');
+
+  // FirebaseApp.configure() traps when the plist is absent. A clean checkout
+  // legitimately has no plist (it is gitignored), so an unguarded call turns a
+  // missing config file into a crash on launch for every user.
+  //
+  // Matched on the BUNDLE LOOKUP, not on the string "GoogleService-Info"
+  // appearing somewhere in the file. The first version of this check looked for
+  // the latter and stayed green when the guard was deleted, because the name
+  // still appears in a comment and in an error message. Proved by mutation.
+  if (
+    appDelegate.includes('FirebaseApp.configure()') &&
+    !/Bundle\.main\.path\(\s*forResource:\s*"GoogleService-Info"/.test(appDelegate)
+  ) {
+    fail(
+      'AppDelegate calls FirebaseApp.configure() without checking the plist is bundled — a missing config file becomes a launch crash',
+    );
+  } else ok('Firebase is configured only when its plist is present');
+}
+
+if (!existsSync(googleServiceExamplePath)) {
+  fail(
+    'ios/App/App/GoogleService-Info.plist.example is missing — the real plist is gitignored, so the shape reference is all a new machine has',
+  );
+} else ok('iOS Firebase config template present');
+
 process.exit(failed ? 1 : 0);
