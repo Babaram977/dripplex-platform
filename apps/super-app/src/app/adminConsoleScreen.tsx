@@ -3856,6 +3856,354 @@ const LIVE_RIDE_STATUS_LABEL: Record<AdminLiveRideDto['status'], string> = {
   IN_PROGRESS: 'in progress',
 };
 
+// ─── Ride detail (operator) ───────────────────────────────────────────────────
+/**
+ * DPX-RIDE-201 — one ride, from the operator's side.
+ *
+ * Ported from the standalone operations-console on the 2026-09-16 ruling.
+ * Ride Detail is the PARENT surface; allocation, tracking and dispatch
+ * candidates are sections within it, not four unrelated screens, because they
+ * are four questions about one ride and an operator arrives having already
+ * picked the ride.
+ *
+ * It opens from the "View" button that was already on every Trips row. That
+ * button existed and did nothing useful — it echoed back the row you clicked.
+ * Filling it is the port; adding a fifth navigation entry would not have been.
+ *
+ * FOUR DISTINCT CONTRACTS, FOUR SEPARATE LOADS. Each tab calls its own
+ * endpoint and holds its own state, so one slow or failing answer cannot hide
+ * the other three, and a reader can always tell WHICH question went
+ * unanswered.
+ *
+ * ALL READ-ONLY, and proven so rather than assumed:
+ * apps/backend/src/operations/operations-rides-read-only.spec.ts builds each
+ * service with a Prisma stub whose write verbs throw and catches a
+ * deliberately injected `rideOffer.create` by name. Nothing here allocates,
+ * reassigns, offers or dispatches, and nothing here may be made to. The
+ * existing Cancel control stays where it was, on the Trips row — this panel
+ * adds no action of its own.
+ */
+type RidePanelTab = 'detail' | 'allocation' | 'tracking' | 'candidates';
+
+type Loaded<T> =
+  | { kind: 'loading' }
+  | { kind: 'notfound' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ok'; data: T };
+
+/**
+ * A 404 is a different fact from a failed request, and both differ from an
+ * empty result. "Ride not found" means the platform answered; "couldn't load"
+ * means it did not.
+ */
+function classifyRideError(e: unknown): Loaded<never> {
+  const status = (e as { status?: number }).status;
+  const message = (e as { message?: string }).message ?? '';
+  if (status === 404 || /not found/i.test(message)) {
+    return { kind: 'notfound' };
+  }
+  return { kind: 'error', message: message === '' ? 'Could not load that ride.' : message };
+}
+
+function useRideSection<T>(
+  rideId: string | null,
+  tab: RidePanelTab,
+  active: RidePanelTab,
+  fetcher: (id: string) => Promise<T>,
+): Loaded<T> {
+  const [state, setState] = useState<Loaded<T>>({ kind: 'loading' });
+  useEffect(() => {
+    // Only the visible section loads. Four endpoints fired at once for a panel
+    // an operator may only glance at is four times the load on a live ride.
+    if (rideId === null || tab !== active) return;
+    let cancelled = false;
+    setState({ kind: 'loading' });
+    void (async () => {
+      try {
+        const data = await fetcher(rideId);
+        if (!cancelled) setState({ kind: 'ok', data });
+      } catch (e: unknown) {
+        if (!cancelled) setState(classifyRideError(e) as Loaded<T>);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rideId, tab, active, fetcher]);
+  return state;
+}
+
+function RideSectionState({ state, empty }: { state: Loaded<unknown>; empty?: string }) {
+  if (state.kind === 'loading') {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>Loading…</div>
+    );
+  }
+  if (state.kind === 'notfound') {
+    return (
+      <div style={{ fontSize: 12.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+        Ride not found. It may have been removed, or the link is stale.
+      </div>
+    );
+  }
+  if (state.kind === 'error') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          style={{ fontSize: 12.5, color: C_ERR, fontWeight: 600, fontFamily: 'Inter, sans-serif' }}
+        >
+          Couldn&rsquo;t load this section
+        </div>
+        {/* Not an empty result. Saying "no offers" or "no candidates" when the
+            request failed would be an operator reading a fact nobody fetched. */}
+        <div style={{ fontSize: 11.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+          {state.message} — this is not the same as there being none.
+        </div>
+      </div>
+    );
+  }
+  if (empty !== undefined) {
+    return (
+      <div style={{ fontSize: 12.5, color: MUTED, fontFamily: 'Inter, sans-serif' }}>{empty}</div>
+    );
+  }
+  return null;
+}
+
+function RideKv({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, fontFamily: 'Inter, sans-serif' }}>
+      <span style={{ fontSize: 11, color: MUTED, minWidth: 120 }}>{label}</span>
+      <span style={{ fontSize: 11.5, color: WHITE }}>{value}</span>
+    </div>
+  );
+}
+
+function metresLabel(m: number): string {
+  return m < 1000 ? `${String(Math.round(m))} m` : `${String(Math.round(m / 100) / 10)} km`;
+}
+
+function secondsLabel(s: number): string {
+  if (s < 60) return `${String(Math.round(s))}s`;
+  return `${String(Math.round(s / 60))} min`;
+}
+
+function RideDetailPanel({ rideId, onClose }: { rideId: string; onClose: () => void }) {
+  const [tab, setTab] = useState<RidePanelTab>('detail');
+
+  const detail = useRideSection(rideId, 'detail', tab, api.admin.getOperationsRideDetail);
+  const allocation = useRideSection(
+    rideId,
+    'allocation',
+    tab,
+    api.admin.getOperationsRideAllocation,
+  );
+  const tracking = useRideSection(rideId, 'tracking', tab, api.admin.getOperationsRideTracking);
+  const candidates = useRideSection(
+    rideId,
+    'candidates',
+    tab,
+    api.admin.getOperationsDispatchCandidates,
+  );
+
+  const tabs: { value: RidePanelTab; label: string }[] = [
+    { value: 'detail', label: 'Detail' },
+    { value: 'allocation', label: 'Allocation' },
+    { value: 'tracking', label: 'Tracking' },
+    { value: 'candidates', label: 'Dispatch Candidates' },
+  ];
+
+  return (
+    <Card style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <SectionHeader
+        title={`Ride ${rideId.slice(0, 8)}`}
+        action={<Btn label="Close" small outline color={MUTED} onClick={onClose} />}
+      />
+
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {tabs.map((t) => (
+          <button
+            key={t.value}
+            className="dx-btn dx-tab"
+            onClick={() => setTab(t.value)}
+            style={{
+              background: tab === t.value ? G2 : 'rgba(255,255,255,.05)',
+              color: tab === t.value ? NAVY_DEEP : MUTED,
+              border: `1px solid ${tab === t.value ? 'transparent' : BORDER}`,
+              borderRadius: 7,
+              padding: '6px 14px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: 12,
+              fontWeight: tab === t.value ? 700 : 400,
+              cursor: 'pointer',
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'detail' &&
+        (detail.kind === 'ok' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            <RideKv label="Status" value={detail.data.status} />
+            <RideKv label="Type" value={detail.data.rideType} />
+            <RideKv
+              label="Customer"
+              value={`${detail.data.customerName}${detail.data.customerPhone === null ? '' : ` · ${detail.data.customerPhone}`}`}
+            />
+            <RideKv
+              label="Driver"
+              value={
+                detail.data.driverName === null
+                  ? 'Not assigned'
+                  : `${detail.data.driverName}${detail.data.driverPhone === null ? '' : ` · ${detail.data.driverPhone}`}`
+              }
+            />
+            <RideKv label="Pickup" value={detail.data.pickupAddress ?? '—'} />
+            <RideKv label="Drop-off" value={detail.data.dropoffAddress ?? '—'} />
+            <RideKv label="Fare" value={`₦${Math.round(detail.data.totalFare).toLocaleString()}`} />
+            <RideKv label="Payment" value={detail.data.paymentStatus} />
+            <RideKv label="Requested" value={formatCaseTime(detail.data.requestedAt)} />
+            {detail.data.noDriversFound && (
+              <div style={{ fontSize: 11.5, color: C_WARN, fontFamily: 'Inter, sans-serif' }}>
+                No drivers were found for this ride.
+              </div>
+            )}
+            {detail.data.hasOpenSos && (
+              <div style={{ fontSize: 11.5, color: C_ERR, fontFamily: 'Inter, sans-serif' }}>
+                An SOS alert on this ride is still open.
+              </div>
+            )}
+          </div>
+        ) : (
+          <RideSectionState state={detail} />
+        ))}
+
+      {tab === 'allocation' &&
+        (allocation.kind === 'ok' ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <RideKv
+              label="Current driver"
+              value={allocation.data.currentDriverName ?? 'Not assigned'}
+            />
+            {allocation.data.offers.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No offers have been made for this ride yet.
+              </div>
+            ) : (
+              allocation.data.offers.map((o) => (
+                <div
+                  key={o.id}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 0',
+                    borderTop: `1px solid ${BORDER}`,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: WHITE }}>{o.driverName}</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      Offered {formatCaseTime(o.offeredAt)}
+                      {o.respondedAt !== null && ` · responded ${formatCaseTime(o.respondedAt)}`}
+                    </div>
+                  </div>
+                  <Chip label={o.status} color={MUTED} />
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
+          <RideSectionState state={allocation} />
+        ))}
+
+      {tab === 'tracking' &&
+        (tracking.kind === 'ok' ? (
+          tracking.data.points.length === 0 ? (
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+              No tracking points recorded for this ride.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                {tracking.data.points.length.toLocaleString('en-NG')} point
+                {tracking.data.points.length === 1 ? '' : 's'}, oldest first.
+              </div>
+              {tracking.data.points.slice(-12).map((p) => (
+                <RideKv
+                  key={p.at}
+                  label={formatCaseTime(p.at)}
+                  value={`${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}${
+                    p.speed === null ? '' : ` · ${String(Math.round(p.speed))} km/h`
+                  }`}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          <RideSectionState state={tracking} />
+        ))}
+
+      {tab === 'candidates' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* DECISION SUPPORT, NOT AN ALLOCATION CONTROL. The DTO says as much
+              in the shared contract: it "backs a 'here are the best available
+              drivers' display, never an assignment action". Said here too,
+              on the screen, because an operator looking at a ranked list of
+              nearby drivers will reasonably wonder whether they can act on
+              it, and the honest answer is no. */}
+          <div style={{ fontSize: 11, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+            Decision support only. This is who dispatch could reach right now — reading it assigns
+            nobody, and nothing on this panel can allocate a ride.
+          </div>
+          {candidates.kind === 'ok' ? (
+            candidates.data.candidates.length === 0 ? (
+              <div style={{ fontSize: 12, color: MUTED, fontFamily: 'Inter, sans-serif' }}>
+                No available drivers within range of the pickup.
+              </div>
+            ) : (
+              candidates.data.candidates.map((c) => (
+                <div
+                  key={c.driverId}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                    padding: '8px 0',
+                    borderTop: `1px solid ${BORDER}`,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 12, color: WHITE }}>
+                      {c.driverName}
+                      {c.vehiclePlateNumber !== null && ` · ${c.vehiclePlateNumber}`}
+                    </div>
+                    <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>
+                      {metresLabel(c.distanceMeters)} away ·{' '}
+                      {/* NEVER presented as a routed duration. `isEstimate` is
+                          always true and exists precisely so a console cannot
+                          imply traffic awareness it does not have. */}
+                      {secondsLabel(c.etaSeconds)} straight-line estimate
+                      {c.averageRating !== null &&
+                        ` · ${c.averageRating.toFixed(1)}★ (${String(c.ratingCount)})`}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )
+          ) : (
+            <RideSectionState state={candidates} />
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PageTrips() {
   const statuses = [
     'All',
@@ -3875,6 +4223,10 @@ function PageTrips() {
   // are typing. Cancelling is never one click — ending someone else's trip
   // gets a confirmation step and a written reason, both of which are shown
   // back to the passenger and the driver.
+  // The ride whose operator detail panel is open. "View" on a row used to set
+  // a one-line summary of the row you had just clicked; it now opens the real
+  // detail, allocation, tracking and dispatch-candidate reads.
+  const [viewing, setViewing] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<AdminLiveRideDto | null>(null);
   const [cancelReason, setCancelReason] = useState('');
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -4040,6 +4392,15 @@ function PageTrips() {
           )}
         </Card>
       )}
+      {viewing !== null && (
+        <RideDetailPanel
+          rideId={viewing}
+          onClose={() => {
+            setViewing(null);
+          }}
+        />
+      )}
+
       {/* Table */}
       <Card style={{ padding: '14px 16px' }}>
         <table
@@ -4114,11 +4475,10 @@ function PageTrips() {
                         small
                         outline
                         color={G3}
-                        onClick={() =>
-                          setRowMsg(
-                            `Ride ${t.rideId.slice(0, 8)} · ${t.customerName}${t.driverName ? ` ↔ ${t.driverName}` : ''} · ${LIVE_RIDE_STATUS_LABEL[t.status]}`,
-                          )
-                        }
+                        onClick={() => {
+                          setRowMsg(null);
+                          setViewing(t.rideId);
+                        }}
                       />
                       <Btn
                         label="Cancel"
