@@ -231,6 +231,38 @@ export interface RegistrationResponse {
   onboardingId?: string;
 }
 
+/**
+ * A commission campaign — DPX-COMMISSION-001. Exceptional promotional pricing
+ * that overrides a standing rate for its eligible window.
+ *
+ * Declared here rather than imported: the backend exports this type from its
+ * own service, not from @dripplex/types, so there is no shared contract to
+ * re-export yet. Kept field-for-field with `CommissionCampaignDto` in
+ * apps/backend/src/commercial/commission-campaign.service.ts.
+ */
+export type CommissionScope = 'MERCHANT_ORDER' | 'DELIVERY' | 'RIDE' | 'FLEET';
+export type CommissionCampaignStatus =
+  'DRAFT' | 'SCHEDULED' | 'ACTIVE' | 'PAUSED' | 'EXPIRED' | 'ARCHIVED';
+
+export interface CommissionCampaignDto {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: CommissionScope;
+  /** A FRACTION, not a percent: 0.07 is 7%. */
+  commissionRate: number;
+  status: CommissionCampaignStatus;
+  /** Highest wins when two campaigns cover the same transaction. */
+  priority: number;
+  startsAt: string;
+  endsAt: string;
+  rules: unknown | null;
+  announce: boolean;
+  announcedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   total: number;
@@ -4161,6 +4193,120 @@ export const api = {
   // (ops.dripplex.com) uses — no new/duplicate backend. All require an
   // operations_staff session (see api.auth.loginOperations).
   admin: {
+    // ── Commission campaigns ─────────────────────────────────────────────
+    // DPX-COMMISSION-001. Exceptional promotional pricing that overrides a
+    // standing rate for its eligible window: Campaign → Negotiated → Platform.
+    //
+    // FULL CAPABILITY, released on the founder ruling of 2026-09-18.
+    //
+    // The five mutations below were held on 2026-09-17 while a maximum campaign
+    // duration was proposed. The ruling was that there is no maximum: campaign
+    // duration is an OPS-CONTROLLED PARAMETER, flexible by design, bounded only
+    // by `endsAt > startsAt`. See docs/DPX-COMMISSION-002-CAMPAIGN-DURATION.md.
+    //
+    // WHAT THAT MEANS FOR THIS CLIENT. A campaign rate is valid at 0 and a
+    // campaign with no `rules` applies platform-wide within its scope, so a
+    // permanent platform-wide zero-commission campaign is expressible here. The
+    // founder accepted that deliberately. The controls are PERMISSION (all five
+    // need admin:commission-campaigns:manage, enforced by the server), AUDIT
+    // (every mutation records one) and REVERSIBILITY (pause and a shortened
+    // endsAt both stop a campaign at any time).
+    //
+    // DO NOT add a client-side duration cap here. It would not be a boundary —
+    // the server accepts what the server accepts — and it would contradict the
+    // ruling. If a bound is ever wanted it belongs in assertWindow.
+    //
+    // `scope` is set at creation and is NOT updatable: UpdateCommissionCampaignDto
+    // has no scope field. Changing what a campaign applies to is a new campaign.
+    getCommissionCampaigns: (params?: {
+      scope?: CommissionScope;
+      status?: CommissionCampaignStatus;
+      page?: number;
+      pageSize?: number;
+    }) =>
+      dx<ApiPage<CommissionCampaignDto>>(
+        'GET',
+        '/admin/commercial/commission-campaigns',
+        undefined,
+        params,
+      ),
+
+    /** One campaign by id — used after a mutation to show the server's answer. */
+    getCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>('GET', `/admin/commercial/commission-campaigns/${campaignId}`),
+
+    /**
+     * Create a campaign. `commissionRate` is a FRACTION (0.07 is 7%), bounded
+     * 0 <= rate <= 0.9999 by the server — zero is legal and intended, since the
+     * negotiated merchant rate refuses it and the locked precedence names the
+     * campaign as the instrument for expressing it.
+     *
+     * Omitting `rules` means the campaign applies PLATFORM-WIDE within its
+     * scope. That is the single most consequential choice on this call and the
+     * UI says so before it is sent.
+     */
+    createCommissionCampaign: (body: {
+      name: string;
+      description?: string;
+      scope: CommissionScope;
+      commissionRate: number;
+      priority?: number;
+      startsAt: string;
+      endsAt: string;
+      rules?: unknown;
+      announce?: boolean;
+    }) => dx<CommissionCampaignDto>('POST', '/admin/commercial/commission-campaigns', body),
+
+    /**
+     * Edit a campaign. Every field is optional; only what is sent changes.
+     * There is deliberately no `scope` — the server cannot change it, so
+     * offering it here would be a control that silently does nothing.
+     */
+    updateCommissionCampaign: (
+      campaignId: string,
+      body: {
+        name?: string;
+        description?: string;
+        commissionRate?: number;
+        priority?: number;
+        startsAt?: string;
+        endsAt?: string;
+        rules?: unknown;
+        announce?: boolean;
+      },
+    ) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}`,
+        body,
+      ),
+
+    /** Stop a campaign applying, without ending it. Reversible via resume. */
+    pauseCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/pause`,
+      ),
+
+    /** Put a paused campaign back in force for the remainder of its window. */
+    resumeCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/resume`,
+      ),
+
+    /**
+     * Retire a campaign. Archiving is how a campaign leaves the list — there is
+     * no delete, and there must not be one: settled transactions snapshot the
+     * rate that was in force, and the campaign row is the record of what that
+     * rate was and why.
+     */
+    archiveCommissionCampaign: (campaignId: string) =>
+      dx<CommissionCampaignDto>(
+        'PATCH',
+        `/admin/commercial/commission-campaigns/${campaignId}/archive`,
+      ),
+
     // ── Stalled orders ───────────────────────────────────────────────────
     // Confirmed DELIVERY orders a merchant has not advanced for 30 minutes.
     // DrippleX owns these; the merchant has already been warned automatically.
