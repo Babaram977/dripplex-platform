@@ -5,12 +5,17 @@
   SHAPE REFERENCE ONLY — every value here is a placeholder.
 
   The real file is downloaded from the Firebase console (Project settings ->
-  Your apps -> the iOS app com.dripplex.customer -> GoogleService-Info.plist),
-  saved beside Info.plist as GoogleService-Info.plist, and ADDED TO THE XCODE
-  TARGET. Copying it into the folder is not enough: a file that is not a member
-  of the App target is not in the bundle, `Bundle.main.path(forResource:)`
-  returns nil, Firebase is never configured, and push reports a registration
-  error.
+  Your apps -> the iOS app com.dripplex.customer -> GoogleService-Info.plist)
+  and saved beside Info.plist as GoogleService-Info.plist. Copying it in is all
+  that is required: the App target already lists it, because project.pbxproj is
+  committed and its Resources build phase references it.
+
+  That membership is the part that used to be missed, and it fails silently: a
+  file that is not a member of the App target is not in the bundle,
+  `Bundle.main.path(forResource:)` returns nil, Firebase is never configured,
+  and push dies with no error anyone sees. verify-config.mjs now walks
+  PBXFileReference -> PBXBuildFile -> PBXResourcesBuildPhase for this file, so
+  CI fails if it is ever dropped from the target again.
 
   It is gitignored for the same reason android/app/google-services.json is —
   per-project client config that goes stale against the console silently.
