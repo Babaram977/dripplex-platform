@@ -125,10 +125,21 @@ Without it, push reports a registration error — which is the honest outcome.
 this repository:
 
 1. Download `GoogleService-Info.plist` from Firebase (Project settings → Your
-   apps → the iOS app `com.dripplex.customer`) into
-   `ios/App/App/`, and **add it to the App target in Xcode**. Copying it into
-   the folder is not enough — a file that is not a target member is not in the
-   bundle, and Firebase will not configure.
+   apps → the iOS app `com.dripplex.customer`) and put it at
+   `ios/App/App/GoogleService-Info.plist` — that exact path and spelling.
+   **Copying the file in is now all that is required.** The App target already
+   lists it, because `project.pbxproj` is committed and its Resources build
+   phase references it; nothing has to be clicked in Xcode. The file itself
+   stays out of git (see `ios/.gitignore`), so the repository carries the
+   reference and the Mac supplies the file.
+
+   The membership half is what used to get missed, and silently: a file that is
+   not a target member is not in the bundle, so Firebase never configures and
+   nothing reports an error. `PrivacyInfo.xcprivacy` sat in this repo unreferenced
+   and went to Apple that way in build 1000100. `verify-config.mjs` now walks
+   `PBXFileReference → PBXBuildFile → PBXResourcesBuildPhase` for both files, so
+   CI fails if either is ever dropped from the target again.
+
 2. `pod install` in `ios/App`, which resolves FirebaseMessaging and updates
    `Podfile.lock`. That lockfile can only be produced on a Mac.
 3. Archive, upload, and test on a device through TestFlight.
@@ -154,5 +165,5 @@ is much longer and contains `:` and `-`. If what reaches
 | Android ride-alert channel       | ⏳ DPX-MOBILE-001 — `dripplex_ride_alerts_v1`, created at app start and named on every `RIDE_OFFERED` push. No custom sound (see gap above)                                                                                                                                                                                                                                        |
 | Ride offer → push                | ✅ DPX-MOBILE-001 (PR #295) — `RIDE_OFFERED` sends on `PUSH` at `CRITICAL` with a TTL from the offer's real expiry                                                                                                                                                                                                                                                                 |
 | iOS Firebase SDK + AppDelegate   | ✅ 2026-09-18 — `FirebaseMessaging` pod, `FirebaseApp.configure()` guarded on the plist, and the two remote-notification callbacks that had never existed. Forwards the **FCM** token, not the APNs one. Guarded by `verify-config.mjs`, which CI runs                                                                                                                             |
-| Real iOS APNs config             | ⏳ APNs auth key `66J777N99T` uploaded to Firebase (production slot) on 2026-09-18. Still needed: `GoogleService-Info.plist` in the Xcode target, one `pod install` on a Mac, and a TestFlight device test — untested end-to-end                                                                                                                                                   |
+| Real iOS APNs config             | ⏳ APNs auth key `66J777N99T` uploaded to Firebase (production slot) on 2026-09-18. Still needed: drop `GoogleService-Info.plist` into `ios/App/App/` on the Mac (target membership is committed), and a TestFlight device test — `pod install` done 2026-09-18 (14 pods, FirebaseMessaging 12.19.0). Untested end-to-end                                                          |
 | Merchant/Rider/Driver mobile app | ❌ Do not exist — see `MERCHANT-RIDER-PACKAGING.md` and DPX-CORE-001's Phase D-2 section                                                                                                                                                                                                                                                                                           |

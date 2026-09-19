@@ -288,6 +288,59 @@ if (existsSync(projectPath)) {
   }
 
   if (!failed) ok('iOS release build metadata');
+
+  // A file can be on disk, committed, and green through `test -f`, and still
+  // never reach the app: Xcode copies only what the target's Resources build
+  // phase lists. PrivacyInfo.xcprivacy sat in this repo for months with ZERO
+  // references in project.pbxproj and went to Apple that way in build 1000100 —
+  // an archive with no privacy manifest, from a tree where the manifest was
+  // present and correct. Existence checks are structurally blind to this, so
+  // this walks the same path Xcode walks: PBXFileReference -> PBXBuildFile ->
+  // PBXResourcesBuildPhase. Matching the bare filename anywhere in the file
+  // would pass on a comment, which is exactly the false green being closed.
+  const resourcesOfAppTarget = () => {
+    const lines = project.split('\n');
+    const refs = new Map();
+    for (const line of lines) {
+      const refId = line.match(/^\t\t([0-9A-F]{24}) .*isa = PBXFileReference;/)?.[1];
+      if (!refId) continue;
+      const path = line.match(/\bpath = "([^"]+)";/)?.[1] ?? line.match(/\bpath = ([^;\s]+);/)?.[1];
+      if (path) refs.set(refId, path);
+    }
+    // Second pass, not a continuation of the first: pbxproj emits the
+    // PBXBuildFile section ahead of PBXFileReference, so resolving a fileRef
+    // while still collecting them reads an empty map and reports every file as
+    // unbundled — a guard that fails on a correct project teaches people to
+    // ignore it.
+    const builds = new Map();
+    for (const line of lines) {
+      const build = line.match(
+        /^\t\t([0-9A-F]{24}) .*isa = PBXBuildFile; fileRef = ([0-9A-F]{24})\b/,
+      );
+      if (build && refs.has(build[2])) builds.set(build[1], refs.get(build[2]));
+    }
+    const bundled = new Set();
+    for (const phase of project.matchAll(
+      /isa = PBXResourcesBuildPhase;[\s\S]*?files = \(([\s\S]*?)\);/g,
+    )) {
+      for (const [, id] of phase[1].matchAll(/([0-9A-F]{24})/g)) {
+        if (builds.has(id)) bundled.add(builds.get(id));
+      }
+    }
+    return bundled;
+  };
+
+  const bundled = resourcesOfAppTarget();
+  let membership = true;
+  for (const required of ['PrivacyInfo.xcprivacy', 'GoogleService-Info.plist']) {
+    if (!bundled.has(required)) {
+      fail(
+        `${required} exists but is not a member of the App target's Resources build phase; it will be missing from the archive`,
+      );
+      membership = false;
+    }
+  }
+  if (membership) ok('iOS target membership (privacy manifest, Firebase config)');
 }
 
 if (existsSync(privacyPath)) {
