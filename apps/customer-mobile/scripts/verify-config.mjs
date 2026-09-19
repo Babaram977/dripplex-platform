@@ -288,6 +288,59 @@ if (existsSync(projectPath)) {
   }
 
   if (!failed) ok('iOS release build metadata');
+
+  // A file can be on disk, committed, and green through `test -f`, and still
+  // never reach the app: Xcode copies only what the target's Resources build
+  // phase lists. PrivacyInfo.xcprivacy sat in this repo for months with ZERO
+  // references in project.pbxproj and went to Apple that way in build 1000100 —
+  // an archive with no privacy manifest, from a tree where the manifest was
+  // present and correct. Existence checks are structurally blind to this, so
+  // this walks the same path Xcode walks: PBXFileReference -> PBXBuildFile ->
+  // PBXResourcesBuildPhase. Matching the bare filename anywhere in the file
+  // would pass on a comment, which is exactly the false green being closed.
+  const resourcesOfAppTarget = () => {
+    const lines = project.split('\n');
+    const refs = new Map();
+    for (const line of lines) {
+      const refId = line.match(/^\t\t([0-9A-F]{24}) .*isa = PBXFileReference;/)?.[1];
+      if (!refId) continue;
+      const path = line.match(/\bpath = "([^"]+)";/)?.[1] ?? line.match(/\bpath = ([^;\s]+);/)?.[1];
+      if (path) refs.set(refId, path);
+    }
+    // Second pass, not a continuation of the first: pbxproj emits the
+    // PBXBuildFile section ahead of PBXFileReference, so resolving a fileRef
+    // while still collecting them reads an empty map and reports every file as
+    // unbundled — a guard that fails on a correct project teaches people to
+    // ignore it.
+    const builds = new Map();
+    for (const line of lines) {
+      const build = line.match(
+        /^\t\t([0-9A-F]{24}) .*isa = PBXBuildFile; fileRef = ([0-9A-F]{24})\b/,
+      );
+      if (build && refs.has(build[2])) builds.set(build[1], refs.get(build[2]));
+    }
+    const bundled = new Set();
+    for (const phase of project.matchAll(
+      /isa = PBXResourcesBuildPhase;[\s\S]*?files = \(([\s\S]*?)\);/g,
+    )) {
+      for (const [, id] of phase[1].matchAll(/([0-9A-F]{24})/g)) {
+        if (builds.has(id)) bundled.add(builds.get(id));
+      }
+    }
+    return bundled;
+  };
+
+  const bundled = resourcesOfAppTarget();
+  let membership = true;
+  for (const required of ['PrivacyInfo.xcprivacy', 'GoogleService-Info.plist']) {
+    if (!bundled.has(required)) {
+      fail(
+        `${required} exists but is not a member of the App target's Resources build phase; it will be missing from the archive`,
+      );
+      membership = false;
+    }
+  }
+  if (membership) ok('iOS target membership (privacy manifest, Firebase config)');
 }
 
 if (existsSync(privacyPath)) {
@@ -330,5 +383,102 @@ if (existsSync(privacyPath)) {
     }
   }
 }
+
+// ─── iOS push wiring (DPX-MOBILE-001) ────────────────────────────────────────
+//
+// iOS push had never worked, and none of the three reasons was visible from a
+// build: AppDelegate implemented neither remote-notification callback, so
+// Capacitor's plugin — which listens on NotificationCenter rather than
+// implementing them itself — never received a token and reported `timeout`;
+// there was no Firebase SDK, so no FCM token could exist; and the backend
+// sends via firebase-admin and stores FCM registration tokens, so an APNs
+// token would have been rejected and the device DEACTIVATED as stale.
+//
+// Checked here rather than in a test because this package has no test runner
+// and CI already runs this script (scripts/mobile/verify-mobile.sh). A build
+// cannot catch any of it: every one of these states compiles and archives
+// perfectly, and fails only on a real device, silently.
+const appDelegatePath = join(root, 'ios/App/App/AppDelegate.swift');
+const googleServiceExamplePath = join(root, 'ios/App/App/GoogleService-Info.plist.example');
+
+if (existsSync(podfilePath)) {
+  const podfile = readFileSync(podfilePath, 'utf8');
+  if (!/^\s*pod 'FirebaseMessaging'/m.test(podfile)) {
+    fail(
+      'iOS Podfile does not declare FirebaseMessaging — push can only yield an APNs token, which FCM rejects',
+    );
+  } else ok('iOS Podfile declares FirebaseMessaging');
+
+  // Messaging only. Analytics would be a second SDK, a second privacy-manifest
+  // surface, and a tracking declaration the App Store listing currently answers
+  // with "tracking = false".
+  if (/^\s*pod 'FirebaseAnalytics'/m.test(podfile)) {
+    fail(
+      'iOS Podfile pulls in FirebaseAnalytics — not wanted; it changes the privacy manifest and the tracking answer',
+    );
+  }
+}
+
+if (existsSync(appDelegatePath)) {
+  const appDelegate = readFileSync(appDelegatePath, 'utf8');
+
+  // Without this, the token APNs returns reaches nothing.
+  //
+  // Matched on the SIGNATURE, not the name. A substring check passes for
+  // `didRegisterForRemoteNotificationsWithDeviceTokenXX` — proved by mutation,
+  // where renaming the method left this guard green.
+  if (!/didRegisterForRemoteNotificationsWithDeviceToken\s+deviceToken:\s*Data/.test(appDelegate)) {
+    fail(
+      'AppDelegate does not implement didRegisterForRemoteNotificationsWithDeviceToken — Capacitor never receives a token and push times out',
+    );
+  } else ok('AppDelegate forwards APNs registration');
+
+  if (!/didFailToRegisterForRemoteNotificationsWithError\s+error:\s*Error/.test(appDelegate)) {
+    fail(
+      'AppDelegate does not implement didFailToRegisterForRemoteNotificationsWithError — a refusal is indistinguishable from silence',
+    );
+  } else ok('AppDelegate forwards APNs registration failure');
+
+  // The point of the whole change: what gets forwarded must be the FCM token.
+  if (!appDelegate.includes('Messaging.messaging().apnsToken')) {
+    fail(
+      'AppDelegate never hands the APNs token to FCM — FCM cannot mint a registration token without it',
+    );
+  } else ok('AppDelegate hands the APNs token to FCM');
+
+  // Guards the specific regression that is easy to introduce and impossible to
+  // see: posting `deviceToken` forwards the raw APNs token, which the backend
+  // stores, FCM rejects, and the provider then deactivates the device over.
+  if (
+    /capacitorDidRegisterForRemoteNotifications,\s*\n?\s*object:\s*deviceToken/.test(appDelegate)
+  ) {
+    fail(
+      'AppDelegate posts the raw APNs deviceToken — the backend expects an FCM token and deactivates devices whose token FCM rejects',
+    );
+  } else ok('AppDelegate posts an FCM token, not the raw APNs token');
+
+  // FirebaseApp.configure() traps when the plist is absent. A clean checkout
+  // legitimately has no plist (it is gitignored), so an unguarded call turns a
+  // missing config file into a crash on launch for every user.
+  //
+  // Matched on the BUNDLE LOOKUP, not on the string "GoogleService-Info"
+  // appearing somewhere in the file. The first version of this check looked for
+  // the latter and stayed green when the guard was deleted, because the name
+  // still appears in a comment and in an error message. Proved by mutation.
+  if (
+    appDelegate.includes('FirebaseApp.configure()') &&
+    !/Bundle\.main\.path\(\s*forResource:\s*"GoogleService-Info"/.test(appDelegate)
+  ) {
+    fail(
+      'AppDelegate calls FirebaseApp.configure() without checking the plist is bundled — a missing config file becomes a launch crash',
+    );
+  } else ok('Firebase is configured only when its plist is present');
+}
+
+if (!existsSync(googleServiceExamplePath)) {
+  fail(
+    'ios/App/App/GoogleService-Info.plist.example is missing — the real plist is gitignored, so the shape reference is all a new machine has',
+  );
+} else ok('iOS Firebase config template present');
 
 process.exit(failed ? 1 : 0);

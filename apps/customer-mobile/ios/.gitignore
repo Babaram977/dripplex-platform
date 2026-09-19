@@ -5,9 +5,30 @@ App/App/public
 DerivedData
 xcuserdata
 
+# Xcode's own per-project workspace state. Not the CocoaPods workspace: that is
+# App/App.xcworkspace, whose contents.xcworkspacedata IS tracked, because it is
+# the file naming App.xcodeproj and Pods.xcodeproj and so the thing
+# `xcodebuild -workspace` reads. This one is editor state and shows up as
+# untracked noise after every Xcode launch.
+App/App.xcodeproj/project.xcworkspace/
+
 # Cordova plugins for Capacitor
 capacitor-cordova-ios-plugins
 
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Firebase client config (e.g. APIs or Cloud Messaging)
+#
+# Mirrors android/.gitignore's treatment of google-services.json, and for the
+# same reason: it is per-project client config rather than a credential, but a
+# checked-in copy goes stale against the Firebase console silently. It is
+# downloaded from Project settings -> Your apps -> iOS and dropped into
+# App/App/ beside Info.plist. Dropping it in is all that is required: the App
+# target already references it, because project.pbxproj is committed and its
+# Resources build phase lists it.
+#
+# `GoogleService-Info.plist.example` is unaffected: this pattern does not match
+# it, and the template stays tracked as the shape reference.
+GoogleService-Info.plist

@@ -19,7 +19,19 @@ end
 
 target 'App' do
   capacitor_pods
-  # Add your Pods here
+
+  # FirebaseMessaging — DPX-MOBILE-001, added 2026-09-18.
+  #
+  # The backend sends push through firebase-admin (FCM), and DeviceToken stores
+  # FCM registration tokens. Without this pod the app can only ever obtain an
+  # APNs token, which FCM rejects — and the backend then deactivates the device
+  # as a bad token. AppDelegate bridges APNs -> FCM; this is what gives it
+  # something to bridge with.
+  #
+  # Messaging only. FirebaseAnalytics is NOT wanted: it is a second SDK, a
+  # second privacy-manifest surface, and a tracking question the App Store
+  # listing currently answers with "tracking = false".
+  pod 'FirebaseMessaging'
 end
 
 post_install do |installer|

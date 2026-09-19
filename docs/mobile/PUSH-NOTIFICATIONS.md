@@ -92,6 +92,65 @@ Payload `data.url` → open `https://app.dripplex.com/...` or `dripplex://open/.
 
 ## Status
 
+## iOS push — why it had never worked, and what was done (2026-09-18)
+
+Three faults, none visible from a build. Every one of these states compiles,
+archives and passes App Store validation; they fail only on a real device, and
+silently.
+
+1. **`AppDelegate` implemented neither remote-notification callback.**
+   Capacitor's `PushNotifications` plugin does not implement the UIApplication
+   delegate methods — it listens for them on `NotificationCenter` and relies on
+   the host app to forward them. With neither present, `register()` reached
+   APNs, APNs answered, and the answer went nowhere: `registration` never
+   fired, `registrationError` never fired, and `obtainNativeTokenDetailed`
+   resolved **`timeout`**. It read like a network problem.
+2. **No Firebase SDK on iOS.** No pod, no `GoogleService-Info.plist`.
+3. **The backend speaks FCM.** `FirebasePushProvider` sends via
+   `firebase-admin`, and `DeviceToken` stores what its own comment calls
+   "classic FCM registration tokens". So forwarding a raw APNs token would have
+   been worse than forwarding none — FCM rejects it, and the provider's error
+   handling **deactivates** a device whose token FCM rejects.
+
+Fixed by adding the `FirebaseMessaging` pod and the two callbacks, handing the
+APNs token to `Messaging.messaging().apnsToken`, and forwarding the **FCM**
+token that comes back.
+
+`FirebaseApp.configure()` is called only when the plist is actually bundled: it
+traps when the file is missing, and the plist is gitignored, so an unguarded
+call would turn a forgotten config file into a crash on launch for every user.
+Without it, push reports a registration error — which is the honest outcome.
+
+**What a Mac still has to do**, because none of it can be done from CI or from
+this repository:
+
+1. Download `GoogleService-Info.plist` from Firebase (Project settings → Your
+   apps → the iOS app `com.dripplex.customer`) and put it at
+   `ios/App/App/GoogleService-Info.plist` — that exact path and spelling.
+   **Copying the file in is now all that is required.** The App target already
+   lists it, because `project.pbxproj` is committed and its Resources build
+   phase references it; nothing has to be clicked in Xcode. The file itself
+   stays out of git (see `ios/.gitignore`), so the repository carries the
+   reference and the Mac supplies the file.
+
+   The membership half is what used to get missed, and silently: a file that is
+   not a target member is not in the bundle, so Firebase never configures and
+   nothing reports an error. `PrivacyInfo.xcprivacy` sat in this repo unreferenced
+   and went to Apple that way in build 1000100. `verify-config.mjs` now walks
+   `PBXFileReference → PBXBuildFile → PBXResourcesBuildPhase` for both files, so
+   CI fails if either is ever dropped from the target again.
+
+2. `pod install` in `ios/App`, which resolves FirebaseMessaging and updates
+   `Podfile.lock`. That lockfile can only be produced on a Mac.
+3. Archive, upload, and test on a device through TestFlight.
+
+**The check that says it worked:** the token the app registers should be an FCM
+token, not an APNs one. An APNs device token is 64 hex characters; an FCM token
+is much longer and contains `:` and `-`. If what reaches
+`POST /customer/devices` is 64 hex characters, the bridge is not working.
+
+## Status
+
 | Component                        | Status                                                                                                                                                                                                                                                                                                                                                                             |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | FCM config template              | ✅ `google-services.json.example`                                                                                                                                                                                                                                                                                                                                                  |
@@ -105,5 +164,6 @@ Payload `data.url` → open `https://app.dripplex.com/...` or `dripplex://open/.
 | Real Android FCM config          | ⚠️ Registered in Firebase project `dripplex-3a92d` as `com.dripplex.customer`, which is **no longer the applicationId** — a new Firebase Android app for `com.dripplex.app` and a replacement `GOOGLE_SERVICES_JSON_BASE64` secret are required before push works again; CI decodes `GOOGLE_SERVICES_JSON_BASE64` into place and fails the build when push would be dead (PR #293) |
 | Android ride-alert channel       | ⏳ DPX-MOBILE-001 — `dripplex_ride_alerts_v1`, created at app start and named on every `RIDE_OFFERED` push. No custom sound (see gap above)                                                                                                                                                                                                                                        |
 | Ride offer → push                | ✅ DPX-MOBILE-001 (PR #295) — `RIDE_OFFERED` sends on `PUSH` at `CRITICAL` with a TTL from the offer's real expiry                                                                                                                                                                                                                                                                 |
-| Real iOS APNs config             | ❌ No `GoogleService-Info.plist`, no APNs key uploaded — untested end-to-end                                                                                                                                                                                                                                                                                                       |
+| iOS Firebase SDK + AppDelegate   | ✅ 2026-09-18 — `FirebaseMessaging` pod, `FirebaseApp.configure()` guarded on the plist, and the two remote-notification callbacks that had never existed. Forwards the **FCM** token, not the APNs one. Guarded by `verify-config.mjs`, which CI runs                                                                                                                             |
+| Real iOS APNs config             | ⏳ APNs auth key `66J777N99T` uploaded to Firebase (production slot) on 2026-09-18. Still needed: drop `GoogleService-Info.plist` into `ios/App/App/` on the Mac (target membership is committed), and a TestFlight device test — `pod install` done 2026-09-18 (14 pods, FirebaseMessaging 12.19.0). Untested end-to-end                                                          |
 | Merchant/Rider/Driver mobile app | ❌ Do not exist — see `MERCHANT-RIDER-PACKAGING.md` and DPX-CORE-001's Phase D-2 section                                                                                                                                                                                                                                                                                           |

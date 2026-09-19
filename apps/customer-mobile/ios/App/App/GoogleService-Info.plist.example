@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  SHAPE REFERENCE ONLY — every value here is a placeholder.
+
+  The real file is downloaded from the Firebase console (Project settings ->
+  Your apps -> the iOS app com.dripplex.customer -> GoogleService-Info.plist)
+  and saved beside Info.plist as GoogleService-Info.plist. Copying it in is all
+  that is required: the App target already lists it, because project.pbxproj is
+  committed and its Resources build phase references it.
+
+  That membership is the part that used to be missed, and it fails silently: a
+  file that is not a member of the App target is not in the bundle,
+  `Bundle.main.path(forResource:)` returns nil, Firebase is never configured,
+  and push dies with no error anyone sees. verify-config.mjs now walks
+  PBXFileReference -> PBXBuildFile -> PBXResourcesBuildPhase for this file, so
+  CI fails if it is ever dropped from the target again.
+
+  It is gitignored for the same reason android/app/google-services.json is —
+  per-project client config that goes stale against the console silently.
+
+  BUNDLE_ID must read com.dripplex.customer. The Android package is
+  com.dripplex.app; they are separate namespaces and separate Firebase apps,
+  and a plist carrying the Android identifier is the mistake this comment
+  exists to prevent.
+-->
+<dict>
+	<key>API_KEY</key>
+	<string>PLACEHOLDER_API_KEY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>000000000000</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.dripplex.customer</string>
+	<key>PROJECT_ID</key>
+	<string>dripplex-customer-placeholder</string>
+	<key>STORAGE_BUCKET</key>
+	<string>dripplex-customer-placeholder.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<false/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<false/>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:000000000000:ios:0000000000000000000000</string>
+</dict>
+</plist>
