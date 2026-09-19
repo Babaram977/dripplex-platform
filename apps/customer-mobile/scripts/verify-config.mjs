@@ -255,8 +255,33 @@ if (existsSync(projectPath)) {
     fail('iOS product bundle identifier mismatch');
   if (!project.includes('MARKETING_VERSION = 1.0.0;'))
     fail('iOS marketing version is missing or unexpected');
-  if (!project.includes('CURRENT_PROJECT_VERSION = 1000100;'))
-    fail('iOS build number is missing or unexpected');
+  // Asserted as a floor, not a literal. Pinning `CURRENT_PROJECT_VERSION = 1000100;`
+  // was the same defect this file already documents on the Android side: App
+  // Store Connect accepts a build number once per marketing version, for ever,
+  // so a pinned number means the check passes only while the project is stuck
+  // on a build that can never be uploaded again - including one built to
+  // replace a bad release. Build 1000100 was uploaded on 2026-09-17
+  // (docs/store/APP-STORE.md), so the pin was already asserting an unusable
+  // value, and bumping it to archive would have failed CI.
+  //
+  // Raise LAST_UPLOADED_BUILD each time a build is accepted by App Store
+  // Connect. The check then permits anything above it and rejects re-use,
+  // which fails in the direction that is actually safe.
+  const LAST_UPLOADED_BUILD = 1000100;
+  const buildNumbers = [...project.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((m) =>
+    Number(m[1]),
+  );
+  if (buildNumbers.length === 0) {
+    fail('iOS build number is missing from project.pbxproj');
+  } else if (new Set(buildNumbers).size > 1) {
+    // Both configurations feed the same CFBundleVersion, so a disagreement
+    // means the archive's build number depends on which one Xcode used.
+    fail(`iOS build number disagrees across build configurations: ${buildNumbers.join(', ')}`);
+  } else if (buildNumbers[0] <= LAST_UPLOADED_BUILD) {
+    fail(
+      `iOS build number is ${buildNumbers[0]}; App Store Connect has already accepted ${LAST_UPLOADED_BUILD} and rejects a re-used build number`,
+    );
+  }
   // Asserted as a floor rather than a literal. This check used to read
   // `includes('IPHONEOS_DEPLOYMENT_TARGET = 14.0;')`, so raising the target to
   // Apple's required minimum made it report "deployment target is missing"

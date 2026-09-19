@@ -41,18 +41,18 @@ lists the blockers the D-U-N-S does not remove (no macOS build host,
 
 ## App Information
 
-| Field                   | Value                                | Basis                                                                 |
-| ----------------------- | ------------------------------------ | --------------------------------------------------------------------- |
-| **Name**                | **DrippleX**                         | ✅ verified — `Info.plist` `CFBundleDisplayName`                      |
-| **Subtitle** (30 chars) | life, Simplified                     | draft                                                                 |
-| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj`, and registered with Apple (see note) |
-| **SKU**                 | `dripplex-customer-ios`              | draft — free text, App Store Connect only                             |
-| **Marketing version**   | `1.0.0`                              | ✅ verified — `MARKETING_VERSION`                                     |
-| **Build**               | `1000100`                            | ✅ verified — `CURRENT_PROJECT_VERSION`                               |
-| **Primary category**    | Travel                               | ✅ founder ruling, 2026-09-18                                         |
-| **Secondary**           | Utilities                            | ✅ founder ruling, 2026-09-18                                         |
-| **Content rights**      | Does not contain third-party content | draft                                                                 |
-| **Age rating**          | **16+**                              | ✅ founder ruling, 2026-09-18 — see "Age rating and betting" below    |
+| Field                   | Value                                | Basis                                                                            |
+| ----------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
+| **Name**                | **DrippleX**                         | ✅ verified — `Info.plist` `CFBundleDisplayName`                                 |
+| **Subtitle** (30 chars) | life, Simplified                     | draft                                                                            |
+| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj`, and registered with Apple (see note)            |
+| **SKU**                 | `dripplex-customer-ios`              | draft — free text, App Store Connect only                                        |
+| **Marketing version**   | `1.0.0`                              | ✅ verified — `MARKETING_VERSION`                                                |
+| **Build**               | `1000101`                            | ✅ verified — `CURRENT_PROJECT_VERSION`; `1000100` is spent, uploaded 2026-09-17 |
+| **Primary category**    | Travel                               | ✅ founder ruling, 2026-09-18                                                    |
+| **Secondary**           | Utilities                            | ✅ founder ruling, 2026-09-18                                                    |
+| **Content rights**      | Does not contain third-party content | draft                                                                            |
+| **Age rating**          | **16+**                              | ✅ founder ruling, 2026-09-18 — see "Age rating and betting" below               |
 
 **On the categories.** Travel primary, Utilities secondary — founder ruling,
 2026-09-18. Both are **App Store Connect fields, not repository ones**: there is
