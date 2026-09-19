@@ -264,10 +264,17 @@ if (existsSync(projectPath)) {
   // (docs/store/APP-STORE.md), so the pin was already asserting an unusable
   // value, and bumping it to archive would have failed CI.
   //
-  // Raise LAST_UPLOADED_BUILD each time a build is accepted by App Store
-  // Connect. The check then permits anything above it and rejects re-use,
+  // After each accepted upload, raise LAST_UPLOADED_BUILD **and**
+  // CURRENT_PROJECT_VERSION together, in one commit. Raising only the record
+  // leaves the project sitting on a number this check now rejects, which
+  // reddens CI on every branch in the repo until someone bumps the other half -
+  // observed, not theorised: setting LAST_UPLOADED_BUILD to 1000101 while the
+  // project still read 1000101 failed immediately. Moving both keeps the tree
+  // green and leaves the next archive already numbered.
+  //
+  // The check permits anything above the recorded build and rejects re-use,
   // which fails in the direction that is actually safe.
-  const LAST_UPLOADED_BUILD = 1000100;
+  const LAST_UPLOADED_BUILD = 1000101;
   const buildNumbers = [...project.matchAll(/CURRENT_PROJECT_VERSION = (\d+);/g)].map((m) =>
     Number(m[1]),
   );

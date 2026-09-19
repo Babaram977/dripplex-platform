@@ -41,18 +41,18 @@ lists the blockers the D-U-N-S does not remove (no macOS build host,
 
 ## App Information
 
-| Field                   | Value                                | Basis                                                                            |
-| ----------------------- | ------------------------------------ | -------------------------------------------------------------------------------- |
-| **Name**                | **DrippleX**                         | ✅ verified — `Info.plist` `CFBundleDisplayName`                                 |
-| **Subtitle** (30 chars) | life, Simplified                     | draft                                                                            |
-| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj`, and registered with Apple (see note)            |
-| **SKU**                 | `dripplex-customer-ios`              | draft — free text, App Store Connect only                                        |
-| **Marketing version**   | `1.0.0`                              | ✅ verified — `MARKETING_VERSION`                                                |
-| **Build**               | `1000101`                            | ✅ verified — `CURRENT_PROJECT_VERSION`; `1000100` is spent, uploaded 2026-09-17 |
-| **Primary category**    | Travel                               | ✅ founder ruling, 2026-09-18                                                    |
-| **Secondary**           | Utilities                            | ✅ founder ruling, 2026-09-18                                                    |
-| **Content rights**      | Does not contain third-party content | draft                                                                            |
-| **Age rating**          | **16+**                              | ✅ founder ruling, 2026-09-18 — see "Age rating and betting" below               |
+| Field                   | Value                                | Basis                                                                  |
+| ----------------------- | ------------------------------------ | ---------------------------------------------------------------------- |
+| **Name**                | **DrippleX**                         | ✅ verified — `Info.plist` `CFBundleDisplayName`                       |
+| **Subtitle** (30 chars) | life, Simplified                     | draft                                                                  |
+| **Bundle ID**           | `com.dripplex.customer`              | ✅ verified — `project.pbxproj`, and registered with Apple (see note)  |
+| **SKU**                 | `dripplex-customer-ios`              | draft — free text, App Store Connect only                              |
+| **Marketing version**   | `1.0.0`                              | ✅ verified — `MARKETING_VERSION`                                      |
+| **Build**               | `1000102`                            | ✅ next archive. Spent: `1000100` (2026-09-17), `1000101` (2026-09-19) |
+| **Primary category**    | Travel                               | ✅ founder ruling, 2026-09-18                                          |
+| **Secondary**           | Utilities                            | ✅ founder ruling, 2026-09-18                                          |
+| **Content rights**      | Does not contain third-party content | draft                                                                  |
+| **Age rating**          | **16+**                              | ✅ founder ruling, 2026-09-18 — see "Age rating and betting" below     |
 
 **On the categories.** Travel primary, Utilities secondary — founder ruling,
 2026-09-18. Both are **App Store Connect fields, not repository ones**: there is
@@ -360,7 +360,10 @@ and matching the value already served in the hosted AASA); the app record
 is registered as an App ID with Push Notifications and Associated Domains enabled
 — Apple's validation of the entitlements proves both; an Apple Distribution
 certificate and an App Store provisioning profile exist; and **build 1.0.0
-(1000100) was uploaded** on 2026-09-17. See `docs/mobile/IOS.md` "First archive"
+(1000100) was uploaded** on 2026-09-17, and **1.0.0 (1000101)** on 2026-09-19 at
+14:20 UTC — the first build carrying `PrivacyInfo.xcprivacy` and
+`GoogleService-Info.plist` as members of the App target, and so the first with a
+privacy manifest in the archive at all. See `docs/mobile/IOS.md` "First archive"
 for how it was done and what went wrong on the way.
 
 **Still not establishable from this repository:** whether an APNs key exists, the

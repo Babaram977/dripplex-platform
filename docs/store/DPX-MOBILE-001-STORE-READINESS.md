@@ -141,7 +141,7 @@ split — was run against production on 2026-08-24.
 
 - [x] Android/iOS native projects present
 - [x] Stable app identifiers configured
-- [x] Release version/build metadata aligned at `1.0.0` / `1000101` (`1000100` uploaded 2026-09-17 and cannot be re-used)
+- [x] Release version/build metadata aligned at `1.0.0` / `1000102` (`1000100` and `1000101` are uploaded and cannot be re-used)
 - [x] Android release flavors present
 - [x] Android HTTPS app-link host configured
 - [x] iOS custom URL scheme configured
